@@ -2370,6 +2370,7 @@ HTML;
             'muted' => false,
             'bookmarked' => $bookmarked,
             'content' => $formattedContent,
+            'text' => $row['status_content'],
             'account' => $account,
             'media_attachments' => $attachments,
             'mentions' => [],

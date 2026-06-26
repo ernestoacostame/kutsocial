@@ -422,22 +422,41 @@ class ActivityPubController {
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         $outboxUrl = "$proto://$domain/users/$username/outbox";
 
-        // Obtener statuses de la base de datos
-        $statusStmt = $db->prepare("SELECT * FROM statuses WHERE account_id = ? ORDER BY id DESC LIMIT 20");
+        // Obtener statuses de la base de datos (solo públicos y no listados)
+        $statusStmt = $db->prepare("
+            SELECT * FROM statuses 
+            WHERE account_id = ? AND visibility IN ('public', 'unlisted') 
+            ORDER BY id DESC LIMIT 20
+        ");
         $statusStmt->execute([$account['id']]);
         $statuses = $statusStmt->fetchAll();
 
         $items = [];
         foreach ($statuses as $status) {
+            $visibility = $status['visibility'] ?? 'public';
+            $to = [];
+            $cc = [];
+            if ($visibility === 'public') {
+                $to[] = 'https://www.w3.org/ns/activitystreams#Public';
+                $cc[] = "$proto://$domain/users/$username/followers";
+            } else { // unlisted
+                $to[] = "$proto://$domain/users/$username/followers";
+                $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
+            }
+
             $items[] = [
-                'id' => $status['uri'],
+                'id' => $status['uri'] . '/activity',
                 'type' => 'Create',
                 'actor' => "$proto://$domain/users/$username",
+                'to' => $to,
+                'cc' => $cc,
                 'object' => [
                     'id' => $status['uri'],
                     'type' => 'Note',
                     'content' => $status['content'],
-                    'published' => date('c', strtotime($status['created_at']))
+                    'published' => date('c', strtotime($status['created_at'])),
+                    'to' => $to,
+                    'cc' => $cc
                 ]
             ];
         }

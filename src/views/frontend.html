@@ -402,22 +402,34 @@
         .toot-author-details {
             display: flex;
             align-items: center;
-            gap: 10px;
+            flex-wrap: wrap;
+            gap: 4px 10px;
+            min-width: 0;
+            flex-grow: 1;
         }
 
         .toot-author-name {
             font-weight: 600;
             font-size: 14.5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .toot-author-handle {
             font-size: 12.5px;
             color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         .toot-time {
             font-size: 12px;
             color: var(--text-muted);
+            white-space: nowrap;
+            flex-shrink: 0;
+            margin-left: 10px;
         }
 
         .toot-content {
@@ -1120,9 +1132,9 @@
                     <div class="composer-meta-selects">
                         <select id="composer-visibility" class="composer-select-pill">
                             <option value="public">🌐 Público</option>
-                            <option value="unlisted">🔓 No listado</option>
-                            <option value="private">🔒 Solo seguidores</option>
-                            <option value="direct">✉️ Solo mencionados</option>
+                            <option value="unlisted">🌙 Público silencioso</option>
+                            <option value="private">🔒 Seguidores</option>
+                            <option value="direct">✉️ Mención privada</option>
                         </select>
                         <select id="composer-language" class="composer-select-pill">
                             <option value="es">🗣️ Español</option>
@@ -1782,6 +1794,7 @@
         function createThreadTootElement(toot, isMain = false) {
             const card = document.createElement('div');
             card.className = 'toot-card';
+            card._toot = toot;
             card.setAttribute('data-toot-id', toot.id);
             if (toot.visibility === 'direct') {
                 card.classList.add('toot-direct');
@@ -1891,7 +1904,7 @@
                     ${pollHTML}
                     
                     <div class="toot-actions" style="margin-top: 12px;">
-                        <button class="toot-action-btn btn-reply" onclick="initReplyToToot('${toot.id}', '${toot.account.acct}', '${toot.visibility}')" title="Responder">
+                        <button class="toot-action-btn btn-reply" onclick="handleReplyButtonClick(this)" title="Responder">
                             <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
                         </button>
                         <button class="toot-action-btn ${favClass}" onclick="toggleFavourite('${toot.id}', this)" title="Favorito">
@@ -1901,7 +1914,7 @@
                             <span class="${toot.bookmarked ? 'material-icons' : 'material-icons-outlined'}">${toot.bookmarked ? 'bookmark' : 'bookmark_border'}</span>
                         </button>
                         ${isMyToot ? `
-                            <button class="toot-action-btn btn-edit" onclick="initEditToot('${toot.id}', \`${escapeJSString(toot.content)}\`, ${toot.sensitive}, \`${escapeJSString(toot.spoiler_text)}\`)" title="Editar">
+                            <button class="toot-action-btn btn-edit" onclick="handleEditButtonClick(this)" title="Editar">
                                 <span class="material-icons-outlined">edit</span>
                             </button>
                             <button class="toot-action-btn btn-delete" onclick="deleteToot('${toot.id}', this)" title="Eliminar">
@@ -1912,6 +1925,22 @@
                 </div>
             `;
             return card;
+        }
+
+        function handleReplyButtonClick(btn) {
+            const card = btn.closest('.toot-card');
+            if (card && card._toot) {
+                const toot = card._toot;
+                initReplyToToot(toot.id, toot.account.acct, toot.visibility);
+            }
+        }
+
+        function handleEditButtonClick(btn) {
+            const card = btn.closest('.toot-card');
+            if (card && card._toot) {
+                const toot = card._toot;
+                initEditToot(toot.id, toot.text || toot.content, toot.sensitive, toot.spoiler_text || '');
+            }
         }
 
         // Variables para Autocompletado de menciones
