@@ -308,10 +308,10 @@ class AdminController {
         $blocksRows = '';
         foreach ($blocks as $row) {
             $typeLabel = match($row['type']) {
-                'domain' => '🌐 Dominio',
-                'account' => '👤 Cuenta',
-                'word' => '📝 Palabra',
-                'hashtag' => '#️⃣ Hashtag',
+                'domain' => '<span class="material-icons-outlined" style="vertical-align: middle; margin-right: 6px; font-size: 18px;">public</span> Dominio',
+                'account' => '<span class="material-icons-outlined" style="vertical-align: middle; margin-right: 6px; font-size: 18px;">person</span> Cuenta',
+                'word' => '<span class="material-icons-outlined" style="vertical-align: middle; margin-right: 6px; font-size: 18px;">description</span> Palabra',
+                'hashtag' => '<span class="material-icons-outlined" style="vertical-align: middle; margin-right: 6px; font-size: 18px;">tag</span> Hashtag',
                 default => $row['type']
             };
             $blocksRows .= "<tr>
@@ -430,6 +430,7 @@ class AdminController {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Panel de Administración - KutSocial</title>
             <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+            <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
             <style>
                 :root {
                     --bg-color: #0d0f14;
@@ -675,13 +676,13 @@ class AdminController {
                 <!-- Sidebar menú de pestañas -->
                 <aside>
                     <ul class="tab-menu">
-                        <li><button class="tab-btn active" data-tab="general" onclick="switchTab('general', this)">⚙️ Ajustes Generales</button></li>
-                        <li><button class="tab-btn" data-tab="security" onclick="switchTab('security', this)">🔒 Seguridad y 2FA</button></li>
-                        <li><button class="tab-btn" data-tab="users" onclick="switchTab('users', this)">👥 Gestionar Usuarios</button></li>
-                        <li><button class="tab-btn" data-tab="moderation" onclick="switchTab('moderation', this)">🛡️ Moderación / Filtros</button></li>
-                        <li><button class="tab-btn" data-tab="relays" onclick="switchTab('relays', this)">🔄 Relays ActivityPub</button></li>
-                        <li><button class="tab-btn" data-tab="update" onclick="switchTab('update', this)">🚀 Actualizador</button></li>
-                        <li><button class="tab-btn" data-tab="maintenance" onclick="switchTab('maintenance', this)">🧹 Mantenimiento</button></li>
+                        <li><button class="tab-btn active" data-tab="general" onclick="switchTab('general', this)"><span class="material-icons-outlined" style="vertical-align: middle; margin-right: 8px;">settings</span> Ajustes Generales</button></li>
+                        <li><button class="tab-btn" data-tab="security" onclick="switchTab('security', this)"><span class="material-icons-outlined" style="vertical-align: middle; margin-right: 8px;">security</span> Seguridad y 2FA</button></li>
+                        <li><button class="tab-btn" data-tab="users" onclick="switchTab('users', this)"><span class="material-icons-outlined" style="vertical-align: middle; margin-right: 8px;">people</span> Gestionar Usuarios</button></li>
+                        <li><button class="tab-btn" data-tab="moderation" onclick="switchTab('moderation', this)"><span class="material-icons-outlined" style="vertical-align: middle; margin-right: 8px;">gpp_good</span> Moderación / Filtros</button></li>
+                        <li><button class="tab-btn" data-tab="relays" onclick="switchTab('relays', this)"><span class="material-icons-outlined" style="vertical-align: middle; margin-right: 8px;">sync</span> Relays ActivityPub</button></li>
+                        <li><button class="tab-btn" data-tab="update" onclick="switchTab('update', this)"><span class="material-icons-outlined" style="vertical-align: middle; margin-right: 8px;">system_update</span> Actualizador</button></li>
+                        <li><button class="tab-btn" data-tab="maintenance" onclick="switchTab('maintenance', this)"><span class="material-icons-outlined" style="vertical-align: middle; margin-right: 8px;">cleaning_services</span> Mantenimiento</button></li>
                     </ul>
                 </aside>
 
@@ -773,10 +774,10 @@ class AdminController {
                                 <div class="form-group" style="margin: 0;">
                                     <label for="block_type">Tipo de Filtro</label>
                                     <select name="type" id="block_type" required>
-                                        <option value="domain">🌐 Dominio completo</option>
-                                        <option value="account">👤 Cuenta / Usuario</option>
-                                        <option value="word">📝 Palabra clave</option>
-                                        <option value="hashtag">#️⃣ Hashtag</option>
+                                        <option value="domain">Dominio completo</option>
+                                        <option value="account">Cuenta / Usuario</option>
+                                        <option value="word">Palabra clave</option>
+                                        <option value="hashtag">Hashtag</option>
                                     </select>
                                 </div>
                                 <div class="form-group" style="margin: 0;">

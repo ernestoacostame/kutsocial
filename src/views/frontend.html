@@ -1133,8 +1133,8 @@
                         <select id="composer-visibility" class="composer-select-pill">
                             <option value="public">🌐 Público</option>
                             <option value="unlisted">🌙 Público silencioso</option>
-                            <option value="private">🔒 Seguidores</option>
-                            <option value="direct">✉️ Mención privada</option>
+                            <option value="private">🔒 Solo seguidores</option>
+                            <option value="direct">✉️ Mensaje privado</option>
                         </select>
                         <select id="composer-language" class="composer-select-pill">
                             <option value="es">🗣️ Español</option>
@@ -1894,7 +1894,7 @@
                         <div class="toot-author-details clickable-actor" onclick="viewProfile('${toot.account.id}')">
                             <span class="toot-author-name">${toot.account.display_name}</span>
                             <span class="toot-author-handle">@${toot.account.acct}</span>
-                            ${toot.visibility === 'direct' ? `<span class="badge-direct">MENCIÓN PRIVADA</span>` : ''}
+                            ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                             ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
                         </div>
                         <span class="toot-time clickable-actor" onclick="viewTootThread('${toot.id}')" title="Ver conversación">${dateStr}</span>
@@ -2059,6 +2059,12 @@
         }
 
         function handleComposerKeydown(e) {
+            if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                publishToot();
+                return;
+            }
+
             const dropdown = document.getElementById('composer-autocomplete');
             if (!dropdown || dropdown.style.display === 'none') return;
             
@@ -2290,35 +2296,107 @@
                 }
                 
                 data.forEach(notif => {
-                    const div = document.createElement('div');
-                    div.style = "display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; transition: background 0.2s; margin-bottom: 8px;";
-                    
-                    let actionText = '';
-                    let actionIcon = '';
-                    if (notif.type === 'follow') {
-                        actionIcon = '<span class="material-icons-outlined" style="font-size: 20px; color: var(--text-muted);">person_add</span>';
-                        actionText = 'te ha seguido';
-                    } else if (notif.type === 'mention') {
-                        actionIcon = '<span class="material-icons-outlined" style="font-size: 20px; color: var(--text-muted);">chat_bubble_outline</span>';
-                        actionText = 'te ha mencionado';
+                    if (notif.type === 'mention') {
+                        const div = document.createElement('div');
+                        div.style = "display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; transition: background 0.2s; margin-bottom: 8px; overflow: hidden;";
+                        
+                        div.innerHTML = `
+                            <div style="display: flex; align-items: center; gap: 8px; padding: 10px 15px; background: rgba(99, 102, 241, 0.05); border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-muted);">
+                                <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary);">reply</span>
+                                <span>
+                                    <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name)}</strong>
+                                    te ha mencionado
+                                </span>
+                                <div style="flex-grow: 1;"></div>
+                                <span style="font-size: 11.5px; color: var(--text-muted); margin-right: 8px;">
+                                    ${new Date(notif.created_at).toLocaleString('es-ES')}
+                                </span>
+                                <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; transition: color 0.2s;" title="Eliminar notificación" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+                            </div>
+                        `;
+                        
+                        if (notif.status) {
+                            const statusCard = createThreadTootElement(notif.status, false);
+                            statusCard.style.border = 'none';
+                            statusCard.style.background = 'transparent';
+                            statusCard.style.boxShadow = 'none';
+                            statusCard.style.borderRadius = '0';
+                            statusCard.style.margin = '0';
+                            statusCard.style.padding = '15px';
+                            div.appendChild(statusCard);
+                        } else {
+                            const fallbackDiv = document.createElement('div');
+                            fallbackDiv.style = "padding: 15px; font-size: 14px; color: var(--text-muted);";
+                            fallbackDiv.innerText = "No se pudo cargar el contenido de la mención.";
+                            div.appendChild(fallbackDiv);
+                        }
+                        
+                        list.appendChild(div);
+                    } else if (notif.type === 'favourite') {
+                        const div = document.createElement('div');
+                        div.style = "display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; transition: background 0.2s; margin-bottom: 8px;";
+                        
+                        let statusPreviewHTML = '';
+                        if (notif.status) {
+                            statusPreviewHTML = `
+                                <div class="notification-status-preview" onclick="viewTootThread('${notif.status.id}')" style="border: 1px solid var(--border-color); border-radius: 12px; background: rgba(255, 255, 255, 0.015); padding: 12px; cursor: pointer; transition: background 0.2s; font-size: 13.5px;" onmouseover="this.style.background='rgba(255, 255, 255, 0.04)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.015)'">
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px;">
+                                        <img src="${notif.status.account.avatar}" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
+                                        <strong style="color: var(--text-color);">${escapeHTML(notif.status.account.display_name)}</strong>
+                                        <span style="color: var(--text-muted);">@${escapeHTML(notif.status.account.acct)}</span>
+                                    </div>
+                                    <div class="toot-content" style="font-size: 13.5px; color: var(--text-color); line-height: 1.4;">
+                                        ${notif.status.content}
+                                    </div>
+                                </div>
+                            `;
+                        }
+
+                        div.innerHTML = `
+                            <div style="display: flex; gap: 15px; align-items: center; width: 100%;">
+                                <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">
+                                    <span class="material-icons" style="font-size: 20px; color: #f59e0b;">star</span>
+                                </div>
+                                <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${notif.account.avatar}" alt="Avatar" style="width: 36px; height: 36px; flex-shrink: 0;">
+                                <div style="flex-grow: 1; min-width: 0;">
+                                    <div style="font-size: 14px;">
+                                        <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name)}</strong> 
+                                        <span style="color: var(--text-muted);">@${escapeHTML(notif.account.acct)}</span>
+                                        ha marcado tu publicación como favorita
+                                    </div>
+                                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                                        ${new Date(notif.created_at).toLocaleString('es-ES')}
+                                    </div>
+                                </div>
+                                <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; transition: color 0.2s;" title="Eliminar notificación" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+                            </div>
+                            ${statusPreviewHTML}
+                        `;
+                        list.appendChild(div);
+                    } else {
+                        const div = document.createElement('div');
+                        div.style = "display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; transition: background 0.2s; margin-bottom: 8px;";
+                        
+                        let actionText = 'te ha seguido';
+                        let actionIcon = '<span class="material-icons-outlined" style="font-size: 20px; color: var(--text-muted);">person_add</span>';
+                        
+                        div.innerHTML = `
+                            <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">${actionIcon}</div>
+                            <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${notif.account.avatar}" alt="Avatar" style="width: 36px; height: 36px; flex-shrink: 0;">
+                            <div style="flex-grow: 1; min-width: 0;">
+                                <div style="font-size: 14px;">
+                                    <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name)}</strong> 
+                                    <span style="color: var(--text-muted);">@${escapeHTML(notif.account.acct)}</span>
+                                    ${actionText}
+                                </div>
+                                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                                    ${new Date(notif.created_at).toLocaleString('es-ES')}
+                                </div>
+                            </div>
+                            <button onclick="dismissNotification('${notif.id}', this.parentElement)" style="background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; transition: color 0.2s;" title="Eliminar notificación" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+                        `;
+                        list.appendChild(div);
                     }
-                    
-                    div.innerHTML = `
-                        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;">${actionIcon}</div>
-                        <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${notif.account.avatar}" alt="Avatar" style="width: 36px; height: 36px;">
-                        <div style="flex-grow: 1; min-width: 0;">
-                            <div style="font-size: 14px;">
-                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${notif.account.display_name}</strong> 
-                                <span style="color: var(--text-muted);">@${notif.account.acct}</span>
-                                ${actionText}
-                            </div>
-                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                                ${new Date(notif.created_at).toLocaleString('es-ES')}
-                            </div>
-                        </div>
-                        <button onclick="dismissNotification('${notif.id}', this.parentElement)" style="background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; transition: color 0.2s;" title="Eliminar notificación" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
-                    `;
-                    list.appendChild(div);
                 });
             } catch (e) {
                 list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar notificaciones.</div>';

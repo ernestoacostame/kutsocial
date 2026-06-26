@@ -1780,6 +1780,11 @@ HTML;
         $whereClauses = ["s.visibility = 'public'"];
         $queryParams = [];
 
+        $local = isset($_GET['local']) && ($_GET['local'] === 'true' || $_GET['local'] === '1');
+        if ($local) {
+            $whereClauses[] = "(a.domain IS NULL OR a.domain = '')";
+        }
+
         if ($maxId !== null) {
             $whereClauses[] = "s.id < ?";
             $queryParams[] = $maxId;
