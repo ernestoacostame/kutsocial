@@ -225,6 +225,10 @@ class ActivityPubController {
                 self::log("postInbox: Procesando actividad de Accept");
                 self::handleAccept($account, $activity);
                 break;
+            case 'Create':
+                self::log("postInbox: Procesando actividad de Create");
+                self::handleCreate($account, $activity);
+                break;
             default:
                 self::log("postInbox: Actividad de tipo '$type' no soportada, se responde 202");
                 break;
@@ -257,6 +261,114 @@ class ActivityPubController {
                 self::log("handleAccept: Seguimiento de local ID {$localAccount['id']} -> remoto ID {$remoteAccount['id']} marcado como aceptado");
             }
         }
+    }
+
+    private static function handleCreate(array $localAccount, array $activity): void {
+        $object = $activity['object'] ?? [];
+        if (empty($object)) {
+            self::log("handleCreate: Objeto de actividad vacío");
+            return;
+        }
+
+        $type = $object['type'] ?? '';
+        if ($type !== 'Note' && $type !== 'Question') {
+            self::log("handleCreate: Tipo de objeto '$type' no soportado en Create");
+            return;
+        }
+
+        $actorUrl = $activity['actor'] ?? '';
+        if (empty($actorUrl)) {
+            self::log("handleCreate: Falta el actor de la actividad");
+            return;
+        }
+
+        // Obtener o registrar el actor remoto
+        $remoteAccount = self::getOrRegisterRemoteActor($actorUrl);
+        if (!$remoteAccount) {
+            self::log("handleCreate: No se pudo resolver o registrar el actor remoto: $actorUrl");
+            return;
+        }
+
+        $db = Database::connect();
+
+        $uri = $object['id'] ?? '';
+        if (empty($uri)) {
+            self::log("handleCreate: Falta el ID/URI del objeto");
+            return;
+        }
+
+        // Verificar si la publicación ya existe en nuestra base de datos local
+        $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+        $stmtCheck->execute([$uri]);
+        if ($stmtCheck->fetchColumn()) {
+            self::log("handleCreate: Publicación '$uri' ya existe en DB local. Ignorando.");
+            return;
+        }
+
+        $content = $object['content'] ?? '';
+        $createdAt = $object['published'] ?? date('c');
+
+        // Determinar visibilidad:
+        // Si el destinatario 'to' o 'cc' contiene la URL del Public timeline, es pública
+        // De lo contrario, si solo contiene a usuarios específicos (como el localAccount), es directa (mensaje privado)
+        $to = is_array($object['to'] ?? null) ? $object['to'] : [$object['to'] ?? ''];
+        $cc = is_array($object['cc'] ?? null) ? $object['cc'] : [$object['cc'] ?? ''];
+        
+        $isPublic = false;
+        foreach (array_merge($to, $cc) as $recipient) {
+            if ($recipient === 'https://www.w3.org/ns/activitystreams#Public' || str_ends_with($recipient, '/followers')) {
+                $isPublic = true;
+                break;
+            }
+        }
+
+        $visibility = 'public';
+        if (!$isPublic) {
+            $visibility = 'direct'; // Mensaje privado / directo
+        }
+
+        // Procesar adjuntos (media)
+        $attachments = [];
+        if (!empty($object['attachment'])) {
+            foreach ($object['attachment'] as $att) {
+                $attType = $att['type'] ?? '';
+                if ($attType === 'Document' || $attType === 'Image') {
+                    $attachments[] = [
+                        'id' => bin2hex(random_bytes(6)),
+                        'type' => 'image',
+                        'url' => $att['url'] ?? '',
+                        'preview_url' => $att['url'] ?? '',
+                        'remote_url' => $att['url'] ?? ''
+                    ];
+                }
+            }
+        }
+        $mediaJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+
+        // Procesar in_reply_to_id
+        $inReplyToUri = $object['inReplyTo'] ?? null;
+        $inReplyToId = null;
+        if ($inReplyToUri) {
+            $stmtReply = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+            $stmtReply->execute([$inReplyToUri]);
+            $inReplyToId = $stmtReply->fetchColumn() ?: null;
+        }
+
+        $stmtIns = $db->prepare("
+            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmtIns->execute([
+            $remoteAccount['id'],
+            $uri,
+            $content,
+            $visibility,
+            date('Y-m-d H:i:s', strtotime($createdAt)),
+            $mediaJson,
+            $inReplyToId
+        ]);
+
+        self::log("handleCreate: Publicación remota '$uri' guardada exitosamente con visibilidad '$visibility'");
     }
 
     /**

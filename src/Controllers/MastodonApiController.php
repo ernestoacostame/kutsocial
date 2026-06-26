@@ -1307,6 +1307,146 @@ HTML;
         Router::json(self::formatAccount($account));
     }
 
+    private static function fetchAndImportRemoteStatuses(array $account): void {
+        if ($account['domain'] === null) {
+            return;
+        }
+
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $actorUrl = "https://{$account['domain']}/users/{$account['username']}";
+
+        try {
+            // 1. Obtener la URL de la outbox del perfil del actor remoto
+            $ch = curl_init($actorUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => [
+                    "Accept: application/activity+json, application/ld+json",
+                    "User-Agent: KutSocial/1.0; (+https://$domain)"
+                ],
+                CURLOPT_TIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false
+            ]);
+            $resp = curl_exec($ch);
+            curl_close($ch);
+
+            if (!$resp) return;
+            $json = json_decode($resp, true);
+            if (!$json || empty($json['outbox'])) return;
+
+            $outboxUrl = $json['outbox'];
+
+            // 2. Consultar la outbox
+            $ch = curl_init($outboxUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => [
+                    "Accept: application/activity+json, application/ld+json",
+                    "User-Agent: KutSocial/1.0; (+https://$domain)"
+                ],
+                CURLOPT_TIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false
+            ]);
+            $outboxResp = curl_exec($ch);
+            curl_close($ch);
+
+            if (!$outboxResp) return;
+            $outboxJson = json_decode($outboxResp, true);
+            if (!$outboxJson) return;
+
+            $items = [];
+            if (isset($outboxJson['orderedItems'])) {
+                $items = $outboxJson['orderedItems'];
+            } elseif (isset($outboxJson['first'])) {
+                $firstPageUrl = is_array($outboxJson['first']) ? ($outboxJson['first']['id'] ?? '') : $outboxJson['first'];
+                if ($firstPageUrl) {
+                    $ch = curl_init($firstPageUrl);
+                    curl_setopt_array($ch, [
+                        CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_HTTPHEADER => [
+                            "Accept: application/activity+json, application/ld+json",
+                            "User-Agent: KutSocial/1.0; (+https://$domain)"
+                        ],
+                        CURLOPT_TIMEOUT => 5,
+                        CURLOPT_SSL_VERIFYPEER => false,
+                        CURLOPT_SSL_VERIFYHOST => false
+                    ]);
+                    $pageResp = curl_exec($ch);
+                    curl_close($ch);
+                    if ($pageResp) {
+                        $pageJson = json_decode($pageResp, true);
+                        $items = $pageJson['orderedItems'] ?? $pageJson['items'] ?? [];
+                    }
+                }
+            }
+
+            $db = Database::connect();
+
+            // 3. Procesar e insertar notas en la base de datos local
+            foreach ($items as $item) {
+                $activityType = $item['type'] ?? '';
+                $object = null;
+                if ($activityType === 'Create' && isset($item['object'])) {
+                    $object = $item['object'];
+                } elseif (isset($item['type']) && ($item['type'] === 'Note' || $item['type'] === 'Question')) {
+                    $object = $item;
+                }
+
+                if (!$object) continue;
+
+                $uri = $object['id'] ?? '';
+                if (empty($uri)) continue;
+
+                // Evitar duplicados por URI de estado
+                $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+                $stmtCheck->execute([$uri]);
+                if ($stmtCheck->fetchColumn()) {
+                    continue;
+                }
+
+                $content = $object['content'] ?? '';
+                $visibility = 'public';
+                $createdAt = $object['published'] ?? date('c');
+
+                // Procesar adjuntos (media)
+                $attachments = [];
+                if (!empty($object['attachment'])) {
+                    foreach ($object['attachment'] as $att) {
+                        $attType = $att['type'] ?? '';
+                        if ($attType === 'Document' || $attType === 'Image') {
+                            $attachments[] = [
+                                'id' => bin2hex(random_bytes(6)),
+                                'type' => 'image',
+                                'url' => $att['url'] ?? '',
+                                'preview_url' => $att['url'] ?? '',
+                                'remote_url' => $att['url'] ?? ''
+                            ];
+                        }
+                    }
+                }
+                $mediaJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+
+                $stmtIns = $db->prepare("
+                    INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ");
+                $stmtIns->execute([
+                    $account['id'],
+                    $uri,
+                    $content,
+                    $visibility,
+                    date('Y-m-d H:i:s', strtotime($createdAt)),
+                    $mediaJson
+                ]);
+            }
+        } catch (\Exception $e) {
+            // Ignorar errores de conexión
+        }
+    }
+
     /**
      * Endpoint GET /api/v1/accounts/:id/statuses
      * Obtiene las publicaciones creadas por una cuenta específica
@@ -1314,6 +1454,21 @@ HTML;
     public static function getAccountStatuses(array $params): void {
         $id = (int)$params['id'];
         $db = Database::connect();
+
+        $stmtAccount = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+        $stmtAccount->execute([$id]);
+        $account = $stmtAccount->fetch();
+
+        if ($account && $account['domain'] !== null) {
+            $stmtCount = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
+            $stmtCount->execute([$id]);
+            $localCount = (int)$stmtCount->fetchColumn();
+
+            $lastUpdated = strtotime($account['updated_at']);
+            if ($localCount === 0 || (time() - $lastUpdated >= 300)) {
+                self::fetchAndImportRemoteStatuses($account);
+            }
+        }
 
         $maxId = isset($_GET['max_id']) && is_numeric($_GET['max_id']) ? (int)$_GET['max_id'] : null;
         $sinceId = isset($_GET['since_id']) && is_numeric($_GET['since_id']) ? (int)$_GET['since_id'] : null;
