@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Google Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
     <style>
         :root {
             --bg-color: #0b0d12;
@@ -871,6 +873,91 @@
             padding-left: 10px;
             margin-top: 6px;
         }
+
+        /* Ajustes para iconos Material */
+        .nav-link .material-icons-outlined,
+        .nav-link .material-icons {
+            font-size: 22px;
+            color: inherit;
+        }
+        .toot-action-btn .material-icons-outlined,
+        .toot-action-btn .material-icons {
+            font-size: 18px;
+            vertical-align: middle;
+        }
+        .composer-tool-btn .material-icons-outlined,
+        .composer-tool-btn .material-icons {
+            font-size: 20px;
+        }
+
+        /* Enlaces en color azul pastel */
+        .toot-content a,
+        #profile-view-bio a,
+        .field-value a {
+            color: #8bb2f0 !important;
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+        .toot-content a:hover,
+        #profile-view-bio a:hover,
+        .field-value a:hover {
+            color: #a5c7f7 !important;
+            text-decoration: underline;
+        }
+
+        /* Estilos de mensajes directos / menciones privadas (Rayas y Badges) */
+        .toot-card.toot-direct {
+            background: repeating-linear-gradient(
+                135deg,
+                rgba(245, 158, 11, 0.02),
+                rgba(245, 158, 11, 0.02) 15px,
+                rgba(0, 0, 0, 0.15) 15px,
+                rgba(0, 0, 0, 0.15) 30px
+            ) !important;
+            border-left: 3px solid #f59e0b !important;
+            border-color: rgba(245, 158, 11, 0.2) !important;
+        }
+        .toot-card.toot-private {
+            border-left: 3px solid var(--primary) !important;
+        }
+
+        .badge-direct {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            color: #f59e0b;
+            border: 1px solid rgba(245, 158, 11, 0.4);
+            background: rgba(245, 158, 11, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            vertical-align: middle;
+        }
+        .badge-private {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--primary);
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            background: rgba(99, 102, 241, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            vertical-align: middle;
+        }
+
+        /* Espaciado de párrafos en la biografía */
+        #profile-view-bio p {
+            margin-top: 0;
+            margin-bottom: 8px;
+        }
+        #profile-view-bio p:last-child {
+            margin-bottom: 0;
+        }
     </style>
 </head>
 <body>
@@ -908,7 +995,7 @@
                 <!-- Buscador de Usuarios / Contenido -->
                 <div class="sidebar-search">
                     <div class="search-input-wrapper">
-                        <span class="search-icon">🔍</span>
+                        <span class="material-icons-outlined search-icon">search</span>
                         <input type="text" class="sidebar-search-input" placeholder="Buscar en el Fediverso..." 
                                onkeydown="if(event.key === 'Enter') performSearch(this.value)">
                     </div>
@@ -917,37 +1004,37 @@
                 <ul class="nav-menu">
                     <li class="nav-item">
                         <a href="#" id="nav-public" class="nav-link active" onclick="switchTimeline('public')">
-                            <span>🌐</span> Federación Pública
+                            <span class="material-icons-outlined">public</span> Federación Pública
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="#" id="nav-home" class="nav-link" onclick="switchTimeline('home')">
-                            <span>🏠</span> Timeline Local
+                            <span class="material-icons-outlined">home</span> Timeline Local
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="#" id="nav-bookmarks" class="nav-link" onclick="switchTimeline('bookmarks')">
-                            <span>🔖</span> Marcadores
+                            <span class="material-icons-outlined">bookmark_border</span> Marcadores
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="#" id="nav-notifications" class="nav-link" onclick="showTab('notifications')">
-                            <span>🔔</span> Notificaciones
+                            <span class="material-icons-outlined">notifications</span> Notificaciones
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="#" id="nav-profile" class="nav-link" onclick="viewProfile(currentProfileData ? currentProfileData.id : null)">
-                            <span>👤</span> Mi Perfil
+                            <span class="material-icons-outlined">person</span> Mi Perfil
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="/admin/update" class="nav-link">
-                            <span>⚙️</span> Ajustes & Actualizador
+                            <span class="material-icons-outlined">settings</span> Ajustes & Actualizador
                         </a>
                     </li>
                     <li class="nav-item" id="nav-item-owner" style="display: none;">
                         <a href="#" id="nav-owner-profile" class="nav-link" onclick="viewProfile(window.KUTSOCIAL_OWNER ? window.KUTSOCIAL_OWNER.id : null)">
-                            <span>👤</span> Propietario
+                            <span class="material-icons-outlined">verified_user</span> Propietario
                         </a>
                     </li>
                 </ul>
@@ -1034,13 +1121,21 @@
                     <div class="composer-toolbar">
                         <div class="composer-tools">
                             <!-- Botón Subir Imagen / Multimedia -->
-                            <button class="composer-tool-btn" onclick="document.getElementById('composer-file-input').click()" title="Adjuntar multimedia">🖼️</button>
+                            <button class="composer-tool-btn" onclick="document.getElementById('composer-file-input').click()" title="Adjuntar multimedia">
+                                <span class="material-icons-outlined">image</span>
+                            </button>
                             <!-- Botón Crear Encuesta -->
-                            <button class="composer-tool-btn" onclick="toggleComposerPoll()" title="Crear encuesta">📊</button>
+                            <button class="composer-tool-btn" onclick="toggleComposerPoll()" title="Crear encuesta">
+                                <span class="material-icons-outlined">poll</span>
+                            </button>
                             <!-- Botón Content Warning (CW) -->
-                            <button id="composer-cw-btn" class="composer-tool-btn" onclick="toggleComposerCW()" title="Advertencia de Contenido">⚠️</button>
+                            <button id="composer-cw-btn" class="composer-tool-btn" onclick="toggleComposerCW()" title="Advertencia de Contenido">
+                                <span class="material-icons-outlined">warning_amber</span>
+                            </button>
                             <!-- Botón Emojis -->
-                            <button id="emoji-picker-btn" class="composer-tool-btn" onclick="toggleEmojiPicker(event)" title="Insertar emoji">😀</button>
+                            <button id="emoji-picker-btn" class="composer-tool-btn" onclick="toggleEmojiPicker(event)" title="Insertar emoji">
+                                <span class="material-icons-outlined">sentiment_satisfied_alt</span>
+                            </button>
                         </div>
                         <div style="display: flex; align-items: center; gap: 12px;">
                             <span id="char-count" class="char-counter">500</span>
@@ -1621,6 +1716,11 @@
             const card = document.createElement('div');
             card.className = 'toot-card';
             card.setAttribute('data-toot-id', toot.id);
+            if (toot.visibility === 'direct') {
+                card.classList.add('toot-direct');
+            } else if (toot.visibility === 'private') {
+                card.classList.add('toot-private');
+            }
             if (isMain) {
                 card.style.background = 'rgba(99, 102, 241, 0.05)';
                 card.style.borderLeft = '3px solid var(--primary)';
@@ -1714,6 +1814,8 @@
                         <div class="toot-author-details clickable-actor" onclick="viewProfile('${toot.account.id}')">
                             <span class="toot-author-name">${toot.account.display_name}</span>
                             <span class="toot-author-handle">@${toot.account.acct}</span>
+                            ${toot.visibility === 'direct' ? `<span class="badge-direct">MENCIÓN PRIVADA</span>` : ''}
+                            ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
                         </div>
                         <span class="toot-time clickable-actor" onclick="viewTootThread('${toot.id}')" title="Ver conversación">${dateStr}</span>
                     </div>
@@ -1723,20 +1825,20 @@
                     
                     <div class="toot-actions" style="margin-top: 12px;">
                         <button class="toot-action-btn btn-reply" onclick="initReplyToToot('${toot.id}', '${toot.account.acct}')" title="Responder">
-                            💬 <span>${toot.replies_count || 0}</span>
+                            <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
                         </button>
                         <button class="toot-action-btn ${favClass}" onclick="toggleFavourite('${toot.id}', this)" title="Favorito">
-                            ⭐ <span class="fav-count">${toot.favourites_count || 0}</span>
+                            <span class="${toot.favourited ? 'material-icons' : 'material-icons-outlined'}">${toot.favourited ? 'star' : 'star_border'}</span> <span class="fav-count">${toot.favourites_count || 0}</span>
                         </button>
                         <button class="toot-action-btn ${bookmarkClass}" onclick="toggleBookmark('${toot.id}', this)" title="Guardar">
-                            🔖
+                            <span class="${toot.bookmarked ? 'material-icons' : 'material-icons-outlined'}">${toot.bookmarked ? 'bookmark' : 'bookmark_border'}</span>
                         </button>
                         ${isMyToot ? `
                             <button class="toot-action-btn btn-edit" onclick="initEditToot('${toot.id}', \`${escapeJSString(toot.content)}\`, ${toot.sensitive}, \`${escapeJSString(toot.spoiler_text)}\`)" title="Editar">
-                                ✏️
+                                <span class="material-icons-outlined">edit</span>
                             </button>
                             <button class="toot-action-btn btn-delete" onclick="deleteToot('${toot.id}', this)" title="Eliminar">
-                                🗑️
+                                <span class="material-icons-outlined">delete</span>
                             </button>
                         ` : ''}
                     </div>
@@ -1881,33 +1983,70 @@
             list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando notificaciones...</div>';
             
             try {
+                // 1. Obtener solicitudes de seguimiento pendientes
+                let followRequests = [];
+                try {
+                    const frRes = await fetch('/api/v1/follow_requests', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (frRes.ok) {
+                        followRequests = await frRes.json();
+                    }
+                } catch (e) {
+                    console.error("Error al cargar solicitudes de seguimiento", e);
+                }
+
+                // 2. Obtener notificaciones estándar
                 const res = await fetch('/api/v1/notifications', {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const data = await res.json();
                 list.innerHTML = '';
                 
-                if (data.length === 0) {
+                // 3. Renderizar solicitudes de seguimiento pendientes en la parte superior
+                followRequests.forEach(req => {
+                    const div = document.createElement('div');
+                    div.style = "display: flex; gap: 15px; align-items: center; background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.15); border-radius: 12px; padding: 15px; margin-bottom: 12px; transition: background 0.2s;";
+                    
+                    div.innerHTML = `
+                        <span class="material-icons-outlined" style="font-size: 24px; color: var(--secondary);">person_add</span>
+                        <img class="user-avatar clickable-actor" onclick="viewProfile('${req.id}')" src="${req.avatar}" alt="Avatar" style="width: 36px; height: 36px;">
+                        <div style="flex-grow: 1; min-width: 0;">
+                            <div style="font-size: 14px;">
+                                <strong class="clickable-actor" onclick="viewProfile('${req.id}')">${req.display_name}</strong> 
+                                <span style="color: var(--text-muted);">@${req.acct}</span>
+                                quiere seguirte
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-top: 8px;">
+                                <button onclick="respondFollowRequest('${req.id}', 'authorize')" class="btn-publish" style="font-size: 12px; padding: 4px 12px; border-radius: 15px; width: auto; margin-top: 0; box-shadow: none;">Aceptar</button>
+                                <button onclick="respondFollowRequest('${req.id}', 'reject')" class="btn-publish" style="font-size: 12px; padding: 4px 12px; border-radius: 15px; background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); width: auto; margin-top: 0; box-shadow: none;">Rechazar</button>
+                            </div>
+                        </div>
+                    `;
+                    list.appendChild(div);
+                });
+
+                if (data.length === 0 && followRequests.length === 0) {
                     list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No tienes ninguna notificación por el momento.</div>';
                     return;
                 }
                 
                 data.forEach(notif => {
                     const div = document.createElement('div');
-                    div.style = "display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; transition: background 0.2s;";
+                    div.style = "display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; transition: background 0.2s; margin-bottom: 8px;";
                     
                     let actionText = '';
                     let actionIcon = '';
                     if (notif.type === 'follow') {
-                        actionIcon = '👥';
+                        actionIcon = '<span class="material-icons-outlined" style="font-size: 20px; color: var(--text-muted);">person_add</span>';
                         actionText = 'te ha seguido';
                     } else if (notif.type === 'mention') {
-                        actionIcon = '💬';
+                        actionIcon = '<span class="material-icons-outlined" style="font-size: 20px; color: var(--text-muted);">chat_bubble_outline</span>';
                         actionText = 'te ha mencionado';
                     }
                     
                     div.innerHTML = `
-                        <span style="font-size: 20px;">${actionIcon}</span>
+                        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;">${actionIcon}</div>
                         <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${notif.account.avatar}" alt="Avatar" style="width: 36px; height: 36px;">
                         <div style="flex-grow: 1; min-width: 0;">
                             <div style="font-size: 14px;">
@@ -1925,6 +2064,22 @@
                 });
             } catch (e) {
                 list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar notificaciones.</div>';
+            }
+        }
+
+        async function respondFollowRequest(id, action) {
+            try {
+                const res = await fetch(`/api/v1/follow_requests/${id}/${action}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    loadNotifications();
+                } else {
+                    alert('Error al procesar la solicitud de seguimiento.');
+                }
+            } catch (err) {
+                alert('Error al conectar con el servidor.');
             }
         }
 
@@ -1983,8 +2138,18 @@
             document.getElementById('profile-display-name').value = currentProfileData.display_name || '';
             
             let note = currentProfileData.note || '';
-            note = note.replace(/<p>/g, '').replace(/<\/p>/g, '').replace(/<br\s*\/?>/g, '\n');
+            note = note.replace(/<\/p>\s*<p>/gi, '\n\n')
+                       .replace(/<br\s*\/?>/gi, '\n')
+                       .replace(/<p>/gi, '')
+                       .replace(/<\/p>/gi, '');
             document.getElementById('profile-note').value = note;
+
+            // Restaurar estado de los checkboxes de privacidad
+            document.getElementById('profile-discoverable').checked = !!currentProfileData.discoverable;
+            document.getElementById('profile-auto-accept').checked = !currentProfileData.locked;
+            document.getElementById('profile-searchable').checked = !!currentProfileData.searchable;
+            document.getElementById('profile-indexable').checked = !!currentProfileData.indexable;
+            document.getElementById('profile-show-source').checked = !!currentProfileData.show_source;
 
             for (let i = 0; i < 4; i++) {
                 document.getElementById(`field-name-${i}`).value = '';
@@ -2276,10 +2441,25 @@
                         card.classList.add('verified');
                     }
 
-                    let valHTML = f.value;
-                    if (!valHTML.includes('<a ') && (valHTML.startsWith('http://') || valHTML.startsWith('https://'))) {
-                        const label = valHTML.replace(/^https?:\/\//, '');
-                        valHTML = `<a href="${valHTML}" rel="me nofollow noopener noreferrer" target="_blank" class="url">${label}</a>`;
+                    let valHTML = f.value || '';
+                    if (valHTML.includes('<a ')) {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = valHTML;
+                        const links = tempDiv.querySelectorAll('a');
+                        links.forEach(a => {
+                            const href = a.getAttribute('href');
+                            const cleanText = a.textContent || href.replace(/^https?:\/\/(www\.)?/, '');
+                            const newLink = document.createElement('a');
+                            newLink.setAttribute('href', href);
+                            newLink.setAttribute('target', '_blank');
+                            newLink.setAttribute('rel', 'me nofollow noopener noreferrer');
+                            newLink.textContent = cleanText;
+                            a.parentNode.replaceChild(newLink, a);
+                        });
+                        valHTML = tempDiv.innerHTML;
+                    } else if (valHTML.startsWith('http://') || valHTML.startsWith('https://')) {
+                        const label = valHTML.replace(/^https?:\/\/(www\.)?/, '');
+                        valHTML = `<a href="${valHTML}" rel="me nofollow noopener noreferrer" target="_blank">${label}</a>`;
                     }
 
                     const verifiedBadge = f.verified_at ? `<span class="verified-badge">✓</span>` : '';
@@ -2478,14 +2658,23 @@
                 });
                 if (res.ok) {
                     const status = await res.json();
-                    const countSpan = btn.querySelector('span');
+                    const countSpan = btn.querySelector('.fav-count');
                     if (countSpan) {
                         countSpan.innerText = status.favourites_count;
                     }
+                    const icon = btn.querySelector('.material-icons, .material-icons-outlined');
                     if (isFav) {
                         btn.classList.remove('active-fav');
+                        if (icon) {
+                            icon.textContent = 'star_border';
+                            icon.className = 'material-icons-outlined';
+                        }
                     } else {
                         btn.classList.add('active-fav');
+                        if (icon) {
+                            icon.textContent = 'star';
+                            icon.className = 'material-icons';
+                        }
                     }
                 }
             } catch (e) {
@@ -2502,10 +2691,19 @@
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 if (res.ok) {
+                    const icon = btn.querySelector('.material-icons, .material-icons-outlined');
                     if (isBookmarked) {
                         btn.classList.remove('active-bookmark');
+                        if (icon) {
+                            icon.textContent = 'bookmark_border';
+                            icon.className = 'material-icons-outlined';
+                        }
                     } else {
                         btn.classList.add('active-bookmark');
+                        if (icon) {
+                            icon.textContent = 'bookmark';
+                            icon.className = 'material-icons';
+                        }
                     }
                 }
             } catch (e) {

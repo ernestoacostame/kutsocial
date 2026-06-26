@@ -39,6 +39,8 @@ use KutSocial\Queue;
 use KutSocial\UpdaterService;
 use KutSocial\Controllers\MastodonApiController;
 
+Database::setDbPath(KUTSOCIAL_DB_PATH);
+
 // Limpiar base de datos de prueba anterior
 if (file_exists(KUTSOCIAL_DB_PATH)) {
     @unlink(KUTSOCIAL_DB_PATH);

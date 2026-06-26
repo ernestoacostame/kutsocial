@@ -1024,8 +1024,18 @@ HTML;
                     $name = $f['name'] ?? '';
                     $val = $f['value'] ?? '';
                     
-                    // Si el valor es un enlace web, formatearlo como HTML interactivo
-                    if (filter_var($val, FILTER_VALIDATE_URL)) {
+                    // Si el valor contiene un enlace HTML o es una URL pura, formatearlo de forma limpia sin clases
+                    if (str_contains($val, '<a ')) {
+                        $val = preg_replace_callback('/<a\s+[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/i', function($matches) {
+                            $href = $matches[1];
+                            $innerHtml = $matches[2];
+                            $cleanText = strip_tags($innerHtml);
+                            if (empty($cleanText)) {
+                                $cleanText = preg_replace('/^https?:\/\/(www\.)?/', '', $href);
+                            }
+                            return sprintf('<a href="%s" rel="me nofollow noopener noreferrer" target="_blank">%s</a>', htmlspecialchars($href), htmlspecialchars($cleanText));
+                        }, $val);
+                    } elseif (filter_var($val, FILTER_VALIDATE_URL)) {
                         $label = preg_replace('/^https?:\/\/(www\.)?/', '', $val);
                         $val = sprintf('<a href="%s" rel="me nofollow noopener noreferrer" target="_blank">%s</a>', htmlspecialchars($val), htmlspecialchars($label));
                     }
@@ -1473,7 +1483,7 @@ HTML;
                 }
 
                 $content = $object['content'] ?? '';
-                $visibility = 'public';
+                $visibility = self::determineVisibility($object);
                 $createdAt = $object['published'] ?? date('c');
 
                 // Procesar adjuntos (media)
@@ -1855,27 +1865,153 @@ HTML;
         // Obtener el status insertado con los datos de la cuenta
         $row = self::fetchStatusRow($db, $newId);
 
-        // FEDERACIÓN: Encolar la actividad Create Note a todos los seguidores
-        $followersStmt = $db->prepare("
-            SELECT a.inbox_url FROM follows f
-            JOIN accounts a ON f.account_id = a.id
-            WHERE f.target_account_id = ? AND f.status = 'accepted' AND a.domain IS NOT NULL
-        ");
-        $followersStmt->execute([$account['id']]);
-        $followers = $followersStmt->fetchAll(PDO::FETCH_COLUMN);
+        // FEDERACIÓN: Encolar la actividad Create Note
+        $actorUrl = "$proto://$domain/users/{$account['username']}";
+        
+        // 1. Procesar menciones
+        $mentionedActors = [];
+        $mentionedInboxes = [];
+        preg_match_all('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/', $content, $mMatches, PREG_SET_ORDER);
+        foreach ($mMatches as $match) {
+            $mUsername = $match[1];
+            $mDomain = isset($match[2]) && !empty($match[2]) ? strtolower($match[2]) : null;
+            if ($mDomain !== null && strcasecmp($mDomain, $domain) === 0) {
+                $mDomain = null;
+            }
+            
+            $mAcc = null;
+            if ($mDomain === null) {
+                $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+                $stmtM->execute([$mUsername]);
+                $mAcc = $stmtM->fetch();
+            } else {
+                $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                $stmtM->execute([$mUsername, $mDomain]);
+                $mAcc = $stmtM->fetch();
+                if (!$mAcc) {
+                    try {
+                        $mAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger("@{$mUsername}@{$mDomain}");
+                    } catch (\Exception $e) {
+                        // Ignorar fallos de resolución
+                    }
+                }
+            }
+            
+            if ($mAcc) {
+                $mActorUrl = $mAcc['domain'] 
+                    ? "https://{$mAcc['domain']}/users/{$mAcc['username']}"
+                    : "$proto://$domain/users/{$mAcc['username']}";
+                if (!in_array($mActorUrl, $mentionedActors)) {
+                    $mentionedActors[] = $mActorUrl;
+                }
+                if (!empty($mAcc['inbox_url']) && !in_array($mAcc['inbox_url'], $mentionedInboxes)) {
+                    $mentionedInboxes[] = $mAcc['inbox_url'];
+                }
+            }
+        }
 
-        if (!empty($followers)) {
-            $actorUrl = "$proto://$domain/users/{$account['username']}";
+        // 2. Procesar respuesta a post padre
+        $parentActorUrl = null;
+        $parentInboxUrl = null;
+        $inReplyToUri = null;
+        if ($inReplyToId) {
+            $stmtParent = $db->prepare("
+                SELECT s.uri, a.username, a.domain, a.inbox_url FROM statuses s
+                JOIN accounts a ON s.account_id = a.id
+                WHERE s.id = ? LIMIT 1
+            ");
+            $stmtParent->execute([$inReplyToId]);
+            $parent = $stmtParent->fetch();
+            if ($parent) {
+                $inReplyToUri = $parent['uri'];
+                $parentActorUrl = $parent['domain']
+                    ? "https://{$parent['domain']}/users/{$parent['username']}"
+                    : "$proto://$domain/users/{$parent['username']}";
+                if (!empty($parent['inbox_url'])) {
+                    $parentInboxUrl = $parent['inbox_url'];
+                }
+            }
+        }
+
+        // 3. Determinar destinatarios (to/cc) según visibilidad
+        $to = [];
+        $cc = [];
+
+        if ($visibility === 'public') {
+            $to[] = 'https://www.w3.org/ns/activitystreams#Public';
+            $cc[] = "$actorUrl/followers";
+            foreach ($mentionedActors as $ma) {
+                if (!in_array($ma, $cc)) $cc[] = $ma;
+            }
+            if ($parentActorUrl && !in_array($parentActorUrl, $cc)) {
+                $cc[] = $parentActorUrl;
+            }
+        } elseif ($visibility === 'unlisted') {
+            $to[] = "$actorUrl/followers";
+            $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
+            foreach ($mentionedActors as $ma) {
+                if (!in_array($ma, $cc)) $cc[] = $ma;
+            }
+            if ($parentActorUrl && !in_array($parentActorUrl, $cc)) {
+                $cc[] = $parentActorUrl;
+            }
+        } elseif ($visibility === 'private') {
+            $to[] = "$actorUrl/followers";
+            foreach ($mentionedActors as $ma) {
+                if (!in_array($ma, $to)) $to[] = $ma;
+            }
+            if ($parentActorUrl && !in_array($parentActorUrl, $to)) {
+                $to[] = $parentActorUrl;
+            }
+        } else { // direct
+            foreach ($mentionedActors as $ma) {
+                if (!in_array($ma, $to)) $to[] = $ma;
+            }
+            if ($parentActorUrl && !in_array($parentActorUrl, $to)) {
+                $to[] = $parentActorUrl;
+            }
+            if (empty($to)) {
+                $to[] = $actorUrl;
+            }
+        }
+
+        // 4. Determinar bandejas de entrada (inboxes) destino
+        $targetInboxes = [];
+        if ($visibility !== 'direct') {
+            $followersStmt = $db->prepare("
+                SELECT a.inbox_url FROM follows f
+                JOIN accounts a ON f.account_id = a.id
+                WHERE f.target_account_id = ? AND f.status = 'accepted' AND a.domain IS NOT NULL
+            ");
+            $followersStmt->execute([$account['id']]);
+            $targetInboxes = $followersStmt->fetchAll(PDO::FETCH_COLUMN);
+        }
+        foreach ($mentionedInboxes as $mib) {
+            if (!empty($mib) && !in_array($mib, $targetInboxes)) {
+                $targetInboxes[] = $mib;
+            }
+        }
+        if ($parentInboxUrl && !empty($parentInboxUrl) && !in_array($parentInboxUrl, $targetInboxes)) {
+            $targetInboxes[] = $parentInboxUrl;
+        }
+
+        // 5. Construir y encolar actividades
+        if (!empty($targetInboxes)) {
+            $htmlContent = self::formatLocalContentToHtml($content, $domain, $db, $proto);
             
             $noteObject = [
                 'id' => $uri,
                 'type' => 'Note',
                 'published' => date('c'),
                 'attributedTo' => $actorUrl,
-                'content' => $content,
-                'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-                'cc' => ["$actorUrl/followers"]
+                'content' => $htmlContent,
+                'to' => $to,
+                'cc' => $cc
             ];
+
+            if ($inReplyToUri) {
+                $noteObject['inReplyTo'] = $inReplyToUri;
+            }
 
             if (!empty($mediaAttachments)) {
                 $attachmentsList = [];
@@ -1912,12 +2048,12 @@ HTML;
                 'type' => 'Create',
                 'actor' => $actorUrl,
                 'published' => date('c'),
-                'to' => ['https://www.w3.org/ns/activitystreams#Public'],
-                'cc' => ["$actorUrl/followers"],
+                'to' => $to,
+                'cc' => $cc,
                 'object' => $noteObject
             ];
 
-            foreach ($followers as $inboxUrl) {
+            foreach ($targetInboxes as $inboxUrl) {
                 if (!empty($inboxUrl)) {
                     \KutSocial\Queue::enqueue('Create', $createActivity, $inboxUrl);
                 }
