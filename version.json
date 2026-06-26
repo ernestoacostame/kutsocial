@@ -1,0 +1,5 @@
+{
+  "version": "1.0.0",
+  "zip_url": "https://github.com/ernestoacostame/KutStudio/releases/download/v1.0.0/kutsocial-v1.0.0.zip",
+  "changelog": "Versión inicial de KutSocial con soporte para federación y cliente web integrado."
+}

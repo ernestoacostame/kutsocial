@@ -1,0 +1,2750 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KutSocial - Cliente Web</title>
+    <!-- Google Fonts Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0d12;
+            --card-bg: rgba(20, 26, 38, 0.6);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --secondary: #10b981;
+            --text-color: #f3f4f6;
+            --text-muted: #9ca3af;
+            --error: #ef4444;
+            --sidebar-width: 260px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            background-image: radial-gradient(circle at 5% 5%, rgba(99, 102, 241, 0.08) 0%, transparent 35%),
+                              radial-gradient(circle at 95% 95%, rgba(16, 185, 129, 0.05) 0%, transparent 35%);
+            display: flex;
+            overflow-x: hidden;
+        }
+
+        /* Pantalla de Carga y Login */
+        .full-screen-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            justify-content: center;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1000;
+            background: var(--bg-color);
+            transition: opacity 0.5s ease-out;
+        }
+
+        .login-card {
+            width: 100%;
+            max-width: 420px;
+            background: var(--card-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            text-align: center;
+        }
+
+        .logo-text {
+            font-size: 36px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8 0%, #34d399 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+        }
+
+        .logo-subtitle {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px 16px;
+            color: var(--text-color);
+            font-family: inherit;
+            font-size: 15px;
+            transition: all 0.3s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
+        button {
+            width: 100%;
+            background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%);
+            border: none;
+            border-radius: 10px;
+            padding: 14px;
+            color: white;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+            margin-top: 10px;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4);
+        }
+
+        /* Estructura Principal */
+        .app-layout {
+            display: none; /* Se activa tras login */
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            padding: 20px;
+            gap: 24px;
+        }
+
+        /* Barra Lateral */
+        .sidebar {
+            width: var(--sidebar-width);
+            flex-shrink: 0;
+            position: sticky;
+            top: 20px;
+            height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .nav-logo {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8 0%, #34d399 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+            padding-left: 10px;
+        }
+
+        .nav-menu {
+            list-style: none;
+        }
+
+        .nav-item {
+            margin-bottom: 8px;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 12px 16px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-weight: 500;
+            border-radius: 10px;
+            transition: all 0.3s;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .nav-link.active {
+            border-left: 4px solid var(--primary);
+            background: rgba(99, 102, 241, 0.08);
+        }
+
+        /* Caja de Perfil en Sidebar */
+        .user-profile-summary {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 15px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: auto;
+        }
+
+        .user-avatar {
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--border-color);
+        }
+
+        .user-info {
+            min-width: 0;
+            flex-grow: 1;
+        }
+
+        .user-name {
+            font-weight: 600;
+            font-size: 14px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .user-handle {
+            font-size: 12px;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn-logout {
+            width: auto;
+            box-shadow: none;
+            margin-top: 0;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 5px;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        .btn-logout:hover {
+            transform: none;
+            box-shadow: none;
+            color: var(--error);
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Columna Central */
+        .main-content {
+            flex-grow: 1;
+            max-width: 640px;
+            min-width: 0;
+        }
+
+        /* Caja para publicar (Composer) */
+        .composer-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .composer-header {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .composer-textarea {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-family: inherit;
+            font-size: 16px;
+            resize: none;
+            height: 90px;
+        }
+
+        .composer-textarea:focus {
+            outline: none;
+        }
+
+        .composer-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid var(--border-color);
+            padding-top: 12px;
+        }
+
+        .char-counter {
+            font-size: 13px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .btn-publish {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(99, 102, 241, 0.2);
+            transition: all 0.3s;
+        }
+
+        .btn-publish:hover {
+            background: var(--primary-hover);
+        }
+
+        /* Timeline / Feed */
+        .feed-container {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .toot-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+            display: flex;
+            gap: 16px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .toot-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .toot-author-details {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .toot-author-name {
+            font-weight: 600;
+            font-size: 14.5px;
+        }
+
+        .toot-author-handle {
+            font-size: 12.5px;
+            color: var(--text-muted);
+        }
+
+        .toot-time {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .toot-content {
+            font-size: 15px;
+            line-height: 1.5;
+            color: var(--text-color);
+        }
+
+        .toot-content p {
+            margin-bottom: 8px;
+        }
+        .toot-content p:last-child {
+            margin-bottom: 0;
+        }
+
+        /* Vista de Perfil (Estilo Mastodon) */
+        .profile-header-banner {
+            height: 180px;
+            background-color: #1e293b;
+            background-position: center;
+            background-size: cover;
+            border-radius: 16px;
+            position: relative;
+            margin-bottom: 50px;
+            box-shadow: inset 0 -40px 100px rgba(0,0,0,0.4);
+        }
+
+        .profile-view-avatar-img {
+            width: 96px;
+            height: 96px;
+            border-radius: 14px;
+            border: 4px solid var(--bg-color);
+            position: absolute;
+            bottom: -48px;
+            left: 24px;
+            object-fit: cover;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            background: var(--bg-color);
+        }
+
+        .profile-info-container {
+            padding: 0 10px;
+        }
+
+        .stat-num {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-color);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 2px;
+        }
+
+        .profile-fields-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .profile-field-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .profile-field-card.verified {
+            background: rgba(16, 185, 129, 0.08);
+            border-color: rgba(16, 185, 129, 0.25);
+        }
+
+        .profile-field-card.verified .field-value a {
+            color: var(--secondary) !important;
+            font-weight: 600;
+        }
+
+        .field-label {
+            font-weight: 600;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 95px;
+        }
+
+        .field-value {
+            text-align: right;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 170px;
+        }
+
+        .field-value a {
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .field-value a:hover {
+            text-decoration: underline;
+        }
+
+        .verified-badge {
+            color: var(--secondary);
+            font-weight: bold;
+            font-size: 13px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .subtab-btn {
+            background: none;
+            border: none;
+            padding: 12px 20px;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 600;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .subtab-btn:hover {
+            color: var(--text-color);
+        }
+
+        .subtab-btn.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .clickable-actor {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .clickable-actor:hover {
+            color: var(--primary) !important;
+            text-decoration: underline;
+        }
+
+        /* Columna Derecha (Instancia) */
+        .right-sidebar {
+            width: 280px;
+            flex-shrink: 0;
+            position: sticky;
+            top: 20px;
+            height: fit-content;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .widget-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .widget-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .stat-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .stat-label {
+            color: var(--text-muted);
+        }
+
+        .stat-value {
+            font-weight: 600;
+        }
+
+        .update-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--secondary);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .update-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--secondary);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.6; }
+            50% { transform: scale(1.3); opacity: 1; }
+            100% { transform: scale(0.9); opacity: 0.6; }
+        }
+
+        /* Estilo Responsive */
+        @media(max-width: 900px) {
+            .right-sidebar {
+                display: none;
+            }
+        }
+
+        @media(max-width: 680px) {
+            body {
+                flex-direction: column;
+            }
+            .app-layout {
+                flex-direction: column;
+                padding: 10px;
+            }
+            .sidebar {
+                width: 100%;
+                height: auto;
+                position: static;
+                margin-bottom: 15px;
+            }
+            .user-profile-summary {
+                margin-top: 15px;
+            }
+        }
+
+        /* Barra de acciones del Toot */
+        .toot-actions {
+            display: flex;
+            gap: 24px;
+            margin-top: 10px;
+            color: var(--text-muted);
+            font-size: 13.5px;
+        }
+
+        .toot-action-btn {
+            width: auto;
+            box-shadow: none;
+            margin-top: 0;
+            background: none;
+            border: none;
+            color: inherit;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-family: inherit;
+            font-size: inherit;
+            transition: color 0.2s;
+            padding: 4px 8px;
+            border-radius: 6px;
+        }
+
+        .toot-action-btn:hover {
+            transform: none;
+            box-shadow: none;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .toot-action-btn.active-fav {
+            color: #f59e0b; /* Amarillo/naranja para favoritos */
+        }
+
+        .toot-action-btn.active-bookmark {
+            color: #3b82f6; /* Azul para marcadores */
+        }
+        
+        .toot-action-btn.btn-reply:hover {
+            color: var(--primary);
+        }
+
+        .toot-action-btn.btn-edit:hover {
+            color: #10b981;
+        }
+
+        .toot-action-btn.btn-delete:hover {
+            color: var(--error);
+        }
+
+        /* Composer Avanzado */
+        .composer-toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid var(--border-color);
+            padding-top: 12px;
+            margin-top: 12px;
+        }
+
+        .composer-tools {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .composer-tool-btn {
+            width: auto;
+            box-shadow: none;
+            margin-top: 0;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 16px;
+            padding: 6px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .composer-tool-btn:hover {
+            transform: none;
+            box-shadow: none;
+            color: var(--text-color);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .composer-tool-btn.active {
+            color: var(--primary);
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .composer-meta-selects {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .composer-select-pill {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            color: var(--text-muted);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .composer-select-pill:hover {
+            color: var(--text-color);
+            border-color: rgba(255,255,255,0.2);
+        }
+
+        .composer-context-bar {
+            background: rgba(99, 102, 241, 0.05);
+            border-left: 3px solid var(--primary);
+            padding: 8px 12px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 12px;
+            font-size: 13.5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .composer-context-close {
+            width: auto;
+            box-shadow: none;
+            margin-top: 0;
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .composer-context-close:hover {
+            transform: none;
+            box-shadow: none;
+            color: var(--text-color);
+        }
+
+        .cw-input-container {
+            margin-bottom: 10px;
+        }
+
+        .cw-textarea {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-color);
+            padding: 8px 12px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: none;
+        }
+
+        .cw-textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        /* Advertencia de Contenido en el feed */
+        .cw-spoiler-btn {
+            width: auto;
+            box-shadow: none;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 6px;
+            margin-bottom: 6px;
+            display: inline-block;
+        }
+
+        .cw-spoiler-btn:hover {
+            transform: none;
+            box-shadow: none;
+            background: rgba(255,255,255,0.1);
+        }
+
+        .cw-spoiler-content {
+            border-left: 2px dashed var(--border-color);
+            padding-left: 10px;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Pantalla de Login / Carga -->
+    <div id="login-container" class="full-screen-container">
+        <div class="login-card">
+            <div class="logo-text">KutSocial</div>
+            <div class="logo-subtitle">Acceso de Administrador</div>
+            
+            <div id="login-error" style="color: var(--error); font-size: 14px; margin-bottom: 15px; display: none;"></div>
+
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Usuario</label>
+                    <input type="text" id="username" required placeholder="ej. admin">
+                </div>
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+                <button type="submit">Iniciar Sesión</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Layout Principal -->
+    <div id="app-container" class="app-layout">
+        
+        <!-- Sidebar Izquierdo -->
+        <aside class="sidebar">
+            <div>
+                <div class="nav-logo">KutSocial</div>
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a href="#" id="nav-public" class="nav-link active" onclick="switchTimeline('public')">
+                            <span>🌐</span> Federación Pública
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" id="nav-home" class="nav-link" onclick="switchTimeline('home')">
+                            <span>🏠</span> Timeline Local
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" id="nav-bookmarks" class="nav-link" onclick="switchTimeline('bookmarks')">
+                            <span>🔖</span> Marcadores
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" id="nav-notifications" class="nav-link" onclick="showTab('notifications')">
+                            <span>🔔</span> Notificaciones
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" id="nav-profile" class="nav-link" onclick="viewProfile(currentProfileData ? currentProfileData.id : null)">
+                            <span>👤</span> Mi Perfil
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/admin/update" class="nav-link">
+                            <span>⚙️</span> Ajustes & Actualizador
+                        </a>
+                    </li>
+                    <li class="nav-item" id="nav-item-owner" style="display: none;">
+                        <a href="#" id="nav-owner-profile" class="nav-link" onclick="viewProfile(window.KUTSOCIAL_OWNER ? window.KUTSOCIAL_OWNER.id : null)">
+                            <span>👤</span> Propietario
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Perfil del usuario actual -->
+            <div class="user-profile-summary">
+                <img id="my-avatar" class="user-avatar" src="/assets/default-avatar.png" alt="Mi Avatar" style="cursor: pointer;" onclick="viewProfile(currentProfileData ? currentProfileData.id : null)">
+                <div class="user-info" style="cursor: pointer;" onclick="viewProfile(currentProfileData ? currentProfileData.id : null)">
+                    <div id="my-display-name" class="user-name">Cargando...</div>
+                    <div id="my-username" class="user-handle">@cargando</div>
+                </div>
+                <button class="btn-logout" title="Cerrar Sesión" onclick="logout()">✕</button>
+            </div>
+        </aside>
+
+        <!-- Columna Central (Timeline) -->
+        <main class="main-content">
+            <!-- Pestaña de Timeline -->
+            <div id="tab-feed">
+                <!-- Composer para publicar -->
+                <div class="composer-card">
+                    <!-- Contexto: Respuesta / Edición -->
+                    <div id="composer-context" class="composer-context-bar" style="display: none;">
+                        <span id="composer-context-text">Respondiendo a ...</span>
+                        <button class="composer-context-close" onclick="cancelComposerContext()">✕</button>
+                    </div>
+
+                    <!-- Cabecera de selectores (Visibilidad, Idioma) -->
+                    <div class="composer-meta-selects">
+                        <select id="composer-visibility" class="composer-select-pill">
+                            <option value="public">🌐 Público</option>
+                            <option value="unlisted">🔓 No listado</option>
+                            <option value="private">🔒 Solo seguidores</option>
+                            <option value="direct">✉️ Solo mencionados</option>
+                        </select>
+                        <select id="composer-language" class="composer-select-pill">
+                            <option value="es">🗣️ Español</option>
+                            <option value="en">🗣️ English</option>
+                        </select>
+                    </div>
+
+                    <!-- Input de Advertencia de Contenido (Content Warning) -->
+                    <div id="composer-cw-container" class="cw-input-container" style="display: none;">
+                        <input type="text" id="composer-cw-text" class="cw-textarea" style="height: 36px; padding: 6px 12px; margin-bottom: 8px;" placeholder="Escribe aquí la advertencia de contenido (CW)...">
+                    </div>
+
+                    <div class="composer-header">
+                        <img id="composer-avatar" class="user-avatar" src="/assets/default-avatar.png" alt="Avatar">
+                        <textarea id="composer-text" class="composer-textarea" placeholder="¿Qué está pasando en el Fediverso?" maxlength="500" oninput="updateCharCount()"></textarea>
+                    </div>
+
+                    <!-- Previsualización de Imágenes Subidas -->
+                    <div id="composer-media-preview" style="display: flex; gap: 8px; flex-wrap: wrap; margin: 0 12px 8px 12px;"></div>
+                    <input type="file" id="composer-file-input" style="display: none;" accept="image/*" multiple onchange="handleComposerFileUpload()">
+
+                    <!-- Creador de Encuestas -->
+                    <div id="composer-poll-container" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px; margin: 0 12px 12px 12px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <span style="font-size: 13.5px; font-weight: 600; color: var(--text-muted);">Encuesta</span>
+                            <button onclick="closeComposerPoll()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px;">✕</button>
+                        </div>
+                        <div id="poll-options-inputs" style="display: flex; flex-direction: column; gap: 8px;">
+                            <input type="text" class="poll-option-field" placeholder="Opción 1" maxlength="25" style="padding:8px;">
+                            <input type="text" class="poll-option-field" placeholder="Opción 2" maxlength="25" style="padding:8px;">
+                        </div>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+                            <button onclick="addPollOptionField()" style="font-size: 12.5px; border:none; background:none; color: #818cf8; cursor:pointer; font-weight:600;">➕ Añadir opción</button>
+                            <select id="poll-expires-in" style="width: 120px; padding: 4px; font-size: 12.5px; background:rgba(0,0,0,0.3); border:1px solid var(--border-color); color:white;">
+                                <option value="3600">1 hora</option>
+                                <option value="86400" selected>1 día</option>
+                                <option value="604800">1 semana</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Selector Flotante de Emojis -->
+                    <div id="emoji-picker-container" style="display: none; position: absolute; background: #161c26; border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; width: 230px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 1000;">
+                        <div id="emoji-picker-grid" style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; max-height: 120px; overflow-y: auto;">
+                            <!-- Emojis inyectados por JS -->
+                        </div>
+                    </div>
+
+                    <div class="composer-toolbar">
+                        <div class="composer-tools">
+                            <!-- Botón Subir Imagen / Multimedia -->
+                            <button class="composer-tool-btn" onclick="document.getElementById('composer-file-input').click()" title="Adjuntar multimedia">🖼️</button>
+                            <!-- Botón Crear Encuesta -->
+                            <button class="composer-tool-btn" onclick="toggleComposerPoll()" title="Crear encuesta">📊</button>
+                            <!-- Botón Content Warning (CW) -->
+                            <button id="composer-cw-btn" class="composer-tool-btn" onclick="toggleComposerCW()" title="Advertencia de Contenido">⚠️</button>
+                            <!-- Botón Emojis -->
+                            <button id="emoji-picker-btn" class="composer-tool-btn" onclick="toggleEmojiPicker(event)" title="Insertar emoji">😀</button>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <span id="char-count" class="char-counter">500</span>
+                            <button class="btn-publish" id="composer-submit-btn" onclick="publishToot()">Publicar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Listado de toots -->
+                <div class="feed-container" id="feed">
+                    <!-- Se inyectan dinámicamente -->
+                </div>
+            </div>
+
+            <!-- Pestaña de Notificaciones -->
+            <div id="tab-notifications" style="display: none;" class="composer-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px;">
+                    <h2 style="margin: 0; font-size: 18px;">🔔 Notificaciones</h2>
+                    <button id="btn-clear-notifications" onclick="clearAllNotifications()" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--error); padding: 5px 12px; border-radius: 15px; font-size: 12.5px; cursor: pointer; font-weight: 600; transition: all 0.2s;">Limpiar todo</button>
+                </div>
+                <div id="notifications-list" style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
+                    <!-- Inyectadas dinámicamente -->
+                </div>
+            </div>
+
+            <!-- Pestaña de Ajustes de Perfil -->
+            <div id="tab-profile" style="display: none;" class="composer-card">
+                <h2 style="margin-bottom: 20px; font-size: 18px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">Ajustes de Perfil</h2>
+                
+                <form id="profile-form" enctype="multipart/form-data">
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>Imagen de Portada (Header)</label>
+                        <input type="file" id="profile-header-input" name="header" accept="image/*">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label>Imagen de Avatar</label>
+                        <input type="file" id="profile-avatar-input" name="avatar" accept="image/*">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label for="profile-display-name">Nombre a Mostrar</label>
+                        <input type="text" id="profile-display-name" name="display_name" placeholder="Tu nombre">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 15px;">
+                        <label for="profile-note">Biografía (Texto plano)</label>
+                        <textarea id="profile-note" name="note" class="composer-textarea" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; height: 100px;" placeholder="Cuéntale algo al Fediverso..."></textarea>
+                    </div>
+                    
+                    <h3 style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Campos Personalizados (Metadatos de Verificación)</h3>
+                    <div id="metadata-fields-container">
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <input type="text" id="field-name-0" name="fields_attributes[0][name]" placeholder="Etiqueta (ej. Sitio Web)" style="flex: 1;">
+                            <input type="text" id="field-value-0" name="fields_attributes[0][value]" placeholder="Valor (ej. https://miweb.com)" style="flex: 2;">
+                            <span id="field-verified-0" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right;"></span>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <input type="text" id="field-name-1" name="fields_attributes[1][name]" placeholder="Etiqueta" style="flex: 1;">
+                            <input type="text" id="field-value-1" name="fields_attributes[1][value]" placeholder="Valor" style="flex: 2;">
+                            <span id="field-verified-1" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right;"></span>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <input type="text" id="field-name-2" name="fields_attributes[2][name]" placeholder="Etiqueta" style="flex: 1;">
+                            <input type="text" id="field-value-2" name="fields_attributes[2][value]" placeholder="Valor" style="flex: 2;">
+                            <span id="field-verified-2" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right;"></span>
+                        </div>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+                            <input type="text" id="field-name-3" name="fields_attributes[3][name]" placeholder="Etiqueta" style="flex: 1;">
+                            <input type="text" id="field-value-3" name="fields_attributes[3][value]" placeholder="Valor" style="flex: 2;">
+                            <span id="field-verified-3" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right;"></span>
+                        </div>
+                    </div>
+                    
+                    <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 12px; line-height: 1.4; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px;">
+                        💡 <strong>Verificación:</strong> Si añades un enlace aquí (ej. <code>https://tuweb.com</code>), asegúrate de que tu página web tenga un enlace de vuelta a tu perfil local (<code id="profile-verification-url-preview">@cargando</code>) con el atributo <code>rel="me"</code> (ej: <code>&lt;a href="..." rel="me"&gt;Mi Perfil&lt;/a&gt;</code>) para que aparezca verificado en verde.
+                    </p>
+
+                    <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 25px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Ajustes de Privacidad</h3>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                            <input type="checkbox" id="profile-discoverable" name="discoverable" style="width: auto;">
+                            <span>Descubrible (Aparecer en el directorio de perfiles y sugerencias)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                            <input type="checkbox" id="profile-auto-accept" name="auto_accept" style="width: auto;">
+                            <span>Aceptar seguidores automáticamente (Si no se marca, se requerirá aprobación manual)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                            <input type="checkbox" id="profile-searchable" name="searchable" style="width: auto;">
+                            <span>Permitir búsquedas internas (Permitir que otros busquen tu usuario y contenido)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                            <input type="checkbox" id="profile-indexable" name="indexable" style="width: auto;">
+                            <span>Indexable por buscadores (Permitir que Google y otros indexen tu perfil)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                            <input type="checkbox" id="profile-show-source" name="show_source" style="width: auto;">
+                            <span>Mostrar aplicación de origen (Mostrar la app cliente con la que publicas tus toots)</span>
+                        </label>
+                    </div>
+                    
+                    <button type="submit" style="margin-top: 15px;">Guardar Cambios</button>
+                    <div id="profile-save-status" style="margin-top: 12px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
+                </form>
+
+                <div style="margin-top: 40px; border-top: 1px solid var(--border-color); padding-top: 30px;">
+                    <h3 style="font-size: 14px; color: var(--text-color); margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.5px;">📥 Importar y Exportar Datos</h3>
+                    
+                    <!-- Exportar -->
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-bottom: 25px;">
+                        <h4 style="font-size: 13.5px; margin-bottom: 12px; color: var(--text-color);">Exportar tus Datos (Formato Mastodon)</h4>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;">
+                            <button onclick="downloadExport('/api/v1/export/posts', 'posts.json')" style="margin: 0; padding: 10px; font-size: 13px;">📝 Exportar Posts (JSON)</button>
+                            <button onclick="downloadExport('/api/v1/export/follows', 'following.csv')" style="margin: 0; padding: 10px; font-size: 13px;">👥 Exportar Follows (CSV)</button>
+                            <button onclick="downloadExport('/api/v1/export/followers', 'followers.csv')" style="margin: 0; padding: 10px; font-size: 13px;">👤 Exportar Followers (CSV)</button>
+                            <button onclick="downloadExport('/api/v1/export/mutes', 'mutes.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🔇 Exportar Muteados (CSV)</button>
+                            <button onclick="downloadExport('/api/v1/export/blocks', 'blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🚫 Exportar Bloqueados (CSV)</button>
+                            <button onclick="downloadExport('/api/v1/export/domain_blocks', 'domain_blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🌐 Dominios Bloqueados (CSV)</button>
+                            <button onclick="downloadExport('/api/v1/export/bookmarks', 'bookmarks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🔖 Exportar Marcadores (CSV)</button>
+                            <button onclick="downloadExport('/api/v1/export/filters', 'filters.json')" style="margin: 0; padding: 10px; font-size: 13px;">📝 Exportar Filtros (JSON)</button>
+                        </div>
+                    </div>
+
+                    <!-- Importar -->
+                    <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px;">
+                        <h4 style="font-size: 13.5px; margin-bottom: 12px; color: var(--text-color);">Importar Datos de Mastodon / KutSocial</h4>
+                        <form id="import-form" style="display: flex; flex-direction: column; gap: 15px;">
+                            <div style="display: flex; gap: 15px; align-items: flex-end;">
+                                <div style="flex: 1;">
+                                    <label for="import-type" style="margin-bottom: 6px;">Tipo de Dato</label>
+                                    <select id="import-type" name="type" style="width:100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; color: white; font-family: inherit;">
+                                        <option value="follows" style="background:#161c26;">👥 Seguidos (CSV)</option>
+                                        <option value="bookmarks" style="background:#161c26;">🔖 Marcadores (CSV)</option>
+                                        <option value="blocks" style="background:#161c26;">🚫 Bloqueados (CSV)</option>
+                                        <option value="domain_blocks" style="background:#161c26;">🌐 Dominios Bloqueados (CSV)</option>
+                                        <option value="filters" style="background:#161c26;">📝 Filtros de Palabra (JSON)</option>
+                                    </select>
+                                </div>
+                                <div style="flex: 2;">
+                                    <label for="import-file" style="margin-bottom: 6px;">Archivo (CSV o JSON)</label>
+                                    <input type="file" id="import-file" name="file" required style="padding: 9px 12px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: white; border-radius: 10px; font-family: inherit;">
+                                </div>
+                                <button type="submit" style="width: auto; margin: 0; padding: 12px 24px; height: 44px;">Importar</button>
+                            </div>
+                        </form>
+                        <div id="import-status-msg" style="margin-top: 12px; font-size: 13.5px; font-weight: 600; text-align: center;"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña de Vista de Perfil (Estilo Mastodon) -->
+            <div id="tab-profile-view" style="display: none;">
+                <!-- Back Header -->
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px; cursor: pointer; color: var(--text-muted); font-weight: 500;" onclick="goBackToFeed()">
+                    <span style="font-size: 18px;">←</span> <span>Atrás</span>
+                </div>
+
+                <!-- Tarjeta de Perfil -->
+                <div class="composer-card" style="padding: 0; overflow: hidden; position: relative;">
+                    <!-- Banner -->
+                    <div id="profile-view-header-bg" class="profile-header-banner" style="background-image: url('/assets/default-header.png');">
+                        <!-- Avatar overlapping -->
+                        <img id="profile-view-avatar" class="profile-view-avatar-img" src="/assets/default-avatar.png" alt="Avatar">
+                    </div>
+
+                    <!-- Datos del Perfil -->
+                    <div class="profile-info-container" style="padding: 20px;">
+                        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: -10px; margin-bottom: 15px;">
+                            <button id="profile-view-action-btn" class="btn-publish" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); font-size: 14px; padding: 6px 16px; border-radius: 20px; cursor: pointer; transition: all 0.2s;">Editar perfil</button>
+                        </div>
+
+                        <div style="margin-bottom: 12px;">
+                            <h2 style="font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                                <span id="profile-view-display-name">Cargando...</span>
+                                <span id="profile-view-badge" style="color: var(--text-color); font-size: 16px;"></span>
+                            </h2>
+                            <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
+                                <span id="profile-view-handle" style="color: var(--text-muted); font-size: 14px;">@cargando</span>
+                                <span style="color: var(--text-muted); cursor: pointer; font-size: 13px;" title="Información del perfil">ⓘ</span>
+                            </div>
+                        </div>
+
+                        <div id="profile-view-role-container" style="margin-bottom: 15px; display: none;">
+                            <span class="role-badge" style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); color: #f59e0b; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                                🛡️ <span id="profile-view-role-text">Owner</span>
+                            </span>
+                        </div>
+
+                        <div style="display: flex; gap: 24px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
+                            <div onclick="loadUsersList('followers', activeProfileViewId)" style="cursor: pointer;">
+                                <div id="profile-view-followers-count" class="stat-num">0</div>
+                                <div class="stat-label" style="text-decoration: underline; text-decoration-style: dotted;">Seguidores</div>
+                            </div>
+                            <div onclick="loadUsersList('following', activeProfileViewId)" style="cursor: pointer;">
+                                <div id="profile-view-following-count" class="stat-num">0</div>
+                                <div class="stat-label" style="text-decoration: underline; text-decoration-style: dotted;">Siguiendo</div>
+                            </div>
+                            <div>
+                                <div id="profile-view-posts-count" class="stat-num">0</div>
+                                <div class="stat-label">Toots</div>
+                            </div>
+                            <div>
+                                <div id="profile-view-joined" class="stat-num">-</div>
+                                <div class="stat-label">Unido en</div>
+                            </div>
+                        </div>
+
+                        <div id="profile-view-bio" style="font-size: 15px; line-height: 1.6; color: var(--text-color); margin-bottom: 20px; word-break: break-word;"></div>
+
+                        <div id="profile-view-fields" class="profile-fields-grid" style="margin-top: 15px; margin-bottom: 20px;"></div>
+                    </div>
+
+                    <!-- Subpestañas: Actividad / Multimedia -->
+                    <div style="display: flex; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.1);">
+                        <button id="profile-subtab-activity" class="subtab-btn active" onclick="switchProfileSubtab('activity')">Actividad</button>
+                        <button id="profile-subtab-media" class="subtab-btn" onclick="switchProfileSubtab('media')">Multimedia</button>
+                    </div>
+
+                    <div id="profile-feed" class="feed-container" style="padding: 15px 0;"></div>
+                </div>
+            </div>
+
+            <!-- Pestaña de Lista de Usuarios (Seguidores / Siguiendo) -->
+            <div id="tab-users-list" style="display: none;" class="composer-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 20px;">
+                    <h2 id="users-list-title" style="font-size: 18px; margin: 0;">Usuarios</h2>
+                    <button onclick="goBackFromUsersList()" style="width: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0; box-shadow: none; background: rgba(255,255,255,0.06);">← Volver</button>
+                </div>
+                <div id="users-list-container" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Se llena vía JS -->
+                </div>
+            </div>
+
+            <!-- Pestaña de Vista de Hilo / Conversación -->
+            <div id="tab-thread-view" style="display: none;">
+                <!-- Back Header -->
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px; cursor: pointer; color: var(--text-muted); font-weight: 500;" onclick="goBackToFeed()">
+                    <span style="font-size: 18px;">←</span> <span>Volver a la línea de tiempo</span>
+                </div>
+
+                <div class="composer-card" style="padding: 10px 0;">
+                    <!-- Antecesores -->
+                    <div id="thread-ancestors"></div>
+
+                    <!-- Status Principal (Destacado) -->
+                    <div id="thread-main" style="border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); background: rgba(99, 102, 241, 0.03); margin: 10px 0;"></div>
+
+                    <!-- Respuestas (Descendientes) -->
+                    <div id="thread-descendants"></div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Sidebar Derecho (Información de la instancia) -->
+        <aside class="right-sidebar">
+            <div class="widget-card">
+                <div class="update-indicator">
+                    <div class="update-dot"></div>
+                    Tiempo Real SSE Activo
+                </div>
+                <div class="widget-title">Instancia KutSocial</div>
+                <div class="stat-item">
+                    <span class="stat-label">Usuarios Locales:</span>
+                    <span class="stat-value" id="stat-users">1</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Toots Totales:</span>
+                    <span class="stat-value" id="stat-toots">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Versión:</span>
+                    <span class="stat-value">v1.0.0</span>
+                </div>
+            </div>
+        </aside>
+
+    </div>
+
+    <script>
+        let token = localStorage.getItem('kutsocial_token');
+        let currentTimeline = 'public';
+        let lastId = 0;
+        let eventSource = null;
+
+        // Comprobación de autenticación
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!token) {
+                if (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked) {
+                    initPublicView();
+                } else {
+                    document.getElementById('login-container').style.display = 'flex';
+                }
+            } else {
+                initApp();
+            }
+        });
+
+        // Evento de Login
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const errDiv = document.getElementById('login-error');
+
+            errDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/oauth/token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `grant_type=password&username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`
+                });
+                
+                const data = await response.json();
+                if (data.access_token) {
+                    token = data.access_token;
+                    localStorage.setItem('kutsocial_token', token);
+                    initApp();
+                } else {
+                    errDiv.innerText = data.error_description || data.error || 'Fallo de acceso';
+                    errDiv.style.display = 'block';
+                }
+            } catch (err) {
+                errDiv.innerText = 'Error de red al conectar al servidor.';
+                errDiv.style.display = 'block';
+            }
+        });
+
+        function logout() {
+            localStorage.removeItem('kutsocial_token');
+            window.location.reload();
+        }
+
+        // Funciones para vista pública (visitante)
+        function initPublicView() {
+            document.getElementById('app-container').style.display = 'flex';
+            document.getElementById('login-container').style.display = 'none';
+            
+            // Ocultar elementos exclusivos de usuarios registrados en el sidebar
+            document.getElementById('nav-bookmarks').style.display = 'none';
+            document.getElementById('nav-notifications').style.display = 'none';
+            document.getElementById('nav-profile').style.display = 'none';
+            
+            // Mostrar link "Propietario"
+            const itemOwner = document.getElementById('nav-item-owner');
+            if (itemOwner) {
+                itemOwner.style.display = 'block';
+                const ownerLink = document.getElementById('nav-owner-profile');
+                if (ownerLink && window.KUTSOCIAL_OWNER) {
+                    ownerLink.innerHTML = `<span>👤</span> Perfil de @${window.KUTSOCIAL_OWNER.username}`;
+                }
+            }
+            
+            // Reemplazar summary por botón Iniciar Sesión
+            const summaryDiv = document.querySelector('.user-profile-summary');
+            if (summaryDiv) {
+                summaryDiv.innerHTML = `
+                    <button onclick="showLoginModal()" style="margin: 0; width: 100%; padding: 12px; font-weight:600; background: var(--primary); border:none; border-radius:10px; color:white; cursor:pointer;">🔑 Iniciar Sesión</button>
+                `;
+            }
+            
+            // Ocultar composer en feed
+            const composer = document.querySelector('.composer-card');
+            if (composer) {
+                composer.style.display = 'none';
+            }
+            
+            // Cargar perfil del dueño
+            if (window.KUTSOCIAL_OWNER) {
+                viewProfile(window.KUTSOCIAL_OWNER.id);
+            }
+        }
+
+        function showLoginModal() {
+            document.getElementById('login-container').style.display = 'flex';
+            
+            let closeBtn = document.getElementById('btn-close-login');
+            if (!closeBtn) {
+                const card = document.querySelector('.login-card');
+                closeBtn = document.createElement('a');
+                closeBtn.id = 'btn-close-login';
+                closeBtn.href = '#';
+                closeBtn.innerText = 'Volver como Visitante';
+                closeBtn.style.cssText = 'display:block; margin-top:15px; font-size:13.5px; color:var(--text-muted); text-decoration:none; font-weight: 500;';
+                closeBtn.onclick = (e) => {
+                    e.preventDefault();
+                    document.getElementById('login-container').style.display = 'none';
+                };
+                card.appendChild(closeBtn);
+            }
+        }
+
+        let currentProfileData = null;
+        let replyToId = null;
+        let editTootId = null;
+        let activeProfileViewId = null;
+        let activeProfileFeedToots = [];
+        let activeProfileSubtab = 'activity';
+        let activeThreadId = null;
+        let previousTab = 'feed';
+        let maxTootChars = 500;
+        let composerUploadedMediaIds = [];
+        let isPollActive = false;
+
+        const popularEmojis = [
+            '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
+            '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
+            '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥸',
+            '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣',
+            '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬',
+            '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗',
+            '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯',
+            '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐',
+            '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '😈', '👿', '👹',
+            '👺', '💀', '☠️', '👻', '👽', '👾', '🤖', '🎃', '😺', '😸',
+            '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '👋', '🤚', '🖐️',
+            '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙',
+            '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊',
+            '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️', '💅',
+            '🤳', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🧠',
+            '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '🩸',
+            '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
+            '❤️‍🔥', '❤️‍🩹', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝'
+        ];
+
+        // Inicializar Aplicación Autenticada
+        async function initApp() {
+            document.getElementById('login-container').style.display = 'none';
+            document.getElementById('app-container').style.display = 'flex';
+
+            // 1. Obtener datos del perfil
+            try {
+                const res = await fetch('/api/v1/accounts/verify_credentials', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.status === 401) {
+                    logout();
+                    return;
+                }
+                const profile = await res.json();
+                currentProfileData = profile;
+                
+                document.getElementById('my-display-name').innerText = profile.display_name;
+                document.getElementById('my-username').innerText = '@' + profile.username;
+                if (profile.avatar) {
+                    document.getElementById('my-avatar').src = profile.avatar;
+                    document.getElementById('composer-avatar').src = profile.avatar;
+                }
+                
+                // Mostrar URL de perfil para configurar la etiqueta rel="me" en web externas
+                document.getElementById('profile-verification-url-preview').innerText = profile.url;
+            } catch (e) {
+                console.error("Error al verificar perfil", e);
+            }
+
+            // 2. Obtener estadísticas de instancia
+            loadInstanceStats();
+
+            // 3. Cargar timeline inicial
+            loadTimeline();
+        }
+
+        async function loadInstanceStats() {
+            try {
+                const res = await fetch('/api/v1/instance');
+                const data = await res.json();
+                document.getElementById('stat-users').innerText = data.stats.user_count;
+                document.getElementById('stat-toots').innerText = data.stats.status_count;
+                if (data.configuration && data.configuration.statuses && data.configuration.statuses.max_characters) {
+                    maxTootChars = parseInt(data.configuration.statuses.max_characters);
+                    const composerText = document.getElementById('composer-text');
+                    if (composerText) {
+                        composerText.setAttribute('maxlength', maxTootChars);
+                    }
+                    updateCharCount();
+                }
+            } catch (e) {}
+        }
+
+        async function loadTimeline() {
+            const feed = document.getElementById('feed');
+            feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+
+            const url = currentTimeline === 'home' 
+                ? '/api/v1/timelines/home' 
+                : (currentTimeline === 'bookmarks' ? '/api/v1/bookmarks' : '/api/v1/timelines/public');
+            try {
+                const res = await fetch(url, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const toots = await res.json();
+                feed.innerHTML = '';
+                
+                if (toots.length === 0) {
+                    feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No hay publicaciones todavía.</div>';
+                    return;
+                }
+
+                toots.forEach(toot => {
+                    const idInt = parseInt(toot.id);
+                    if (idInt > lastId) {
+                        lastId = idInt;
+                    }
+                    prependToot(toot, false);
+                });
+
+                // Iniciar Streaming en tiempo real con SSE (solo para federación pública/home, no marcadores)
+                if (currentTimeline !== 'bookmarks') {
+                    startStreaming();
+                } else if (eventSource) {
+                    eventSource.close();
+                }
+            } catch (e) {
+                feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar timeline.</div>';
+            }
+        }
+
+        // Conectar al endpoint SSE Streaming
+        function startStreaming() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource(`/api/v1/streaming?since_id=${lastId}`);
+            
+            eventSource.addEventListener('update', (e) => {
+                const toot = JSON.parse(e.data);
+                const idInt = parseInt(toot.id);
+                if (idInt > lastId) {
+                    lastId = idInt;
+                }
+                prependToot(toot, true);
+                
+                const tootStat = document.getElementById('stat-toots');
+                tootStat.innerText = parseInt(tootStat.innerText || 0) + 1;
+            });
+
+            eventSource.onerror = (e) => {
+                console.log("Conexión SSE interrumpida. Reintentando...");
+            };
+        }
+
+        function prependToot(toot, isNew = false) {
+            const feed = document.getElementById('feed');
+            
+            if (feed.children.length === 1 && feed.children[0].innerText.includes('No hay publicaciones')) {
+                feed.innerHTML = '';
+            }
+
+            const card = createThreadTootElement(toot, false);
+            if (isNew) {
+                card.style.borderLeft = '3px solid var(--secondary)';
+                feed.insertBefore(card, feed.firstChild);
+            } else {
+                feed.appendChild(card);
+            }
+        }
+
+        function createThreadTootElement(toot, isMain = false) {
+            const card = document.createElement('div');
+            card.className = 'toot-card';
+            if (isMain) {
+                card.style.background = 'rgba(99, 102, 241, 0.05)';
+                card.style.borderLeft = '3px solid var(--primary)';
+            }
+
+            const dateStr = new Date(toot.created_at).toLocaleDateString('es-ES', {
+                hour: '2-digit', minute: '2-digit'
+            });
+
+            const isMyToot = currentProfileData && String(toot.account.id) === String(currentProfileData.id);
+            const favClass = toot.favourited ? 'active-fav' : '';
+            const bookmarkClass = toot.bookmarked ? 'active-bookmark' : '';
+
+            let contentHTML = `<div class="toot-content" style="${isMain ? 'font-size: 17px; line-height: 1.5; margin-bottom: 12px;' : ''}">${toot.content}</div>`;
+            if (toot.sensitive) {
+                contentHTML = `
+                    <div style="margin-top: 8px;">
+                        <span style="color: #f59e0b; font-weight: 600; font-size: 13.5px;">⚠️ Advertencia: ${escapeHTML(toot.spoiler_text || 'CW')}</span>
+                        <div>
+                            <button class="cw-spoiler-btn" onclick="toggleCWSpoiler(this)">Mostrar más</button>
+                            <div class="cw-spoiler-content" style="display: none;">
+                                <div class="toot-content" style="${isMain ? 'font-size: 17px; line-height: 1.5;' : ''}">${toot.content}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Renderizar Multimedia subida si existe
+            let mediaHTML = '';
+            if (toot.media_attachments && toot.media_attachments.length > 0) {
+                mediaHTML = `<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">`;
+                toot.media_attachments.forEach(media => {
+                    mediaHTML += `
+                        <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; max-height: 250px; display: flex;">
+                            <img src="${media.url}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer; border-radius: 8px;" onclick="window.open('${media.url}')">
+                        </div>
+                    `;
+                });
+                mediaHTML += `</div>`;
+            }
+
+            // Renderizar Encuesta interactiva si existe
+            let pollHTML = '';
+            if (toot.poll) {
+                const poll = toot.poll;
+                pollHTML = `<div class="toot-poll-card" id="poll-${poll.id}" style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-top: 12px; display: flex; flex-direction: column; gap: 10px;">`;
+                
+                const showResults = poll.voted || poll.expired;
+                if (showResults) {
+                    poll.options.forEach((opt, idx) => {
+                        const pct = poll.votes_count > 0 ? Math.round((opt.votes_count / poll.votes_count) * 100) : 0;
+                        const isOwnVote = poll.own_vote === idx;
+                        pollHTML += `
+                            <div>
+                                <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                                    <span>${isOwnVote ? '☑️' : ''} ${escapeHTML(opt.title)}</span>
+                                    <strong>${pct}% (${opt.votes_count})</strong>
+                                </div>
+                                <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden; border:1px solid var(--border-color);">
+                                    <div style="background: #4f46e5; width: ${pct}%; height: 100%; border-radius: 4px;"></div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    poll.options.forEach((opt, idx) => {
+                        pollHTML += `
+                            <button onclick="voteInPoll('${poll.id}', ${idx}, this)" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; font-family: inherit; font-size: 13px; color: white; cursor: pointer; transition: background 0.3s; font-weight: 500; width: 100%;">
+                                🔘 ${escapeHTML(opt.title)}
+                            </button>
+                        `;
+                    });
+                }
+                
+                const expDateStr = new Date(poll.expires_at).toLocaleString('es-ES', {
+                    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                });
+                pollHTML += `
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px; display: flex; justify-content: space-between;">
+                        <span>${poll.votes_count} votos</span>
+                        <span>${poll.expired ? 'Finalizado' : 'Expira: ' + expDateStr}</span>
+                    </div>
+                </div>`;
+            }
+
+            card.innerHTML = `
+                <img class="user-avatar clickable-actor" onclick="viewProfile('${toot.account.id}')" src="${toot.account.avatar}" alt="Avatar">
+                <div style="flex-grow: 1; min-width: 0;">
+                    <div class="toot-header">
+                        <div class="toot-author-details clickable-actor" onclick="viewProfile('${toot.account.id}')">
+                            <span class="toot-author-name">${toot.account.display_name}</span>
+                            <span class="toot-author-handle">@${toot.account.acct}</span>
+                        </div>
+                        <span class="toot-time clickable-actor" onclick="viewTootThread('${toot.id}')" title="Ver conversación">${dateStr}</span>
+                    </div>
+                    ${contentHTML}
+                    ${mediaHTML}
+                    ${pollHTML}
+                    
+                    <div class="toot-actions" style="margin-top: 12px;">
+                        <button class="toot-action-btn btn-reply" onclick="initReplyToToot('${toot.id}', '${toot.account.acct}')" title="Responder">
+                            💬 <span>${toot.replies_count || 0}</span>
+                        </button>
+                        <button class="toot-action-btn ${favClass}" onclick="toggleFavourite('${toot.id}', this)" title="Favorito">
+                            ⭐ <span class="fav-count">${toot.favourites_count || 0}</span>
+                        </button>
+                        <button class="toot-action-btn ${bookmarkClass}" onclick="toggleBookmark('${toot.id}', this)" title="Guardar">
+                            🔖
+                        </button>
+                        ${isMyToot ? `
+                            <button class="toot-action-btn btn-edit" onclick="initEditToot('${toot.id}', \`${escapeJSString(toot.content)}\`, ${toot.sensitive}, \`${escapeJSString(toot.spoiler_text)}\`)" title="Editar">
+                                ✏️
+                            </button>
+                            <button class="toot-action-btn btn-delete" onclick="deleteToot('${toot.id}', this)" title="Eliminar">
+                                🗑️
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            return card;
+        }
+
+        async function publishToot() {
+            const textarea = document.getElementById('composer-text');
+            const text = textarea.value.trim();
+            if (text === '' && composerUploadedMediaIds.length === 0) return;
+
+            const visibility = document.getElementById('composer-visibility').value;
+            const isCWActive = document.getElementById('composer-cw-container').style.display !== 'none';
+            const cwText = isCWActive ? document.getElementById('composer-cw-text').value.trim() : '';
+
+            const payload = {
+                status: text,
+                visibility: visibility,
+                sensitive: isCWActive,
+                spoiler_text: cwText
+            };
+
+            if (composerUploadedMediaIds.length > 0) {
+                payload.media_ids = composerUploadedMediaIds;
+            }
+
+            const pollContainer = document.getElementById('composer-poll-container');
+            if (pollContainer && pollContainer.style.display !== 'none') {
+                const optionInputs = document.querySelectorAll('.poll-option-field');
+                const options = Array.from(optionInputs)
+                    .map(input => input.value.trim())
+                    .filter(val => val !== '');
+                
+                if (options.length >= 2) {
+                    const expiresIn = parseInt(document.getElementById('poll-expires-in').value || 86400);
+                    payload.poll = {
+                        options: options,
+                        expires_in: expiresIn
+                    };
+                }
+            }
+
+            let url = '/api/v1/statuses';
+            let method = 'POST';
+
+            if (editTootId) {
+                url = `/api/v1/statuses/${editTootId}`;
+                method = 'PUT';
+            } else if (replyToId) {
+                payload.in_reply_to_id = replyToId;
+            }
+
+            try {
+                const response = await fetch(url, {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    textarea.value = '';
+                    cancelComposerContext();
+                    loadTimeline();
+                } else {
+                    const errData = await response.json();
+                    alert('Error: ' + (errData.error || 'No se pudo publicar.'));
+                }
+            } catch (e) {
+                alert('Error al conectar con el servidor.');
+            }
+        }
+
+        function switchTimeline(type) {
+            currentTimeline = type;
+            document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+            if (type === 'public') {
+                document.getElementById('nav-public').classList.add('active');
+            } else if (type === 'home') {
+                document.getElementById('nav-home').classList.add('active');
+            } else if (type === 'bookmarks') {
+                document.getElementById('nav-bookmarks').classList.add('active');
+            }
+            lastId = 0;
+            showTab('feed');
+            loadTimeline();
+        }
+
+        function updateCharCount() {
+            const text = document.getElementById('composer-text').value;
+            document.getElementById('char-count').innerText = maxTootChars - text.length;
+        }
+
+        function showTab(tabName) {
+            document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+            
+            document.getElementById('tab-feed').style.display = 'none';
+            document.getElementById('tab-profile').style.display = 'none';
+            document.getElementById('tab-profile-view').style.display = 'none';
+            document.getElementById('tab-thread-view').style.display = 'none';
+            document.getElementById('tab-notifications').style.display = 'none';
+            document.getElementById('tab-users-list').style.display = 'none';
+ 
+            if (tabName === 'feed') {
+                document.getElementById('tab-feed').style.display = 'block';
+                if (currentTimeline === 'public') {
+                    document.getElementById('nav-public').classList.add('active');
+                } else if (currentTimeline === 'home') {
+                    document.getElementById('nav-home').classList.add('active');
+                } else if (currentTimeline === 'bookmarks') {
+                    document.getElementById('nav-bookmarks').classList.add('active');
+                }
+            } else if (tabName === 'profile') {
+                document.getElementById('tab-profile').style.display = 'block';
+                document.getElementById('nav-profile').classList.add('active');
+                loadProfileFormValues();
+            } else if (tabName === 'profile-view') {
+                document.getElementById('tab-profile-view').style.display = 'block';
+                if (activeProfileViewId === currentProfileData?.id) {
+                    document.getElementById('nav-profile').classList.add('active');
+                }
+            } else if (tabName === 'thread-view') {
+                document.getElementById('tab-thread-view').style.display = 'block';
+            } else if (tabName === 'notifications') {
+                document.getElementById('tab-notifications').style.display = 'block';
+                document.getElementById('nav-notifications').classList.add('active');
+                loadNotifications();
+            } else if (tabName === 'users-list') {
+                document.getElementById('tab-users-list').style.display = 'block';
+            }
+        }
+ 
+        async function loadNotifications() {
+            const list = document.getElementById('notifications-list');
+            list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando notificaciones...</div>';
+            
+            try {
+                const res = await fetch('/api/v1/notifications', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                list.innerHTML = '';
+                
+                if (data.length === 0) {
+                    list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No tienes ninguna notificación por el momento.</div>';
+                    return;
+                }
+                
+                data.forEach(notif => {
+                    const div = document.createElement('div');
+                    div.style = "display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; transition: background 0.2s;";
+                    
+                    let actionText = '';
+                    let actionIcon = '';
+                    if (notif.type === 'follow') {
+                        actionIcon = '👥';
+                        actionText = 'te ha seguido';
+                    } else if (notif.type === 'mention') {
+                        actionIcon = '💬';
+                        actionText = 'te ha mencionado';
+                    }
+                    
+                    div.innerHTML = `
+                        <span style="font-size: 20px;">${actionIcon}</span>
+                        <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${notif.account.avatar}" alt="Avatar" style="width: 36px; height: 36px;">
+                        <div style="flex-grow: 1; min-width: 0;">
+                            <div style="font-size: 14px;">
+                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${notif.account.display_name}</strong> 
+                                <span style="color: var(--text-muted);">@${notif.account.acct}</span>
+                                ${actionText}
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                                ${new Date(notif.created_at).toLocaleString('es-ES')}
+                            </div>
+                        </div>
+                        <button onclick="dismissNotification('${notif.id}', this.parentElement)" style="background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; transition: color 0.2s;" title="Eliminar notificación" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+                    `;
+                    list.appendChild(div);
+                });
+            } catch (e) {
+                list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar notificaciones.</div>';
+            }
+        }
+
+        async function dismissNotification(id, element) {
+            if (!confirm('¿Estás seguro de que deseas eliminar esta notificación?')) return;
+            try {
+                const res = await fetch(`/api/v1/notifications/${id}/dismiss`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    element.remove();
+                    const list = document.getElementById('notifications-list');
+                    if (list.children.length === 0) {
+                        list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No tienes ninguna notificación por el momento.</div>';
+                    }
+                } else {
+                    alert('Error al eliminar la notificación.');
+                }
+            } catch (err) {
+                alert('Error al conectar con el servidor.');
+            }
+        }
+
+        async function clearAllNotifications() {
+            if (!confirm('¿Estás seguro de que deseas eliminar todas las notificaciones?')) return;
+            try {
+                const res = await fetch('/api/v1/notifications/clear', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    loadNotifications();
+                } else {
+                    alert('Error al limpiar las notificaciones.');
+                }
+            } catch (err) {
+                alert('Error al conectar con el servidor.');
+            }
+        }
+
+        // Cargar valores de Perfil en el formulario de edición
+        async function loadProfileFormValues() {
+            if (!currentProfileData) {
+                try {
+                    const res = await fetch('/api/v1/accounts/verify_credentials', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    currentProfileData = await res.json();
+                } catch (e) {
+                    console.error("Error al cargar credenciales", e);
+                    return;
+                }
+            }
+
+            document.getElementById('profile-display-name').value = currentProfileData.display_name || '';
+            
+            let note = currentProfileData.note || '';
+            note = note.replace(/<p>/g, '').replace(/<\/p>/g, '').replace(/<br\s*\/?>/g, '\n');
+            document.getElementById('profile-note').value = note;
+
+            for (let i = 0; i < 4; i++) {
+                document.getElementById(`field-name-${i}`).value = '';
+                document.getElementById(`field-value-${i}`).value = '';
+                document.getElementById(`field-verified-${i}`).innerText = '';
+            }
+
+            const fields = currentProfileData.fields || [];
+            fields.forEach((f, idx) => {
+                if (idx < 4) {
+                    document.getElementById(`field-name-${idx}`).value = f.name || '';
+                    
+                    let val = f.value || '';
+                    if (val.includes('<a href=')) {
+                        const match = val.match(/href="([^"]+)"/);
+                        if (match) {
+                            val = match[1];
+                        }
+                    }
+                    document.getElementById(`field-value-${idx}`).value = val;
+
+                    if (f.verified_at) {
+                        document.getElementById(`field-verified-${idx}`).innerText = '✓ Verificado';
+                        document.getElementById(`field-verified-${idx}`).style.color = 'var(--secondary)';
+                    } else {
+                        document.getElementById(`field-verified-${idx}`).innerText = 'No verificado';
+                        document.getElementById(`field-verified-${idx}`).style.color = 'var(--text-muted)';
+                    }
+                }
+            });
+        }
+
+        // Interceptar submit del formulario de perfil
+        document.getElementById('profile-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const statusDiv = document.getElementById('profile-save-status');
+            statusDiv.innerText = 'Guardando cambios...';
+            statusDiv.style.color = 'var(--text-muted)';
+
+            const formData = new FormData(document.getElementById('profile-form'));
+
+            try {
+                const response = await fetch('/api/v1/accounts/update_credentials', {
+                    method: 'PATCH',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const updatedProfile = await response.json();
+                    currentProfileData = updatedProfile;
+
+                    document.getElementById('my-display-name').innerText = updatedProfile.display_name;
+                    if (updatedProfile.avatar) {
+                        document.getElementById('my-avatar').src = updatedProfile.avatar;
+                        document.getElementById('composer-avatar').src = updatedProfile.avatar;
+                    }
+
+                    statusDiv.innerText = '✓ Cambios guardados correctamente.';
+                    statusDiv.style.color = 'var(--secondary)';
+
+                    loadProfileFormValues();
+                } else {
+                    const data = await response.json();
+                    statusDiv.innerText = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
+                    statusDiv.style.color = 'var(--error)';
+                }
+            } catch (err) {
+                statusDiv.innerText = 'Error al conectar al servidor.';
+                statusDiv.style.color = 'var(--error)';
+            }
+        });
+
+        // Funciones de descarga de exportaciones
+        async function downloadExport(endpoint, defaultFilename) {
+            try {
+                const btn = event.target;
+                const oldText = btn.innerText;
+                btn.innerText = 'Exportando...';
+                btn.disabled = true;
+
+                const response = await fetch(endpoint, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!response.ok) throw new Error('Error al descargar');
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = defaultFilename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                
+                btn.innerText = oldText;
+                btn.disabled = false;
+            } catch (err) {
+                alert('No se pudo exportar la información: ' + err.message);
+                event.target.innerText = 'Error';
+                event.target.disabled = false;
+            }
+        }
+
+        // Interceptar submit del formulario de importación
+        document.getElementById('import-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const statusDiv = document.getElementById('import-status-msg');
+            statusDiv.innerText = 'Procesando importación...';
+            statusDiv.style.color = 'var(--text-muted)';
+
+            const formData = new FormData(document.getElementById('import-form'));
+
+            try {
+                const response = await fetch('/api/v1/import', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    statusDiv.innerText = `✓ Importación completada: ${data.imported} registros procesados correctamente. Errores: ${data.errors || 0}`;
+                    statusDiv.style.color = 'var(--secondary)';
+                    document.getElementById('import-file').value = '';
+                } else {
+                    const data = await response.json();
+                    statusDiv.innerText = 'Error al importar: ' + (data.error || 'Intenta de nuevo.');
+                    statusDiv.style.color = 'var(--error)';
+                }
+            } catch (err) {
+                statusDiv.innerText = 'Error al conectar al servidor.';
+                statusDiv.style.color = 'var(--error)';
+            }
+        });
+
+        async function loadUsersList(type, accountId) {
+            if (!accountId) return;
+            showTab('users-list');
+            
+            const titleEl = document.getElementById('users-list-title');
+            titleEl.innerText = type === 'followers' ? 'Seguidores' : 'Siguiendo';
+            
+            const container = document.getElementById('users-list-container');
+            container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando usuarios...</div>';
+            
+            try {
+                const endpoint = type === 'followers' 
+                    ? `/api/v1/accounts/${accountId}/followers` 
+                    : `/api/v1/accounts/${accountId}/following`;
+                    
+                const res = await fetch(endpoint, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!res.ok) throw new Error("Error en la solicitud.");
+                const users = await res.json();
+                
+                container.innerHTML = '';
+                if (users.length === 0) {
+                    container.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted);">No hay usuarios en esta lista.</div>`;
+                    return;
+                }
+                
+                users.forEach(user => {
+                    const item = document.createElement('div');
+                    item.className = 'user-list-item';
+                    item.style.cssText = 'display: flex; gap: 15px; align-items: center; padding: 12px; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(255,255,255,0.01);';
+                    
+                    const avatarSrc = user.avatar || '/assets/default-avatar.png';
+                    
+                    item.innerHTML = `
+                        <img src="${avatarSrc}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer;" onclick="viewProfile('${user.id}')">
+                        <div style="flex: 1; min-width: 0;">
+                            <div style="font-weight: 600; cursor: pointer; color: var(--text-color); font-size: 14.5px;" onclick="viewProfile('${user.id}')">${user.display_name}</div>
+                            <div style="color: var(--text-muted); font-size: 13px; cursor: pointer;" onclick="viewProfile('${user.id}')">@${user.acct}</div>
+                        </div>
+                    `;
+                    container.appendChild(item);
+                });
+            } catch (err) {
+                container.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar la lista: ${err.message}</div>`;
+            }
+        }
+
+        function goBackFromUsersList() {
+            showTab('profile-view');
+        }
+
+        // ---------------------------
+        // VISTA DE PERFIL Y SEGUIMIENTOS
+        // ---------------------------
+        async function viewProfile(accountId) {
+            if (!accountId) return;
+            
+            const activeTab = document.getElementById('tab-feed').style.display !== 'none' 
+                ? 'feed' 
+                : (document.getElementById('tab-thread-view').style.display !== 'none' ? 'thread-view' : 'feed');
+            previousTab = activeTab;
+
+            activeProfileViewId = accountId;
+            showTab('profile-view');
+
+            document.getElementById('profile-view-display-name').innerText = 'Cargando...';
+            document.getElementById('profile-view-handle').innerText = '@...';
+            document.getElementById('profile-view-followers-count').innerText = '-';
+            document.getElementById('profile-view-following-count').innerText = '-';
+            document.getElementById('profile-view-posts-count').innerText = '-';
+            document.getElementById('profile-view-joined').innerText = '-';
+            document.getElementById('profile-view-bio').innerHTML = '';
+            document.getElementById('profile-view-fields').innerHTML = '';
+            document.getElementById('profile-view-role-container').style.display = 'none';
+            document.getElementById('profile-view-badge').innerText = '';
+            document.getElementById('profile-feed').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Cargando toots...</div>';
+
+            try {
+                const res = await fetch(`/api/v1/accounts/${accountId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error("Error cargando perfil");
+                const account = await res.json();
+
+                document.getElementById('profile-view-display-name').innerText = account.display_name;
+                document.getElementById('profile-view-handle').innerText = `@${account.acct}`;
+                document.getElementById('profile-view-followers-count').innerText = formatStatNumber(account.followers_count);
+                document.getElementById('profile-view-following-count').innerText = formatStatNumber(account.following_count);
+                document.getElementById('profile-view-posts-count').innerText = formatStatNumber(account.statuses_count);
+                
+                const joinedYear = new Date(account.created_at).getFullYear();
+                document.getElementById('profile-view-joined').innerText = joinedYear;
+
+                const headerUrl = account.header || "/assets/default-header.png";
+                const avatarUrl = account.avatar || "/assets/default-avatar.png";
+                
+                document.getElementById('profile-view-header-bg').style.backgroundImage = `url('${headerUrl}')`;
+                document.getElementById('profile-view-avatar').src = avatarUrl;
+
+                const actionBtn = document.getElementById('profile-view-action-btn');
+                if (!token) {
+                    actionBtn.innerText = 'Seguir';
+                    actionBtn.style.background = 'var(--primary)';
+                    actionBtn.onclick = () => showLoginModal();
+                } else if (currentProfileData && String(account.id) === String(currentProfileData.id)) {
+                    actionBtn.innerText = 'Editar perfil';
+                    actionBtn.style.background = 'rgba(255,255,255,0.06)';
+                    actionBtn.onclick = () => showTab('profile');
+                    
+                    document.getElementById('profile-view-badge').innerHTML = '⚙️';
+                    document.getElementById('profile-view-role-text').innerText = 'Owner (' + window.location.hostname + ')';
+                    document.getElementById('profile-view-role-container').style.display = 'inline-flex';
+                } else {
+                    actionBtn.innerText = 'Consultando...';
+                    actionBtn.style.background = 'var(--primary)';
+                    actionBtn.onclick = null;
+
+                    const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${account.id}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (relRes.ok) {
+                        const rels = await relRes.json();
+                        const rel = rels[0];
+                        if (rel && rel.following) {
+                            actionBtn.innerText = 'Dejar de seguir';
+                            actionBtn.style.background = 'rgba(255,255,255,0.06)';
+                            actionBtn.onclick = () => handleUnfollow(account.id, actionBtn);
+                        } else {
+                            actionBtn.innerText = 'Seguir';
+                            actionBtn.style.background = 'var(--primary)';
+                            actionBtn.onclick = () => handleFollow(account.id, actionBtn);
+                        }
+                    }
+                }
+
+                document.getElementById('profile-view-bio').innerHTML = account.note || '<p style="color:var(--text-muted)">Sin biografía.</p>';
+
+                const fieldsGrid = document.getElementById('profile-view-fields');
+                fieldsGrid.innerHTML = '';
+                const fields = account.fields || [];
+                fields.forEach(f => {
+                    const card = document.createElement('div');
+                    card.className = 'profile-field-card';
+                    if (f.verified_at) {
+                        card.classList.add('verified');
+                    }
+
+                    let valHTML = f.value;
+                    if (!valHTML.includes('<a ') && (valHTML.startsWith('http://') || valHTML.startsWith('https://'))) {
+                        const label = valHTML.replace(/^https?:\/\//, '');
+                        valHTML = `<a href="${valHTML}" rel="me nofollow noopener noreferrer" target="_blank" class="url">${label}</a>`;
+                    }
+
+                    const verifiedBadge = f.verified_at ? `<span class="verified-badge">✓</span>` : '';
+                    card.innerHTML = `
+                        <span class="field-label" title="${f.name}">${f.name}</span>
+                        <span class="field-value">${valHTML} ${verifiedBadge}</span>
+                    `;
+                    fieldsGrid.appendChild(card);
+                });
+
+                await loadProfileStatuses(accountId);
+            } catch (err) {
+                console.error(err);
+                document.getElementById('profile-feed').innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar el perfil.</div>';
+            }
+        }
+
+        async function handleFollow(accountId, btn) {
+            try {
+                btn.innerText = 'Siguiendo...';
+                const res = await fetch(`/api/v1/accounts/${accountId}/follow`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    btn.innerText = 'Dejar de seguir';
+                    btn.style.background = 'rgba(255,255,255,0.06)';
+                    btn.onclick = () => handleUnfollow(accountId, btn);
+                    const countSpan = document.getElementById('profile-view-followers-count');
+                    countSpan.innerText = parseInt(countSpan.innerText || 0) + 1;
+                } else {
+                    btn.innerText = 'Seguir';
+                }
+            } catch (e) {
+                btn.innerText = 'Seguir';
+            }
+        }
+
+        async function handleUnfollow(accountId, btn) {
+            try {
+                btn.innerText = 'Dejando...';
+                const res = await fetch(`/api/v1/accounts/${accountId}/unfollow`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    btn.innerText = 'Seguir';
+                    btn.style.background = 'var(--primary)';
+                    btn.onclick = () => handleFollow(accountId, btn);
+                    const countSpan = document.getElementById('profile-view-followers-count');
+                    countSpan.innerText = Math.max(0, parseInt(countSpan.innerText || 0) - 1);
+                } else {
+                    btn.innerText = 'Dejar de seguir';
+                }
+            } catch (e) {
+                btn.innerText = 'Dejar de seguir';
+            }
+        }
+
+        async function loadProfileStatuses(accountId) {
+            try {
+                const headers = {};
+                if (token) {
+                    headers['Authorization'] = `Bearer ${token}`;
+                }
+                const res = await fetch(`/api/v1/accounts/${accountId}/statuses`, {
+                    headers: headers
+                });
+                if (!res.ok) throw new Error("Error al obtener toots");
+                activeProfileFeedToots = await res.json();
+                renderProfileFeed();
+            } catch (err) {
+                console.error(err);
+                document.getElementById('profile-feed').innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar toots del perfil.</div>';
+            }
+        }
+
+        function renderProfileFeed() {
+            const feedContainer = document.getElementById('profile-feed');
+            feedContainer.innerHTML = '';
+
+            let filteredToots = activeProfileFeedToots;
+            if (activeProfileSubtab === 'media') {
+                filteredToots = activeProfileFeedToots.filter(toot => {
+                    const content = toot.content.toLowerCase();
+                    return content.includes('<img') || 
+                           content.includes('<audio') || 
+                           content.includes('<video') ||
+                           /\.(jpg|jpeg|gif|png|webp|mp3|ogg|mp4|wav)/.test(content);
+                });
+            }
+
+            if (filteredToots.length === 0) {
+                feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size:14px;">No hay publicaciones para mostrar.</div>';
+                return;
+            }
+
+            filteredToots.forEach(toot => {
+                feedContainer.appendChild(createThreadTootElement(toot, false));
+            });
+        }
+
+        function switchProfileSubtab(tabName) {
+            activeProfileSubtab = tabName;
+            document.getElementById('profile-subtab-activity').classList.remove('active');
+            document.getElementById('profile-subtab-media').classList.remove('active');
+
+            if (tabName === 'activity') {
+                document.getElementById('profile-subtab-activity').classList.add('active');
+            } else {
+                document.getElementById('profile-subtab-media').classList.add('active');
+            }
+            renderProfileFeed();
+        }
+
+        function formatStatNumber(num) {
+            if (!num) return '0';
+            if (num >= 1000) {
+                return (num / 1000).toFixed(1).replace('.0', '') + 'K';
+            }
+            return num.toString();
+        }
+
+        // ---------------------------
+        // VISTA DE CONVERSACIÓN (HILOS)
+        // ---------------------------
+        async function viewTootThread(statusId) {
+            const activeTab = document.getElementById('tab-feed').style.display !== 'none' 
+                ? 'feed' 
+                : (document.getElementById('tab-profile-view').style.display !== 'none' ? 'profile-view' : 'feed');
+            previousTab = activeTab;
+
+            showTab('thread-view');
+            
+            const ancestorsContainer = document.getElementById('thread-ancestors');
+            const mainContainer = document.getElementById('thread-main');
+            const descendantsContainer = document.getElementById('thread-descendants');
+
+            ancestorsContainer.innerHTML = '';
+            mainContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando conversación...</div>';
+            descendantsContainer.innerHTML = '';
+
+            try {
+                const res = await fetch(`/api/v1/statuses/${statusId}/context`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error("Error cargando hilo");
+                const context = await res.json();
+
+                ancestorsContainer.innerHTML = '';
+                if (context.ancestors && context.ancestors.length > 0) {
+                    context.ancestors.forEach(toot => {
+                        ancestorsContainer.appendChild(createThreadTootElement(toot, false));
+                    });
+                }
+
+                mainContainer.innerHTML = '';
+                if (context.status) {
+                    mainContainer.appendChild(createThreadTootElement(context.status, true));
+                } else {
+                    mainContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar publicación.</div>';
+                }
+
+                descendantsContainer.innerHTML = '';
+                if (context.descendants && context.descendants.length > 0) {
+                    context.descendants.forEach(toot => {
+                        descendantsContainer.appendChild(createThreadTootElement(toot, false));
+                    });
+                } else {
+                    descendantsContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size: 14px;">Fin de la conversación.</div>';
+                }
+            } catch (err) {
+                console.error(err);
+                mainContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar conversación.</div>';
+            }
+        }
+
+        function goBackToFeed() {
+            if (previousTab === 'profile-view') {
+                showTab('profile-view');
+            } else {
+                showTab('feed');
+            }
+        }
+
+        // ---------------------------
+        // INTERACCIONES CON TOOTS (FAV, MARCADORES, CW, EDIT, BORRAR)
+        // ---------------------------
+        async function toggleFavourite(statusId, btn) {
+            const isFav = btn.classList.contains('active-fav');
+            const action = isFav ? 'unfavourite' : 'favourite';
+            try {
+                const res = await fetch(`/api/v1/statuses/${statusId}/${action}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const status = await res.json();
+                    const countSpan = btn.querySelector('span');
+                    if (countSpan) {
+                        countSpan.innerText = status.favourites_count;
+                    }
+                    if (isFav) {
+                        btn.classList.remove('active-fav');
+                    } else {
+                        btn.classList.add('active-fav');
+                    }
+                }
+            } catch (e) {
+                console.error("Error al favorito", e);
+            }
+        }
+
+        async function toggleBookmark(statusId, btn) {
+            const isBookmarked = btn.classList.contains('active-bookmark');
+            const action = isBookmarked ? 'unbookmark' : 'bookmark';
+            try {
+                const res = await fetch(`/api/v1/statuses/${statusId}/${action}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    if (isBookmarked) {
+                        btn.classList.remove('active-bookmark');
+                    } else {
+                        btn.classList.add('active-bookmark');
+                    }
+                }
+            } catch (e) {
+                console.error("Error al marcador", e);
+            }
+        }
+
+        async function deleteToot(statusId, btn) {
+            if (!confirm('¿Estás seguro de que deseas eliminar este toot?')) return;
+            try {
+                const res = await fetch(`/api/v1/statuses/${statusId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const card = btn.closest('.toot-card');
+                    if (card) {
+                        card.remove();
+                    }
+                } else {
+                    alert('No se pudo eliminar la publicación.');
+                }
+            } catch (e) {
+                console.error("Error al eliminar", e);
+            }
+        }
+
+        function initReplyToToot(id, handle) {
+            replyToId = id;
+            editTootId = null;
+            document.getElementById('composer-context').style.display = 'flex';
+            document.getElementById('composer-context-text').innerText = `Respondiendo a @${handle}`;
+            
+            const textarea = document.getElementById('composer-text');
+            textarea.value = `@${handle} `;
+            textarea.focus();
+            updateCharCount();
+            
+            showTab('feed');
+        }
+
+        function initEditToot(id, content, sensitive, spoilerText) {
+            editTootId = id;
+            replyToId = null;
+            document.getElementById('composer-context').style.display = 'flex';
+            document.getElementById('composer-context-text').innerText = `Editando tu publicación`;
+
+            const textarea = document.getElementById('composer-text');
+            textarea.value = content;
+            textarea.focus();
+            updateCharCount();
+
+            const container = document.getElementById('composer-cw-container');
+            const btn = document.getElementById('composer-cw-btn');
+            if (sensitive) {
+                container.style.display = 'block';
+                btn.classList.add('active');
+                document.getElementById('composer-cw-text').value = spoilerText || '';
+            } else {
+                container.style.display = 'none';
+                btn.classList.remove('active');
+                document.getElementById('composer-cw-text').value = '';
+            }
+
+            showTab('feed');
+        }
+
+        function cancelComposerContext() {
+            replyToId = null;
+            editTootId = null;
+            document.getElementById('composer-context').style.display = 'none';
+            document.getElementById('composer-text').value = '';
+            document.getElementById('composer-cw-container').style.display = 'none';
+            document.getElementById('composer-cw-btn').classList.remove('active');
+            document.getElementById('composer-cw-text').value = '';
+            
+            // Limpiar archivos multimedia subidos
+            composerUploadedMediaIds = [];
+            document.getElementById('composer-media-preview').innerHTML = '';
+            
+            // Cerrar y limpiar encuesta
+            closeComposerPoll();
+            
+            updateCharCount();
+        }
+
+        function toggleComposerCW() {
+            const container = document.getElementById('composer-cw-container');
+            const btn = document.getElementById('composer-cw-btn');
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                btn.classList.add('active');
+            } else {
+                container.style.display = 'none';
+                btn.classList.remove('active');
+                document.getElementById('composer-cw-text').value = '';
+            }
+        }
+
+        async function handleComposerFileUpload() {
+            const fileInput = document.getElementById('composer-file-input');
+            const files = fileInput.files;
+            if (!files.length) return;
+
+            const previewContainer = document.getElementById('composer-media-preview');
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const previewId = 'media-uploading-' + Date.now() + '-' + i;
+                const tempDiv = document.createElement('div');
+                tempDiv.id = previewId;
+                tempDiv.style = "position: relative; width: 60px; height: 60px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted);";
+                tempDiv.innerText = 'Subiendo...';
+                previewContainer.appendChild(tempDiv);
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch('/api/v1/media', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        const media = await response.json();
+                        composerUploadedMediaIds.push(media.id);
+                        
+                        tempDiv.innerText = '';
+                        tempDiv.style.backgroundImage = `url(${media.url})`;
+                        tempDiv.style.backgroundSize = 'cover';
+                        tempDiv.style.backgroundPosition = 'center';
+                        
+                        const removeBtn = document.createElement('button');
+                        removeBtn.innerText = '✕';
+                        removeBtn.style = "position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer;";
+                        removeBtn.onclick = (e) => {
+                            e.preventDefault();
+                            removeComposerMedia(media.id, previewId);
+                        };
+                        tempDiv.appendChild(removeBtn);
+                    } else {
+                        tempDiv.remove();
+                        alert('Error al subir imagen: ' + file.name);
+                    }
+                } catch (e) {
+                    tempDiv.remove();
+                    alert('Error de conexión al subir imagen: ' + file.name);
+                }
+            }
+            fileInput.value = '';
+        }
+
+        function removeComposerMedia(mediaId, previewElementId) {
+            composerUploadedMediaIds = composerUploadedMediaIds.filter(id => id !== mediaId);
+            const el = document.getElementById(previewElementId);
+            if (el) el.remove();
+        }
+
+        function toggleComposerPoll() {
+            const container = document.getElementById('composer-poll-container');
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                isPollActive = true;
+            } else {
+                closeComposerPoll();
+            }
+        }
+
+        function closeComposerPoll() {
+            const container = document.getElementById('composer-poll-container');
+            if (container) {
+                container.style.display = 'none';
+            }
+            isPollActive = false;
+            const inputsContainer = document.getElementById('poll-options-inputs');
+            if (inputsContainer) {
+                inputsContainer.innerHTML = `
+                    <input type="text" class="poll-option-field" placeholder="Opción 1" maxlength="25" style="padding:8px;">
+                    <input type="text" class="poll-option-field" placeholder="Opción 2" maxlength="25" style="padding:8px;">
+                `;
+            }
+        }
+
+        function addPollOptionField() {
+            const inputsContainer = document.getElementById('poll-options-inputs');
+            const currentFieldsCount = inputsContainer.querySelectorAll('.poll-option-field').length;
+            if (currentFieldsCount >= 4) {
+                alert('Las encuestas pueden tener un máximo de 4 opciones.');
+                return;
+            }
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'poll-option-field';
+            input.placeholder = `Opción ${currentFieldsCount + 1}`;
+            input.maxLength = 25;
+            input.style = 'padding:8px;';
+            inputsContainer.appendChild(input);
+        }
+
+        async function voteInPoll(pollId, choiceIndex, btn) {
+            try {
+                const response = await fetch(`/api/v1/polls/${pollId}/votes`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({
+                        choices: [choiceIndex]
+                    })
+                });
+
+                if (response.ok) {
+                    if (document.getElementById('tab-thread-view').style.display === 'block') {
+                        if (activeThreadId) {
+                            viewTootThread(activeThreadId);
+                        }
+                    } else {
+                        loadTimeline();
+                    }
+                } else {
+                    const errData = await response.json();
+                    alert('Error al votar: ' + (errData.error || 'No se pudo registrar el voto.'));
+                }
+            } catch (e) {
+                alert('Error al conectar con el servidor para votar.');
+            }
+        }
+
+        function renderEmojiPicker() {
+            const grid = document.getElementById('emoji-picker-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            popularEmojis.forEach(emoji => {
+                const btn = document.createElement('button');
+                btn.innerText = emoji;
+                btn.style = "background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: background 0.1s;";
+                btn.onmouseover = () => btn.style.background = 'rgba(255,255,255,0.1)';
+                btn.onmouseout = () => btn.style.background = 'none';
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    insertEmojiAtCursor(emoji);
+                };
+                grid.appendChild(btn);
+            });
+        }
+
+        function toggleEmojiPicker(event) {
+            event.stopPropagation();
+            const container = document.getElementById('emoji-picker-container');
+            if (container.style.display === 'none') {
+                renderEmojiPicker();
+                const btn = document.getElementById('emoji-picker-btn');
+                container.style.display = 'block';
+                container.style.top = (btn.offsetTop - container.offsetHeight - 5) + 'px';
+                container.style.left = btn.offsetLeft + 'px';
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function insertEmojiAtCursor(emoji) {
+            const textarea = document.getElementById('composer-text');
+            if (!textarea) return;
+            const startPos = textarea.selectionStart;
+            const endPos = textarea.selectionEnd;
+            const text = textarea.value;
+            textarea.value = text.substring(0, startPos) + emoji + text.substring(endPos);
+            const newCursorPos = startPos + emoji.length;
+            textarea.selectionStart = newCursorPos;
+            textarea.selectionEnd = newCursorPos;
+            textarea.focus();
+            updateCharCount();
+        }
+
+        // Cerrar selector al hacer click fuera
+        document.addEventListener('click', function(e) {
+            const container = document.getElementById('emoji-picker-container');
+            if (container && container.style.display !== 'none') {
+                if (!container.contains(e.target) && e.target.id !== 'emoji-picker-btn') {
+                    container.style.display = 'none';
+                }
+            }
+        });
+
+        function toggleCWSpoiler(btn) {
+            const container = btn.nextElementSibling;
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                btn.innerText = 'Ocultar';
+            } else {
+                container.style.display = 'none';
+                btn.innerText = 'Mostrar más';
+            }
+        }
+
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        function escapeJSString(str) {
+            if (!str) return '';
+            let text = str.replace(/<p>/g, '').replace(/<\/p>/g, '').replace(/<br\s*\/?>/g, '\n');
+            return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+        }
+    </script>
+</body>
+</html>
