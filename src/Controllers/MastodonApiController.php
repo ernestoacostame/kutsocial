@@ -648,6 +648,7 @@ HTML;
         $account = self::getAuthenticatedAccount();
         if (!$account) {
             Router::json(['error' => 'Unauthorized'], 401);
+            return;
         }
 
         // Obtener tipos soportados por el cliente
@@ -657,44 +658,115 @@ HTML;
         }
 
         $db = Database::connect();
-        
-        // Obtener seguimientos reales excluyendo los descartados
-        $stmt = $db->prepare("
-            SELECT f.id, f.created_at, a.id as follower_id, a.username, a.domain, a.display_name, a.avatar, a.note
+        $currUserId = (int)$account['id'];
+        $notifications = [];
+
+        // 1. Obtener notificaciones de Seguimientos (Follows)
+        $stmtFollows = $db->prepare("
+            SELECT f.id, f.created_at, 
+                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                   a.locked, a.discoverable, a.fields
             FROM follows f
             JOIN accounts a ON f.account_id = a.id
             WHERE f.target_account_id = ?
               AND ('follow_' || f.id) NOT IN (
                   SELECT notification_id FROM dismissed_notifications WHERE account_id = ?
               )
-            ORDER BY f.id DESC
-            LIMIT 50
+            ORDER BY f.id DESC LIMIT 40
         ");
-        $stmt->execute([$account['id'], $account['id']]);
-        $rows = $stmt->fetchAll();
-
-        $notifications = [];
-        foreach ($rows as $row) {
-            $domain = $row['domain'] ?? '';
-            $acct = $domain ? $row['username'] . '@' . $domain : $row['username'];
-            
+        $stmtFollows->execute([$currUserId, $currUserId]);
+        $followRows = $stmtFollows->fetchAll();
+        foreach ($followRows as $row) {
             $notifications[] = [
                 'id' => 'follow_' . $row['id'],
                 'type' => 'follow',
                 'created_at' => date('c', strtotime($row['created_at'])),
-                'account' => [
-                    'id' => (string)$row['follower_id'],
-                    'username' => $row['username'],
-                    'domain' => $row['domain'],
-                    'acct' => $acct,
-                    'display_name' => $row['display_name'] ?: $row['username'],
-                    'avatar' => $row['avatar'] ?: '/assets/default-avatar.png',
-                    'note' => $row['note'] ?? ''
-                ]
+                'account' => self::formatAccount($row)
             ];
         }
 
-        // Lógica de fallback para notificaciones de tipos desconocidos
+        // 2. Obtener notificaciones de Favoritos (Favourites)
+        $stmtFavs = $db->prepare("
+            SELECT fav.id, fav.created_at, 
+                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                   a.locked, a.discoverable, a.fields,
+                   s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                   s.visibility as status_visibility, s.created_at as status_created_at, 
+                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments
+            FROM favourites fav
+            JOIN accounts a ON fav.account_id = a.id
+            JOIN statuses s ON fav.status_id = s.id
+            WHERE s.account_id = ?
+              AND ('favourite_' || fav.id) NOT IN (
+                  SELECT notification_id FROM dismissed_notifications WHERE account_id = ?
+              )
+            ORDER BY fav.id DESC LIMIT 40
+        ");
+        $stmtFavs->execute([$currUserId, $currUserId]);
+        $favRows = $stmtFavs->fetchAll();
+        foreach ($favRows as $row) {
+            $notifications[] = [
+                'id' => 'favourite_' . $row['id'],
+                'type' => 'favourite',
+                'created_at' => date('c', strtotime($row['created_at'])),
+                'account' => self::formatAccount($row),
+                'status' => self::formatStatus($row, $currUserId)
+            ];
+        }
+
+        // 3. Obtener notificaciones de Menciones y Respuestas (Mentions)
+        $stmtMentions = $db->prepare("
+            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                   s.visibility as status_visibility, s.created_at as status_created_at, 
+                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                   a.locked, a.discoverable, a.fields
+            FROM statuses s
+            JOIN accounts a ON s.account_id = a.id
+            WHERE s.account_id != ?
+              AND (
+                  s.content LIKE ? 
+                  OR s.content LIKE ? 
+                  OR s.in_reply_to_id IN (SELECT id FROM statuses WHERE account_id = ?)
+              )
+              AND ('mention_' || s.id) NOT IN (
+                  SELECT notification_id FROM dismissed_notifications WHERE account_id = ?
+              )
+            ORDER BY s.id DESC LIMIT 40
+        ");
+        $stmtMentions->execute([
+            $currUserId, 
+            '%@' . $account['username'] . '%', 
+            '%/users/' . $account['username'] . '%', 
+            $currUserId, 
+            $currUserId
+        ]);
+        $mentionRows = $stmtMentions->fetchAll();
+        foreach ($mentionRows as $row) {
+            $notifications[] = [
+                'id' => 'mention_' . $row['status_id'],
+                'type' => 'mention',
+                'created_at' => date('c', strtotime($row['status_created_at'])),
+                'account' => self::formatAccount($row),
+                'status' => self::formatStatus($row, $currUserId)
+            ];
+        }
+
+        // Ordenar notificaciones por fecha descendente
+        usort($notifications, function($a, $b) {
+            return strcmp($b['created_at'], $a['created_at']);
+        });
+
+        // Limitar la respuesta
+        $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? (int)$_GET['limit'] : 30;
+        if ($limit < 1) $limit = 30;
+        if ($limit > 80) $limit = 80;
+        $notifications = array_slice($notifications, 0, $limit);
+
+        // Lógica de fallback para tipos no soportados
         $filtered = [];
         foreach ($notifications as $notification) {
             if ($supportedTypes !== null && !in_array($notification['type'], $supportedTypes)) {
