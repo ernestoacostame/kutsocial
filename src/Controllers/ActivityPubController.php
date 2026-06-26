@@ -387,11 +387,15 @@ class ActivityPubController {
         $account = $stmt->fetch();
 
         if ($account) {
-            self::log("getOrRegisterRemoteActor: Actor remoto '$username@$host' ya existe en DB local");
-            return $account;
+            $lastUpdated = strtotime($account['updated_at']);
+            if (time() - $lastUpdated < 300) {
+                self::log("getOrRegisterRemoteActor: Actor remoto '$username@$host' ya existe en DB local y está fresco");
+                return $account;
+            }
+            self::log("getOrRegisterRemoteActor: Actor remoto '$username@$host' ya existe en DB local pero necesita actualización");
         }
 
-        // Si no existe, debemos resolver el actor para obtener su inbox y public_key
+        // Si no existe o está desactualizado, debemos resolver el actor para obtener su inbox, public_key y estadísticas
         self::log("getOrRegisterRemoteActor: Resolviendo actor remoto vía petición HTTP: $actorUrl");
         try {
             $ch = curl_init($actorUrl);
@@ -413,13 +417,13 @@ class ActivityPubController {
             self::log("getOrRegisterRemoteActor: HTTP status: $httpCode");
             if (!$resp) {
                 self::log("getOrRegisterRemoteActor: Respuesta vacía al consultar actor remoto");
-                return null;
+                return $account ?: null;
             }
 
             $json = json_decode($resp, true);
             if (!$json) {
                 self::log("getOrRegisterRemoteActor: JSON inválido devuelto por el actor remoto: " . substr($resp, 0, 200));
-                return null;
+                return $account ?: null;
             }
 
             $displayName = $json['name'] ?? $username;
@@ -429,7 +433,7 @@ class ActivityPubController {
 
             if (empty($publicKeyPem)) {
                 self::log("getOrRegisterRemoteActor: Clave pública ausente en el JSON del actor remoto");
-                return null;
+                return $account ?: null;
             }
 
             // Extraer avatar e header (icon y image) del JSON del actor remoto
@@ -450,25 +454,37 @@ class ActivityPubController {
                 }
             }
 
-            $ins = $db->prepare("
-                INSERT INTO accounts (username, domain, display_name, note, avatar, header, inbox_url, public_key, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-            ");
-            $ins->execute([$username, $host, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem]);
-            $newId = $db->lastInsertId();
-            self::log("getOrRegisterRemoteActor: Actor remoto registrado con ID local $newId");
-            
-            return [
-                'id' => $newId,
-                'username' => $username,
-                'domain' => $host,
-                'inbox_url' => $inbox,
-                'avatar' => $avatar,
-                'header' => $header
-            ];
+            // Obtener estadísticas del Fediverso (Seguidores, Siguiendo, Outbox/Toots)
+            $followersCount = self::getCollectionCount($json['followers'] ?? null);
+            $followingCount = self::getCollectionCount($json['following'] ?? null);
+            $statusesCount = self::getCollectionCount($json['outbox'] ?? null);
+
+            if ($account) {
+                // Actualizar cuenta existente
+                $upd = $db->prepare("
+                    UPDATE accounts 
+                    SET display_name = ?, note = ?, avatar = ?, header = ?, inbox_url = ?, public_key = ?, followers_count = ?, following_count = ?, statuses_count = ?, updated_at = datetime('now')
+                    WHERE id = ?
+                ");
+                $upd->execute([$displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $account['id']]);
+                self::log("getOrRegisterRemoteActor: Actor remoto id={$account['id']} '$username@$host' actualizado");
+            } else {
+                // Insertar nueva cuenta
+                $ins = $db->prepare("
+                    INSERT INTO accounts (username, domain, display_name, note, avatar, header, inbox_url, public_key, followers_count, following_count, statuses_count, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                ");
+                $ins->execute([$username, $host, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount]);
+                $newId = $db->lastInsertId();
+                self::log("getOrRegisterRemoteActor: Actor remoto registrado con ID local $newId");
+            }
+
+            // Recargar registro
+            $stmt->execute([$username, $host]);
+            return $stmt->fetch();
         } catch (\Exception $e) {
             self::log("getOrRegisterRemoteActor: Excepción al resolver actor remoto: " . $e->getMessage());
-            return null;
+            return $account ?: null;
         }
     }
 
@@ -721,6 +737,50 @@ class ActivityPubController {
         }
 
         \KutSocial\Queue::triggerAsync($domain);
+    }
+
+    private static function getCollectionCount($property): int {
+        if (empty($property)) return 0;
+        if (is_array($property)) {
+            if (isset($property['totalItems'])) {
+                return (int)$property['totalItems'];
+            }
+            if (isset($property['id']) && is_string($property['id'])) {
+                return self::fetchCollectionTotalItems($property['id']);
+            }
+        } elseif (is_string($property)) {
+            return self::fetchCollectionTotalItems($property);
+        }
+        return 0;
+    }
+
+    private static function fetchCollectionTotalItems(string $url): int {
+        if (empty($url)) return 0;
+        try {
+            $ch = curl_init($url);
+            $localDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => [
+                    "Accept: application/activity+json, application/ld+json",
+                    "User-Agent: KutSocial/1.0; (+https://$localDomain)"
+                ],
+                CURLOPT_TIMEOUT => 4,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false
+            ]);
+            $resp = curl_exec($ch);
+            curl_close($ch);
+            if ($resp) {
+                $json = json_decode($resp, true);
+                if (isset($json['totalItems'])) {
+                    return (int)$json['totalItems'];
+                }
+            }
+        } catch (\Exception $e) {
+            // Ignorar
+        }
+        return 0;
     }
 
     /**

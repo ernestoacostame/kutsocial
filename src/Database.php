@@ -283,6 +283,11 @@ class Database {
                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
                     UNIQUE(account_id, notification_id)
                 )"
+            ],
+            10 => [
+                "ALTER TABLE accounts ADD COLUMN followers_count INTEGER DEFAULT 0",
+                "ALTER TABLE accounts ADD COLUMN following_count INTEGER DEFAULT 0",
+                "ALTER TABLE accounts ADD COLUMN statuses_count INTEGER DEFAULT 0"
             ]
         ];
     }

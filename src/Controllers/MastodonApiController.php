@@ -1026,20 +1026,26 @@ HTML;
         // Consultar estadísticas en tiempo real en SQLite
         $db = Database::connect();
         
-        // Contar seguidores recibidos
-        $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'accepted'");
-        $stmtFollowers->execute([$account['id']]);
-        $followersCount = (int)$stmtFollowers->fetchColumn();
+        if ($account['domain'] !== null) {
+            $followersCount = (int)($account['followers_count'] ?? 0);
+            $followingCount = (int)($account['following_count'] ?? 0);
+            $statusesCount = (int)($account['statuses_count'] ?? 0);
+        } else {
+            // Contar seguidores recibidos
+            $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'accepted'");
+            $stmtFollowers->execute([$account['id']]);
+            $followersCount = (int)$stmtFollowers->fetchColumn();
 
-        // Contar seguidos realizados
-        $stmtFollowing = $db->prepare("SELECT COUNT(*) FROM follows WHERE account_id = ? AND status = 'accepted'");
-        $stmtFollowing->execute([$account['id']]);
-        $followingCount = (int)$stmtFollowing->fetchColumn();
+            // Contar seguidos realizados
+            $stmtFollowing = $db->prepare("SELECT COUNT(*) FROM follows WHERE account_id = ? AND status = 'accepted'");
+            $stmtFollowing->execute([$account['id']]);
+            $followingCount = (int)$stmtFollowing->fetchColumn();
 
-        // Contar toots creados
-        $stmtStatuses = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
-        $stmtStatuses->execute([$account['id']]);
-        $statusesCount = (int)$stmtStatuses->fetchColumn();
+            // Contar toots creados
+            $stmtStatuses = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
+            $stmtStatuses->execute([$account['id']]);
+            $statusesCount = (int)$stmtStatuses->fetchColumn();
+        }
 
         return [
             'id' => (string)$account['id'],
@@ -1285,6 +1291,17 @@ HTML;
 
         if (!$account) {
             Router::json(['error' => 'Cuenta no encontrada'], 404);
+            return;
+        }
+
+        if ($account['domain'] !== null) {
+            $lastUpdated = strtotime($account['updated_at']);
+            if (time() - $lastUpdated >= 300) {
+                $updatedAccount = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($account['username'] . '@' . $account['domain']);
+                if ($updatedAccount) {
+                    $account = $updatedAccount;
+                }
+            }
         }
 
         Router::json(self::formatAccount($account));
@@ -1734,6 +1751,13 @@ HTML;
 
         $avatarUrl = $row['avatar'] ?: "$proto://$domain/assets/default-avatar.png";
         $headerUrl = $row['header'] ?: "$proto://$domain/assets/default-header.png";
+
+        if (!filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
+            $avatarUrl = $proto . '://' . $domain . $avatarUrl;
+        }
+        if (!filter_var($headerUrl, FILTER_VALIDATE_URL)) {
+            $headerUrl = $proto . '://' . $domain . $headerUrl;
+        }
 
         $account = [
             'id' => (string)$row['account_id'],
