@@ -55,7 +55,7 @@ fi
 # --- 1. Actualizar version.php y version.json ---
 sed -i "s/KUTSOCIAL_VERSION', '$CURRENT'/KUTSOCIAL_VERSION', '$NEW'/" "$VERSION_FILE"
 sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW\"/" "$KUTSOCIAL_DIR/version.json"
-sed -i "s/kutsocial-v[0-9.]*\.zip/kutsocial-v$NEW.zip/" "$KUTSOCIAL_DIR/version.json"
+sed -i "s|\"zip_url\": \"[^\"]*\"|\"zip_url\": \"https://github.com/ernestoacostame/kutsocial/releases/download/v$NEW/kutsocial-v$NEW.zip\"|" "$KUTSOCIAL_DIR/version.json"
 if [[ -n "$NOTES" ]]; then
   ESCAPED_NOTES=$(echo "$NOTES" | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
   sed -i "s/\"changelog\": \"[^\"]*\"/\"changelog\": \"$ESCAPED_NOTES\"/" "$KUTSOCIAL_DIR/version.json"
@@ -131,13 +131,13 @@ if [[ -z "$NOTES" ]]; then
 fi
 
 gh release create "v$NEW" "$ZIP_PATH" \
-  --repo "ernestoacostame/KutStudio" \
+  --repo "ernestoacostame/kutsocial" \
   --title "KutSocial v$NEW" \
   --notes "$NOTES"
 
 echo ""
 echo "✅ Release v$NEW publicada con $ZIP_NAME adjunto"
-echo "   https://github.com/ernestoacostame/KutStudio/releases/tag/v$NEW"
+echo "   https://github.com/ernestoacostame/kutsocial/releases/tag/v$NEW"
 
 # --- Limpiar ---
 rm -f "$ZIP_PATH"

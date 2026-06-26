@@ -75,7 +75,7 @@ class MastodonApiController {
             'domain' => $domain,
             'title' => $title,
             'version' => '4.6.0-kutsocial',
-            'source_url' => 'https://github.com/ernestoacostame/KutStudio',
+            'source_url' => 'https://github.com/ernestoacostame/kutsocial',
             'description' => 'KutSocial: Alternativa ultraligera construida sobre PHP y SQLite.',
             'usage' => [
                 'users' => [

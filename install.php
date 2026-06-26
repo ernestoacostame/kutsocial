@@ -482,7 +482,7 @@ function runInstallation(string $username, string $email, string $password, stri
     <?php endif; ?>
 
     <div class="footer-note">
-        KutStudio &copy; <?php echo date('Y'); ?> &bull; Diseñado para alta concurrencia con SQLite WAL
+        KutSocial &copy; <?php echo date('Y'); ?> &bull; Diseñado para alta concurrencia con SQLite WAL
     </div>
 </div>
 
