@@ -1637,10 +1637,19 @@ HTML;
         if ($limit > 80) $limit = 80;
 
         $whereClauses = [
-            "(s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted'))",
-            "s.visibility IN ('public', 'unlisted', 'private')"
+            "(
+                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
+                OR
+                (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
+            )"
         ];
-        $queryParams = [$account['id'], $account['id']];
+        $queryParams = [
+            $account['id'],
+            $account['id'],
+            $account['id'],
+            '%@' . $account['username'] . '%',
+            '%/users/' . $account['username'] . '%'
+        ];
 
         if ($maxId !== null) {
             $whereClauses[] = "s.id < ?";
@@ -2674,7 +2683,8 @@ HTML;
                         } else {
                             $username = $account['username'] ?? '';
                             $actorUrlPattern = "/users/" . $username;
-                            if (str_contains($row['status_content'], $actorUrlPattern)) {
+                            if (str_contains($row['status_content'], $actorUrlPattern) ||
+                                preg_match('/@' . preg_quote($username, '/') . '\b/i', $row['status_content'])) {
                                 $authorized = true;
                             }
                         }

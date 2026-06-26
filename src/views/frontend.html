@@ -31,7 +31,7 @@
         }
 
         body {
-            font-family: 'Outfit', sans-serif;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             min-height: 100vh;
@@ -421,7 +421,7 @@
         }
 
         .toot-content {
-            font-size: 15px;
+            font-size: 16px;
             line-height: 1.5;
             color: var(--text-color);
         }
@@ -958,6 +958,59 @@
         #profile-view-bio p:last-child {
             margin-bottom: 0;
         }
+
+        /* Autocomplete dropdown suggestions styles */
+        .autocomplete-suggestions {
+            position: absolute;
+            top: 100%;
+            left: 60px;
+            right: 0;
+            background: #161c26;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1001;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+            margin-top: 4px;
+        }
+        .autocomplete-suggestion-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+        .autocomplete-suggestion-item:last-child {
+            border-bottom: none;
+        }
+        .autocomplete-suggestion-item:hover,
+        .autocomplete-suggestion-item.active {
+            background: rgba(99, 102, 241, 0.15);
+        }
+        .autocomplete-suggestion-avatar {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            object-fit: cover;
+        }
+        .autocomplete-suggestion-name {
+            font-weight: 600;
+            font-size: 13px;
+            color: var(--text-color);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .autocomplete-suggestion-handle {
+            font-size: 11px;
+            color: var(--text-muted);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -1082,9 +1135,11 @@
                         <input type="text" id="composer-cw-text" class="cw-textarea" style="height: 36px; padding: 6px 12px; margin-bottom: 8px;" placeholder="Escribe aquí la advertencia de contenido (CW)...">
                     </div>
 
-                    <div class="composer-header">
+                    <div class="composer-header" style="position: relative;">
                         <img id="composer-avatar" class="user-avatar" src="/assets/default-avatar.png" alt="Avatar">
                         <textarea id="composer-text" class="composer-textarea" placeholder="¿Qué está pasando en el Fediverso?" maxlength="500" oninput="updateCharCount()"></textarea>
+                        <!-- Autocomplete dropdown suggestions -->
+                        <div id="composer-autocomplete" class="autocomplete-suggestions" style="display: none;"></div>
                     </div>
 
                     <!-- Previsualización de Imágenes Subidas -->
@@ -1421,7 +1476,7 @@
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Versión:</span>
-                    <span class="stat-value">v1.0.0</span>
+                    <span class="stat-value" id="stat-version">v1.0.0</span>
                 </div>
             </div>
         </aside>
@@ -1444,6 +1499,13 @@
                 }
             } else {
                 initApp();
+            }
+
+            // Registrar event listeners para autocompletado en el composer
+            const textarea = document.getElementById('composer-text');
+            if (textarea) {
+                textarea.addEventListener('input', handleComposerInput);
+                textarea.addEventListener('keydown', handleComposerKeydown);
             }
         });
 
@@ -1605,6 +1667,11 @@
                 console.error("Error al verificar perfil", e);
             }
 
+            // Cargar la versión dinámica desde el servidor
+            if (window.KUTSOCIAL_VERSION) {
+                document.getElementById('stat-version').innerText = 'v' + window.KUTSOCIAL_VERSION;
+            }
+
             // 2. Obtener estadísticas de instancia
             loadInstanceStats();
 
@@ -1734,7 +1801,7 @@
             const favClass = toot.favourited ? 'active-fav' : '';
             const bookmarkClass = toot.bookmarked ? 'active-bookmark' : '';
 
-            let contentHTML = `<div class="toot-content" style="${isMain ? 'font-size: 17px; line-height: 1.5; margin-bottom: 12px;' : ''}">${toot.content}</div>`;
+            let contentHTML = `<div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5; margin-bottom: 12px;' : ''}">${toot.content}</div>`;
             if (toot.sensitive) {
                 contentHTML = `
                     <div style="margin-top: 8px;">
@@ -1742,7 +1809,7 @@
                         <div>
                             <button class="cw-spoiler-btn" onclick="toggleCWSpoiler(this)">Mostrar más</button>
                             <div class="cw-spoiler-content" style="display: none;">
-                                <div class="toot-content" style="${isMain ? 'font-size: 17px; line-height: 1.5;' : ''}">${toot.content}</div>
+                                <div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5;' : ''}">${toot.content}</div>
                             </div>
                         </div>
                     </div>
@@ -1824,7 +1891,7 @@
                     ${pollHTML}
                     
                     <div class="toot-actions" style="margin-top: 12px;">
-                        <button class="toot-action-btn btn-reply" onclick="initReplyToToot('${toot.id}', '${toot.account.acct}')" title="Responder">
+                        <button class="toot-action-btn btn-reply" onclick="initReplyToToot('${toot.id}', '${toot.account.acct}', '${toot.visibility}')" title="Responder">
                             <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
                         </button>
                         <button class="toot-action-btn ${favClass}" onclick="toggleFavourite('${toot.id}', this)" title="Favorito">
@@ -1846,6 +1913,168 @@
             `;
             return card;
         }
+
+        // Variables para Autocompletado de menciones
+        let autocompleteActiveIndex = -1;
+        let autocompleteSuggestions = [];
+        let activeWordInfo = null;
+        let autocompleteTimeout = null;
+
+        function getActiveWord(textarea) {
+            const text = textarea.value;
+            const selectionEnd = textarea.selectionEnd;
+            
+            let wordStart = selectionEnd - 1;
+            while (wordStart >= 0 && text[wordStart] !== ' ' && text[wordStart] !== '\n') {
+                wordStart--;
+            }
+            wordStart++;
+            
+            const word = text.slice(wordStart, selectionEnd);
+            return {
+                word: word,
+                start: wordStart,
+                end: selectionEnd
+            };
+        }
+
+        function handleComposerInput(e) {
+            const textarea = e.target;
+            const info = getActiveWord(textarea);
+            
+            if (info.word.startsWith('@')) {
+                const query = info.word.substring(1);
+                activeWordInfo = info;
+                fetchAutocompleteSuggestions(query);
+            } else {
+                closeAutocompleteDropdown();
+            }
+        }
+
+        function fetchAutocompleteSuggestions(query) {
+            clearTimeout(autocompleteTimeout);
+            autocompleteTimeout = setTimeout(async () => {
+                try {
+                    const res = await fetch(`/api/v1/search?type=accounts&q=${encodeURIComponent(query)}`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        autocompleteSuggestions = data.accounts || [];
+                        renderAutocompleteDropdown();
+                    }
+                } catch (err) {
+                    console.error("Error al obtener sugerencias de autocompletado", err);
+                }
+            }, 150);
+        }
+
+        function renderAutocompleteDropdown() {
+            const dropdown = document.getElementById('composer-autocomplete');
+            if (!dropdown) return;
+            
+            if (autocompleteSuggestions.length === 0) {
+                dropdown.style.display = 'none';
+                return;
+            }
+            
+            dropdown.innerHTML = '';
+            dropdown.style.display = 'block';
+            autocompleteActiveIndex = 0;
+            
+            autocompleteSuggestions.forEach((account, idx) => {
+                const item = document.createElement('div');
+                item.className = 'autocomplete-suggestion-item' + (idx === 0 ? ' active' : '');
+                item.setAttribute('data-index', idx);
+                
+                const avatar = account.avatar || '/assets/default-avatar.png';
+                const display_name = account.display_name || account.username;
+                
+                item.innerHTML = `
+                    <img class="autocomplete-suggestion-avatar" src="${avatar}" alt="">
+                    <div style="display: flex; flex-direction: column; min-width: 0; text-align: left;">
+                        <span class="autocomplete-suggestion-name">${escapeHTML(display_name)}</span>
+                        <span class="autocomplete-suggestion-handle">@${escapeHTML(account.acct)}</span>
+                    </div>
+                `;
+                
+                item.addEventListener('click', () => {
+                    selectAutocompleteSuggestion(idx);
+                });
+                
+                dropdown.appendChild(item);
+            });
+        }
+
+        function selectAutocompleteSuggestion(idx) {
+            const account = autocompleteSuggestions[idx];
+            if (!account || !activeWordInfo) return;
+            
+            const textarea = document.getElementById('composer-text');
+            const text = textarea.value;
+            const mention = `@${account.acct} `;
+            
+            const before = text.slice(0, activeWordInfo.start);
+            const after = text.slice(activeWordInfo.end);
+            
+            textarea.value = before + mention + after;
+            
+            const newCursorPos = activeWordInfo.start + mention.length;
+            textarea.focus();
+            textarea.setSelectionRange(newCursorPos, newCursorPos);
+            
+            closeAutocompleteDropdown();
+            updateCharCount();
+        }
+
+        function handleComposerKeydown(e) {
+            const dropdown = document.getElementById('composer-autocomplete');
+            if (!dropdown || dropdown.style.display === 'none') return;
+            
+            const items = dropdown.querySelectorAll('.autocomplete-suggestion-item');
+            if (items.length === 0) return;
+            
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                items[autocompleteActiveIndex].classList.remove('active');
+                autocompleteActiveIndex = (autocompleteActiveIndex + 1) % items.length;
+                items[autocompleteActiveIndex].classList.add('active');
+                items[autocompleteActiveIndex].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                items[autocompleteActiveIndex].classList.remove('active');
+                autocompleteActiveIndex = (autocompleteActiveIndex - 1 + items.length) % items.length;
+                items[autocompleteActiveIndex].classList.add('active');
+                items[autocompleteActiveIndex].scrollIntoView({ block: 'nearest' });
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                selectAutocompleteSuggestion(autocompleteActiveIndex);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeAutocompleteDropdown();
+            }
+        }
+
+        function closeAutocompleteDropdown() {
+            const dropdown = document.getElementById('composer-autocomplete');
+            if (dropdown) {
+                dropdown.style.display = 'none';
+            }
+            autocompleteActiveIndex = -1;
+            autocompleteSuggestions = [];
+            activeWordInfo = null;
+        }
+
+        // Registrar cierre de dropdown al hacer clic fuera del composer
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('composer-autocomplete');
+            const textarea = document.getElementById('composer-text');
+            if (dropdown && e.target !== dropdown && e.target !== textarea && !dropdown.contains(e.target)) {
+                closeAutocompleteDropdown();
+            }
+        });
 
         async function publishToot() {
             const textarea = document.getElementById('composer-text');
@@ -2731,7 +2960,7 @@
             }
         }
 
-        function initReplyToToot(id, handle) {
+        function initReplyToToot(id, handle, visibility = 'public') {
             replyToId = id;
             editTootId = null;
             document.getElementById('composer-context').style.display = 'flex';
@@ -2741,6 +2970,12 @@
             textarea.value = `@${handle} `;
             textarea.focus();
             updateCharCount();
+            
+            // Heredar la visibilidad de la publicación padre
+            const visSelect = document.getElementById('composer-visibility');
+            if (visSelect) {
+                visSelect.value = visibility;
+            }
             
             showTab('feed');
         }
@@ -2786,6 +3021,12 @@
             
             // Cerrar y limpiar encuesta
             closeComposerPoll();
+            
+            // Restablecer visibilidad por defecto a public
+            const visSelect = document.getElementById('composer-visibility');
+            if (visSelect) {
+                visSelect.value = 'public';
+            }
             
             updateCharCount();
         }
