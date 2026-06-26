@@ -106,6 +106,7 @@ $router->get('/api/v1/streaming', [MastodonApiController::class, 'getStreaming']
 
 // Carga Real de Multimedia (Mastodon compatible)
 $router->post('/api/v1/media', [MastodonApiController::class, 'uploadMedia']);
+$router->post('/api/v2/media', [MastodonApiController::class, 'uploadMedia']);
 
 // Encuestas Reales (Mastodon compatible)
 $router->post('/api/v1/polls/:id/votes', [MastodonApiController::class, 'votePoll']);

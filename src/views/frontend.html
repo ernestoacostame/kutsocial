@@ -1600,6 +1600,10 @@
         function prependToot(toot, isNew = false) {
             const feed = document.getElementById('feed');
             
+            if (feed.querySelector(`[data-toot-id="${toot.id}"]`)) {
+                return;
+            }
+            
             if (feed.children.length === 1 && feed.children[0].innerText.includes('No hay publicaciones')) {
                 feed.innerHTML = '';
             }
@@ -1616,6 +1620,7 @@
         function createThreadTootElement(toot, isMain = false) {
             const card = document.createElement('div');
             card.className = 'toot-card';
+            card.setAttribute('data-toot-id', toot.id);
             if (isMain) {
                 card.style.background = 'rgba(99, 102, 241, 0.05)';
                 card.style.borderLeft = '3px solid var(--primary)';
