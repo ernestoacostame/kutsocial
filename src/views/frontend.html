@@ -169,6 +169,43 @@
             padding-left: 10px;
         }
 
+        .sidebar-search {
+            padding: 0 10px 20px 10px;
+        }
+
+        .search-input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 14px;
+            color: var(--text-muted);
+            font-size: 14px;
+            pointer-events: none;
+        }
+
+        .sidebar-search-input {
+            width: 100%;
+            padding: 10px 12px 10px 38px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text-color);
+            font-size: 14px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .sidebar-search-input:focus {
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+
         .nav-menu {
             list-style: none;
         }
@@ -867,6 +904,16 @@
         <aside class="sidebar">
             <div>
                 <div class="nav-logo">KutSocial</div>
+                
+                <!-- Buscador de Usuarios / Contenido -->
+                <div class="sidebar-search">
+                    <div class="search-input-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" class="sidebar-search-input" placeholder="Buscar en el Fediverso..." 
+                               onkeydown="if(event.key === 'Enter') performSearch(this.value)">
+                    </div>
+                </div>
+
                 <ul class="nav-menu">
                     <li class="nav-item">
                         <a href="#" id="nav-public" class="nav-link active" onclick="switchTimeline('public')">
@@ -1222,6 +1269,22 @@
                 </div>
                 <div id="users-list-container" style="display: flex; flex-direction: column; gap: 12px;">
                     <!-- Se llena vía JS -->
+                </div>
+            </div>
+
+            <!-- Pestaña de Resultados de Búsqueda -->
+            <div id="tab-search-results" style="display: none;" class="composer-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 20px;">
+                    <h2 style="font-size: 18px; margin: 0;">🔍 Resultados de búsqueda</h2>
+                    <button onclick="showTab('feed')" style="width: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0; box-shadow: none; background: rgba(255,255,255,0.06);">← Volver</button>
+                </div>
+                <div style="margin-bottom: 25px;">
+                    <h3 style="font-size: 14px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 15px; letter-spacing: 0.5px;">👤 Perfiles</h3>
+                    <div id="search-accounts-container" style="display: flex; flex-direction: column; gap: 12px;"></div>
+                </div>
+                <div>
+                    <h3 style="font-size: 14px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 15px; letter-spacing: 0.5px;">📝 Publicaciones</h3>
+                    <div id="search-statuses-container" style="display: flex; flex-direction: column; gap: 15px;"></div>
                 </div>
             </div>
 
@@ -1775,6 +1838,7 @@
             document.getElementById('tab-thread-view').style.display = 'none';
             document.getElementById('tab-notifications').style.display = 'none';
             document.getElementById('tab-users-list').style.display = 'none';
+            document.getElementById('tab-search-results').style.display = 'none';
  
             if (tabName === 'feed') {
                 document.getElementById('tab-feed').style.display = 'block';
@@ -1802,6 +1866,8 @@
                 loadNotifications();
             } else if (tabName === 'users-list') {
                 document.getElementById('tab-users-list').style.display = 'block';
+            } else if (tabName === 'search-results') {
+                document.getElementById('tab-search-results').style.display = 'block';
             }
         }
  
@@ -2732,6 +2798,70 @@
             } else {
                 container.style.display = 'none';
                 btn.innerText = 'Mostrar más';
+            }
+        }
+
+        async function performSearch(query) {
+            if (!query || !query.trim()) return;
+            query = query.trim();
+            
+            showTab('search-results');
+            
+            const accountsContainer = document.getElementById('search-accounts-container');
+            const statusesContainer = document.getElementById('search-statuses-container');
+            
+            accountsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0;">🔍 Buscando perfiles...</div>';
+            statusesContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0;">🔍 Buscando publicaciones...</div>';
+            
+            try {
+                const res = await fetch(`/api/v2/search?q=${encodeURIComponent(query)}&resolve=true`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error('Error al buscar en el servidor.');
+                const data = await res.json();
+                
+                // 1. Mostrar perfiles
+                accountsContainer.innerHTML = '';
+                if (!data.accounts || data.accounts.length === 0) {
+                    accountsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; padding: 10px 0; text-align: center;">No se encontraron perfiles.</div>';
+                } else {
+                    data.accounts.forEach(acc => {
+                        const accDiv = document.createElement('div');
+                        accDiv.style = "display: flex; align-items: center; gap: 12px; border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 16px; cursor: pointer; background: rgba(255,255,255,0.02); transition: all 0.2s ease;";
+                        accDiv.onmouseover = () => {
+                            accDiv.style.background = 'rgba(255,255,255,0.06)';
+                            accDiv.style.borderColor = 'var(--primary)';
+                        };
+                        accDiv.onmouseout = () => {
+                            accDiv.style.background = 'rgba(255,255,255,0.02)';
+                            accDiv.style.borderColor = 'var(--border-color)';
+                        };
+                        accDiv.onclick = () => viewProfile(acc.id);
+                        
+                        accDiv.innerHTML = `
+                            <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover;">
+                            <div class="user-info" style="display: flex; flex-direction: column; gap: 2px;">
+                                <div class="user-name" style="font-weight: 600; color: var(--text-color); font-size: 15px;">${escapeHTML(acc.display_name || acc.username)}</div>
+                                <div class="user-handle" style="font-size: 13px; color: var(--text-muted);">@${escapeHTML(acc.acct)}</div>
+                            </div>
+                        `;
+                        accountsContainer.appendChild(accDiv);
+                    });
+                }
+                
+                // 2. Mostrar publicaciones
+                statusesContainer.innerHTML = '';
+                if (!data.statuses || data.statuses.length === 0) {
+                    statusesContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; padding: 10px 0; text-align: center;">No se encontraron publicaciones.</div>';
+                } else {
+                    data.statuses.forEach(toot => {
+                        const card = createThreadTootElement(toot, false);
+                        statusesContainer.appendChild(card);
+                    });
+                }
+            } catch (err) {
+                accountsContainer.innerHTML = `<div style="color: var(--error); font-size: 14px; text-align: center; padding: 10px 0;">Error: ${escapeHTML(err.message)}</div>`;
+                statusesContainer.innerHTML = '';
             }
         }
 
