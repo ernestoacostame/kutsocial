@@ -84,33 +84,42 @@ ZIP_SIZE=$(du -h "$ZIP_PATH" | cut -f1)
 echo "✅ ZIP creado: $ZIP_NAME ($ZIP_SIZE)"
 
 # --- 3. Git: commit + tag ---
-cd "$KUTSOCIAL_DIR/.."
+if ! git -C "$KUTSOCIAL_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
+  echo "❌ No se detectó un repositorio git en $KUTSOCIAL_DIR o sus padres."
+  exit 1
+fi
 
-KUTSOCIAL_UNSTAGED=$(git diff --name-only -- kutsocial/ 2>/dev/null | grep -vE '(version.php|version.json)' | wc -l || true)
+GIT_ROOT=$(git -C "$KUTSOCIAL_DIR" rev-parse --show-toplevel)
+REL_DIR=$(git -C "$KUTSOCIAL_DIR" rev-parse --show-prefix)
+
+cd "$GIT_ROOT"
+TARGET_DIR="${REL_DIR:-.}"
+
+KUTSOCIAL_UNSTAGED=$(git diff --name-only -- "$TARGET_DIR" 2>/dev/null | grep -vE "(${REL_DIR}version.php|${REL_DIR}version.json)" | wc -l || true)
 
 if [[ "$KUTSOCIAL_UNSTAGED" -gt 0 ]]; then
-  echo "📋 Hay $KUTSOCIAL_UNSTAGED archivo(s) modificados en kutsocial/ sin stage."
+  echo "📋 Hay $KUTSOCIAL_UNSTAGED archivo(s) modificados en $TARGET_DIR sin stage."
   read -rp "¿Incluirlos en el release? (s/N) " inc
   if [[ "$inc" == "s" || "$inc" == "S" ]]; then
-    git add kutsocial/
+    git add "$TARGET_DIR"
   fi
 fi
 
 # Siempre incluir version.php y version.json
-git add kutsocial/version.php
-git add kutsocial/version.json
+git add "${REL_DIR}version.php"
+git add "${REL_DIR}version.json"
 
-# Verificar que hay algo que commitear en kutsocial/
-if git diff --cached --quiet -- kutsocial/; then
-  echo "⚠️  No hay cambios staged en kutsocial/. Nada que publicar."
-  git checkout kutsocial/version.php
-  git checkout kutsocial/version.json
+# Verificar que hay algo que commitear en el directorio destino
+if git diff --cached --quiet -- "$TARGET_DIR"; then
+  echo "⚠️  No hay cambios staged en $TARGET_DIR. Nada que publicar."
+  git checkout "${REL_DIR}version.php"
+  git checkout "${REL_DIR}version.json"
   exit 1
 fi
 
-git commit -m "Release KutSocial v$NEW" -- kutsocial/
+git commit -m "Release KutSocial v$NEW" -- "$TARGET_DIR"
 git tag -a "v$NEW" -m "KutSocial v$NEW"
-echo "✅ Commit y tag v$NEW creados (solo cambios de kutsocial/)"
+echo "✅ Commit y tag v$NEW creados (solo cambios de $TARGET_DIR)"
 
 # --- 4. Push ---
 git push origin main
@@ -121,7 +130,7 @@ echo "✅ Pushed to GitHub"
 if [[ -z "$NOTES" ]]; then
   PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -v "v$NEW" | head -1 || true)
   if [[ -n "$PREV_TAG" ]]; then
-    NOTES=$(git log "${PREV_TAG}..v${NEW}" --oneline --no-merges -- kutsocial/ 2>/dev/null | head -20 || true)
+    NOTES=$(git log "${PREV_TAG}..v${NEW}" --oneline --no-merges -- "$TARGET_DIR" 2>/dev/null | head -20 || true)
     if [[ -z "$NOTES" ]]; then
       NOTES="Release v$NEW"
     fi
