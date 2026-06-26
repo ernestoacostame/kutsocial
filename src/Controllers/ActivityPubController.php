@@ -263,6 +263,55 @@ class ActivityPubController {
         }
     }
 
+    private static function determineVisibility(array $object): string {
+        $to = isset($object['to']) ? (is_array($object['to']) ? $object['to'] : [$object['to']]) : [];
+        $cc = isset($object['cc']) ? (is_array($object['cc']) ? $object['cc'] : [$object['cc']]) : [];
+
+        $allRecipients = array_merge($to, $cc);
+
+        $hasPublic = false;
+        $hasFollowers = false;
+
+        foreach ($allRecipients as $recipient) {
+            if ($recipient === 'https://www.w3.org/ns/activitystreams#Public' || $recipient === 'as:Public') {
+                $hasPublic = true;
+            }
+            if (is_string($recipient) && str_ends_with($recipient, '/followers')) {
+                $hasFollowers = true;
+            }
+        }
+
+        $toPublic = false;
+        foreach ($to as $r) {
+            if ($r === 'https://www.w3.org/ns/activitystreams#Public' || $r === 'as:Public') {
+                $toPublic = true;
+                break;
+            }
+        }
+
+        if ($toPublic) {
+            return 'public';
+        }
+
+        $ccPublic = false;
+        foreach ($cc as $r) {
+            if ($r === 'https://www.w3.org/ns/activitystreams#Public' || $r === 'as:Public') {
+                $ccPublic = true;
+                break;
+            }
+        }
+
+        if ($ccPublic) {
+            return 'unlisted';
+        }
+
+        if ($hasFollowers) {
+            return 'private';
+        }
+
+        return 'direct';
+    }
+
     private static function handleCreate(array $localAccount, array $activity): void {
         $object = $activity['object'] ?? [];
         if (empty($object)) {
@@ -308,24 +357,8 @@ class ActivityPubController {
         $content = $object['content'] ?? '';
         $createdAt = $object['published'] ?? date('c');
 
-        // Determinar visibilidad:
-        // Si el destinatario 'to' o 'cc' contiene la URL del Public timeline, es pública
-        // De lo contrario, si solo contiene a usuarios específicos (como el localAccount), es directa (mensaje privado)
-        $to = is_array($object['to'] ?? null) ? $object['to'] : [$object['to'] ?? ''];
-        $cc = is_array($object['cc'] ?? null) ? $object['cc'] : [$object['cc'] ?? ''];
-        
-        $isPublic = false;
-        foreach (array_merge($to, $cc) as $recipient) {
-            if ($recipient === 'https://www.w3.org/ns/activitystreams#Public' || str_ends_with($recipient, '/followers')) {
-                $isPublic = true;
-                break;
-            }
-        }
-
-        $visibility = 'public';
-        if (!$isPublic) {
-            $visibility = 'direct'; // Mensaje privado / directo
-        }
+        // Determinar visibilidad usando el helper determineVisibility
+        $visibility = self::determineVisibility($object);
 
         // Procesar adjuntos (media)
         $attachments = [];
@@ -437,34 +470,39 @@ class ActivityPubController {
             return;
         }
 
-        // 2. Guardar relación en la tabla follows
-        self::log("handleFollow: Guardando relación follows en la DB (remoto ID {$remoteAccount['id']} -> local ID {$localAccount['id']})");
+        // 2. Guardar relación en la tabla follows (respetando si la cuenta está cerrada/locked)
+        $status = ($localAccount['locked'] ?? 0) ? 'pending' : 'accepted';
+        self::log("handleFollow: Guardando relación follows en la DB con estado '$status' (remoto ID {$remoteAccount['id']} -> local ID {$localAccount['id']})");
         $stmt = $db->prepare("
             INSERT OR REPLACE INTO follows (account_id, target_account_id, uri, status) 
-            VALUES (?, ?, ?, 'accepted')
+            VALUES (?, ?, ?, ?)
         ");
-        $stmt->execute([$remoteAccount['id'], $localAccount['id'], $activity['id'] ?? null]);
+        $stmt->execute([$remoteAccount['id'], $localAccount['id'], $activity['id'] ?? null, $status]);
 
-        // 3. Responder con un Accept encolado en nuestro sistema
-        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $localActorUrl = "$proto://$domain/users/{$localAccount['username']}";
+        // 3. Responder con un Accept encolado si el estado es accepted
+        if ($status === 'accepted') {
+            $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+            $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $localActorUrl = "$proto://$domain/users/{$localAccount['username']}";
 
-        $acceptActivity = [
-            '@context' => 'https://www.w3.org/ns/activitystreams',
-            'id' => $localActorUrl . '/activities/accept-' . bin2hex(random_bytes(8)),
-            'type' => 'Accept',
-            'actor' => $localActorUrl,
-            'object' => $activity
-        ];
+            $acceptActivity = [
+                '@context' => 'https://www.w3.org/ns/activitystreams',
+                'id' => $localActorUrl . '/activities/accept-' . bin2hex(random_bytes(8)),
+                'type' => 'Accept',
+                'actor' => $localActorUrl,
+                'object' => $activity
+            ];
 
-        if (!empty($remoteAccount['inbox_url'])) {
-            self::log("handleFollow: Encolando actividad Accept para el inbox '{$remoteAccount['inbox_url']}'");
-            \KutSocial\Queue::enqueue('Accept', $acceptActivity, $remoteAccount['inbox_url']);
-            // Disparar procesamiento asíncrono
-            \KutSocial\Queue::triggerAsync($domain);
+            if (!empty($remoteAccount['inbox_url'])) {
+                self::log("handleFollow: Encolando actividad Accept para el inbox '{$remoteAccount['inbox_url']}'");
+                \KutSocial\Queue::enqueue('Accept', $acceptActivity, $remoteAccount['inbox_url']);
+                // Disparar procesamiento asíncrono
+                \KutSocial\Queue::triggerAsync($domain);
+            } else {
+                self::log("handleFollow: No se pudo encolar Accept porque inbox_url está vacía para el actor remoto");
+            }
         } else {
-            self::log("handleFollow: No se pudo encolar Accept porque inbox_url está vacía para el actor remoto");
+            self::log("handleFollow: Seguimiento pendiente de aprobación manual, no se envía Accept");
         }
     }
 

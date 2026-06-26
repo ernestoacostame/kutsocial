@@ -73,6 +73,11 @@ $router->post('/api/v1/accounts/:id/unfollow', [MastodonApiController::class, 'u
 $router->get('/api/v1/accounts/:id/followers', [MastodonApiController::class, 'getFollowers']);
 $router->get('/api/v1/accounts/:id/following', [MastodonApiController::class, 'getFollowing']);
 
+// Solicitudes de seguimiento (Follow Requests)
+$router->get('/api/v1/follow_requests', [MastodonApiController::class, 'getFollowRequests']);
+$router->post('/api/v1/follow_requests/:id/authorize', [MastodonApiController::class, 'authorizeFollowRequest']);
+$router->post('/api/v1/follow_requests/:id/reject', [MastodonApiController::class, 'rejectFollowRequest']);
+
 // Marcadores (Bookmarks)
 $router->get('/api/v1/bookmarks', [MastodonApiController::class, 'getBookmarks']);
 
