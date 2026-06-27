@@ -66,43 +66,43 @@
 
                 <ul class="nav-menu">
                     <li class="nav-item">
-                        <a href="#" id="nav-public" class="nav-link active" onclick="switchTimeline('public')">
+                        <a href="/public" id="nav-public" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'public') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">public</span> Federación Pública
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" id="nav-home" class="nav-link" onclick="switchTimeline('home')">
+                        <a href="/home" id="nav-home" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">home</span> Timeline Local
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" id="nav-notifications" class="nav-link" onclick="showTab('notifications')">
+                        <a href="/notifications" id="nav-notifications" class="nav-link <?= ($section === 'notifications') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">notifications</span> Notificaciones
                             <span id="nav-notifications-count" class="notification-badge" style="display: none; background: var(--error, #ef4444); color: white; border-radius: 10px; padding: 2px 6px; font-size: 11px; font-weight: bold; margin-left: auto;">0</span>
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" id="nav-bookmarks" class="nav-link" onclick="switchTimeline('bookmarks')">
+                        <a href="/bookmarks" id="nav-bookmarks" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'bookmarks') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">bookmark_border</span> Marcadores
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" id="nav-lists" class="nav-link" onclick="showTab('lists')">
+                        <a href="/lists" id="nav-lists" class="nav-link <?= ($section === 'lists') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">list</span> Listas
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" id="nav-collections" class="nav-link" onclick="showTab('collections')">
+                        <a href="/collections" id="nav-collections" class="nav-link <?= ($section === 'collections') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">folder</span> Colecciones
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" id="nav-hashtags" class="nav-link" onclick="showTab('followed-hashtags')">
+                        <a href="/followed-hashtags" id="nav-hashtags" class="nav-link <?= ($section === 'followed-hashtags') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">tag</span> Hashtags Seguidos
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="#" id="nav-profile" class="nav-link" onclick="viewProfile(currentProfileData ? currentProfileData.id : null)">
+                        <a href="/profile" id="nav-profile" class="nav-link <?= ($section === 'profile') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">person</span> Mi Perfil
                         </a>
                     </li>
@@ -112,7 +112,7 @@
                         </a>
                     </li>
                     <li class="nav-item" id="nav-item-owner" style="display: none;">
-                        <a href="#" id="nav-owner-profile" class="nav-link" onclick="viewProfile(window.KUTSOCIAL_OWNER ? window.KUTSOCIAL_OWNER.id : null)">
+                        <a href="/@<?= htmlspecialchars($owner['username'] ?? '') ?>" id="nav-owner-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($owner['id'] ?? null)) ? 'active' : '' ?>">
                             <span class="material-icons-outlined">verified_user</span> Propietario
                         </a>
                     </li>
@@ -120,37 +120,19 @@
             </div>
 
             <!-- Perfil del usuario actual -->
-            <div class="user-profile-summary">
-                <img id="my-avatar" class="user-avatar" src="/assets/default-avatar.png" alt="Mi Avatar" style="cursor: pointer;" onclick="viewProfile(currentProfileData ? currentProfileData.id : null)">
-                <div class="user-info" style="cursor: pointer;" onclick="viewProfile(currentProfileData ? currentProfileData.id : null)">
+            <div class="user-profile-summary" style="cursor: pointer;" onclick="if(currentProfileData) window.location.href='/@' + currentProfileData.username;">
+                <img id="my-avatar" class="user-avatar" src="/assets/default-avatar.png" alt="Mi Avatar">
+                <div class="user-info">
                     <div id="my-display-name" class="user-name">Cargando...</div>
                     <div id="my-username" class="user-handle">@cargando</div>
                 </div>
-                <button class="btn-logout" title="Cerrar Sesión" onclick="logout()">✕</button>
+                <button class="btn-logout" title="Cerrar Sesión" onclick="event.stopPropagation(); logout()">✕</button>
             </div>
         </aside>
 
         <!-- Columna Central (Timeline) -->
         <main class="main-content">
-            <?php include __DIR__ . '/frontend/feed.php'; ?>
-
-            <?php include __DIR__ . '/frontend/notifications.php'; ?>
-
-            <?php include __DIR__ . '/frontend/profile.php'; ?>
-
-            <?php include __DIR__ . '/frontend/profile-view.php'; ?>
-
-            <?php include __DIR__ . '/frontend/lists.php'; ?>
-
-            <?php include __DIR__ . '/frontend/collections.php'; ?>
-
-            <?php include __DIR__ . '/frontend/followed-hashtags.php'; ?>
-
-            <?php include __DIR__ . '/frontend/users-list.php'; ?>
-
-            <?php include __DIR__ . '/frontend/search-results.php'; ?>
-
-            <?php include __DIR__ . '/frontend/thread-view.php'; ?>
+            <?php include __DIR__ . '/frontend/' . $section . '.php'; ?>
         </main>
 
         <!-- Columna Derecha (Instancia) -->

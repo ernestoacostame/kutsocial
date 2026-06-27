@@ -60,60 +60,90 @@ try {
 $router = new Router();
 
 $renderFrontend = function() {
+    $db = Database::connect();
+    
+    // Determinar la sección activa según la ruta
+    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+    $uri = rtrim($uri, '/');
+    if (empty($uri)) {
+        $uri = '/public';
+    }
+    
+    $section = 'feed';
+    $currentTimeline = 'public';
+    $activeProfileViewId = null;
+    $activeThreadId = null;
+    
+    if ($uri === '/public') {
+        $section = 'feed';
+        $currentTimeline = 'public';
+    } elseif ($uri === '/home') {
+        $section = 'feed';
+        $currentTimeline = 'home';
+    } elseif ($uri === '/bookmarks') {
+        $section = 'feed';
+        $currentTimeline = 'bookmarks';
+    } elseif ($uri === '/notifications') {
+        $section = 'notifications';
+    } elseif ($uri === '/lists') {
+        $section = 'lists';
+    } elseif ($uri === '/collections') {
+        $section = 'collections';
+    } elseif ($uri === '/followed-hashtags') {
+        $section = 'followed-hashtags';
+    } elseif ($uri === '/profile') {
+        $section = 'profile';
+    } elseif ($uri === '/search-results') {
+        $section = 'search-results';
+    } elseif (str_starts_with($uri, '/list_')) {
+        $section = 'feed';
+        $currentTimeline = substr($uri, 1); // e.g. list_3
+    } elseif (str_starts_with($uri, '/tag_')) {
+        $section = 'feed';
+        $currentTimeline = substr($uri, 1); // e.g. tag_linux
+    } elseif (str_starts_with($uri, '/@')) {
+        $section = 'profile-view';
+        $usernameWithAt = substr($uri, 2);
+        // Intentar resolver ID en DB local
+        $parts = explode('@', $usernameWithAt);
+        $uname = $parts[0];
+        $udomain = $parts[1] ?? null;
+        if ($udomain) {
+            $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+            $stmt->execute([$uname, $udomain]);
+        } else {
+            $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+            $stmt->execute([$uname]);
+        }
+        $activeProfileViewId = $stmt->fetchColumn() ?: null;
+    } elseif (str_contains($uri, '/statuses/')) {
+        $section = 'thread-view';
+        $parts = explode('/', $uri);
+        $activeThreadId = end($parts);
+    }
+
     $path = __DIR__ . '/src/views/frontend.html';
     if (file_exists($path)) {
-        $html = file_get_contents($path);
-        
-        // Migración automática local a vistas separadas si aún no se ha hecho
-        if (strpos($html, '<div id="tab-feed">') !== false) {
-            $startToken = '<div id="tab-feed">';
-            $endToken = '</main>';
-            $startPos = strpos($html, $startToken);
-            $endPos = strpos($html, $endToken);
-            if ($startPos !== false && $endPos !== false) {
-                $before = substr($html, 0, $startPos);
-                $after = substr($html, $endPos);
-                $includes = "
-            <?php include __DIR__ . '/frontend/feed.php'; ?>
-
-            <?php include __DIR__ . '/frontend/notifications.php'; ?>
-
-            <?php include __DIR__ . '/frontend/profile.php'; ?>
-
-            <?php include __DIR__ . '/frontend/profile-view.php'; ?>
-
-            <?php include __DIR__ . '/frontend/lists.php'; ?>
-
-            <?php include __DIR__ . '/frontend/collections.php'; ?>
-
-            <?php include __DIR__ . '/frontend/followed-hashtags.php'; ?>
-
-            <?php include __DIR__ . '/frontend/users-list.php'; ?>
-
-            <?php include __DIR__ . '/frontend/search-results.php'; ?>
-
-            <?php include __DIR__ . '/frontend/thread-view.php'; ?>
-                ";
-                $newContent = $before . $includes . "\n        " . $after;
-                file_put_contents($path, $newContent);
-            }
-        }
-
-        // Limpiar archivo temporal si existe
-        if (file_exists(__DIR__ . '/create_layout.php')) {
-            unlink(__DIR__ . '/create_layout.php');
-        }
-
         // Evaluar frontend.html como PHP (permite los includes de las vistas)
         ob_start();
         include $path;
         $html = ob_get_clean();
 
         $version = \KutSocial\Database::getVersion();
-        $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_VERSION = '{$version}';</script>", $html);
+        
+        // Inyectar variables globales en el head para el JS
+        $jsGlobals = "
+    <script>
+        window.KUTSOCIAL_VERSION = '{$version}';
+        window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
+        window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
+        window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
+        window.KUTSOCIAL_ACTIVE_THREAD_ID = " . ($activeThreadId ? "'$activeThreadId'" : "null") . ";
+    </script>
+        ";
+        $html = str_replace('<head>', "<head>\n" . $jsGlobals, $html);
+
         try {
-            $db = \KutSocial\Database::connect();
-            
             // Si el administrador está logueado en la sesión de backend, generamos un token automático para el frontend
             if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION['admin_account_id'])) {
                 $adminId = (int)$_SESSION['admin_account_id'];
@@ -298,6 +328,9 @@ $router->get('/lists', $renderFrontend);
 $router->get('/collections', $renderFrontend);
 $router->get('/followed-hashtags', $renderFrontend);
 $router->get('/profile', $renderFrontend);
+$router->get('/@:username', $renderFrontend);
+$router->get('/list_:id', $renderFrontend);
+$router->get('/tag_:tag', $renderFrontend);
 $router->get('/search-results', $renderFrontend);
 
 

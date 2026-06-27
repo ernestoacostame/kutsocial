@@ -251,7 +251,7 @@ async function resolveAndOpenProfile(username) {
 
 function handlePathRouting() {
     const path = window.location.pathname;
-    if (path === '/public' || path === '/home' || path === '/bookmarks') {
+    if (path === '/public' || path === '/home' || path === '/bookmarks' || path.startsWith('/list_') || path.startsWith('/tag_')) {
         const type = path.substring(1);
         switchTimeline(type, true);
         return true;
@@ -322,9 +322,33 @@ async function initApp() {
     // 2. Obtener estadísticas de instancia
     loadInstanceStats();
 
-    // 3. Cargar timeline inicial o enrutar por path
-    if (!handlePathRouting()) {
+    // 3. Cargar datos según la sección renderizada por el servidor
+    const activeSection = window.KUTSOCIAL_ACTIVE_SECTION || 'feed';
+    const currentTimelineVal = window.KUTSOCIAL_CURRENT_TIMELINE || 'public';
+    const activeProfileId = window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID;
+    const activeThreadId = window.KUTSOCIAL_ACTIVE_THREAD_ID;
+    
+    if (activeSection === 'feed') {
+        currentTimeline = currentTimelineVal;
         loadTimeline();
+    } else if (activeSection === 'notifications') {
+        loadNotifications();
+    } else if (activeSection === 'profile') {
+        loadProfileFormValues();
+    } else if (activeSection === 'profile-view') {
+        if (activeProfileId) {
+            viewProfile(activeProfileId, true);
+        }
+    } else if (activeSection === 'thread-view') {
+        if (activeThreadId) {
+            viewTootThread(activeThreadId, true);
+        }
+    } else if (activeSection === 'lists') {
+        loadLists();
+    } else if (activeSection === 'collections') {
+        loadCollections();
+    } else if (activeSection === 'followed-hashtags') {
+        loadFollowedHashtags();
     }
 
     // Cargar e iniciar badge de notificaciones
@@ -759,16 +783,16 @@ function createThreadTootElement(toot, isMain = false) {
     card.innerHTML = `
         ${reblogHeaderHTML}
         <div class="toot-card-body">
-            <img class="user-avatar clickable-actor" onclick="viewProfile('${toot.account.id}')" src="${proxyUrl(toot.account.avatar)}" alt="Avatar">
+            <a href="/@${toot.account.acct}"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
             <div style="flex-grow: 1; min-width: 0;">
                 <div class="toot-header">
-                    <div class="toot-author-details clickable-actor" onclick="viewProfile('${toot.account.id}')">
+                    <a href="/@${toot.account.acct}" class="toot-author-details clickable-actor" style="text-decoration: none; color: inherit;">
                         <span class="toot-author-name">${toot.account.display_name}</span>
                         <span class="toot-author-handle">@${toot.account.acct}</span>
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
-                    </div>
-                    <span class="toot-time clickable-actor" onclick="viewTootThread('${toot.id}')" title="Ver conversación">${dateStr}</span>
+                    </a>
+                    <a href="/users/${toot.account.username || 'iam'}/statuses/${toot.id}" class="toot-time clickable-actor" title="Ver conversación">${dateStr}</a>
                 </div>
                 ${contentHTML}
                 ${mediaHTML}
@@ -1262,7 +1286,13 @@ async function publishToot() {
 }
 
 function switchTimeline(type, fromHashChange = false) {
-    if (fromHashChange && currentTimeline === type && document.getElementById('tab-feed').style.display === 'block') {
+    const tabFeed = document.getElementById('tab-feed');
+    if (!tabFeed && !fromHashChange) {
+        window.location.href = '/' + type;
+        return;
+    }
+    
+    if (fromHashChange && currentTimeline === type && tabFeed && tabFeed.style.display === 'block') {
         return;
     }
     currentTimeline = type;
@@ -1273,16 +1303,23 @@ function switchTimeline(type, fromHashChange = false) {
     }
     
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
-    if (type === 'public') {
-        document.getElementById('nav-public').classList.add('active');
-    } else if (type === 'home') {
-        document.getElementById('nav-home').classList.add('active');
-    } else if (type === 'bookmarks') {
-        document.getElementById('nav-bookmarks').classList.add('active');
-    } else if (type.startsWith('list_')) {
-        document.getElementById('nav-lists').classList.add('active');
-    } else if (type.startsWith('tag_')) {
-        document.getElementById('nav-hashtags').classList.add('active');
+    
+    const navPub = document.getElementById('nav-public');
+    const navHome = document.getElementById('nav-home');
+    const navBook = document.getElementById('nav-bookmarks');
+    const navList = document.getElementById('nav-lists');
+    const navHash = document.getElementById('nav-hashtags');
+
+    if (type === 'public' && navPub) {
+        navPub.classList.add('active');
+    } else if (type === 'home' && navHome) {
+        navHome.classList.add('active');
+    } else if (type === 'bookmarks' && navBook) {
+        navBook.classList.add('active');
+    } else if (type.startsWith('list_') && navList) {
+        navList.classList.add('active');
+    } else if (type.startsWith('tag_') && navHash) {
+        navHash.classList.add('active');
     }
     lastId = 0;
     showTab('feed', fromHashChange);
@@ -1299,6 +1336,16 @@ function showTab(tabName, fromHashChange = false) {
     if (fromHashChange && tabElement && tabElement.style.display === 'block') {
         return;
     }
+    
+    if (!tabElement && !fromHashChange) {
+        let targetPath = '/public';
+        if (tabName !== 'feed' && tabName !== 'profile-view' && tabName !== 'thread-view') {
+            targetPath = '/' + tabName;
+        }
+        window.location.href = targetPath;
+        return;
+    }
+
     if (tabName !== 'feed' && tabName !== 'profile-view' && tabName !== 'thread-view') {
         const newPath = '/' + tabName;
         if (window.location.pathname !== newPath && !fromHashChange) {
@@ -1308,60 +1355,57 @@ function showTab(tabName, fromHashChange = false) {
 
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
     
-    document.getElementById('tab-feed').style.display = 'none';
-    document.getElementById('tab-profile').style.display = 'none';
-    document.getElementById('tab-profile-view').style.display = 'none';
-    document.getElementById('tab-thread-view').style.display = 'none';
-    document.getElementById('tab-notifications').style.display = 'none';
-    document.getElementById('tab-users-list').style.display = 'none';
-    document.getElementById('tab-search-results').style.display = 'none';
-    document.getElementById('tab-lists').style.display = 'none';
-    document.getElementById('tab-collections').style.display = 'none';
-    document.getElementById('tab-followed-hashtags').style.display = 'none';
+    const tabs = ['feed', 'profile', 'profile-view', 'thread-view', 'notifications', 'users-list', 'search-results', 'lists', 'collections', 'followed-hashtags'];
+    tabs.forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        if (el) el.style.display = 'none';
+    });
+
+    if (tabElement) {
+        tabElement.style.display = 'block';
+    }
 
     if (tabName === 'feed') {
-        document.getElementById('tab-feed').style.display = 'block';
-        if (currentTimeline === 'public') {
-            document.getElementById('nav-public').classList.add('active');
-        } else if (currentTimeline === 'home') {
-            document.getElementById('nav-home').classList.add('active');
-        } else if (currentTimeline === 'bookmarks') {
-            document.getElementById('nav-bookmarks').classList.add('active');
-        } else if (currentTimeline.startsWith('list_')) {
-            document.getElementById('nav-lists').classList.add('active');
-        } else if (currentTimeline.startsWith('tag_')) {
-            document.getElementById('nav-hashtags').classList.add('active');
-        }
+        const navPub = document.getElementById('nav-public');
+        const navHome = document.getElementById('nav-home');
+        const navBook = document.getElementById('nav-bookmarks');
+        const navList = document.getElementById('nav-lists');
+        const navHash = document.getElementById('nav-hashtags');
+        if (currentTimeline === 'public' && navPub) navPub.classList.add('active');
+        else if (currentTimeline === 'home' && navHome) navHome.classList.add('active');
+        else if (currentTimeline === 'bookmarks' && navBook) navBook.classList.add('active');
+        else if (currentTimeline.startsWith('list_') && navList) navList.classList.add('active');
+        else if (currentTimeline.startsWith('tag_') && navHash) navHash.classList.add('active');
     } else if (tabName === 'profile') {
-        document.getElementById('tab-profile').style.display = 'block';
-        document.getElementById('nav-profile').classList.add('active');
+        const navProf = document.getElementById('nav-profile');
+        if (navProf) navProf.classList.add('active');
         loadProfileFormValues();
     } else if (tabName === 'profile-view') {
-        document.getElementById('tab-profile-view').style.display = 'block';
-        if (activeProfileViewId === currentProfileData?.id) {
-            document.getElementById('nav-profile').classList.add('active');
+        const navProf = document.getElementById('nav-profile');
+        if (activeProfileViewId === currentProfileData?.id && navProf) {
+            navProf.classList.add('active');
         }
     } else if (tabName === 'thread-view') {
-        document.getElementById('tab-thread-view').style.display = 'block';
+        // Nada específico
     } else if (tabName === 'notifications') {
-        document.getElementById('tab-notifications').style.display = 'block';
-        document.getElementById('nav-notifications').classList.add('active');
+        const navNotif = document.getElementById('nav-notifications');
+        if (navNotif) navNotif.classList.add('active');
         loadNotifications();
     } else if (tabName === 'users-list') {
-        document.getElementById('tab-users-list').style.display = 'block';
+        // Nada específico
     } else if (tabName === 'search-results') {
-        document.getElementById('tab-search-results').style.display = 'block';
+        // Nada específico
     } else if (tabName === 'lists') {
-        document.getElementById('tab-lists').style.display = 'block';
-        document.getElementById('nav-lists').classList.add('active');
+        const navList = document.getElementById('nav-lists');
+        if (navList) navList.classList.add('active');
         loadLists();
     } else if (tabName === 'collections') {
-        document.getElementById('tab-collections').style.display = 'block';
-        document.getElementById('nav-collections').classList.add('active');
+        const navColl = document.getElementById('nav-collections');
+        if (navColl) navColl.classList.add('active');
         loadCollections();
     } else if (tabName === 'followed-hashtags') {
-        document.getElementById('tab-followed-hashtags').style.display = 'block';
-        document.getElementById('nav-hashtags').classList.add('active');
+        const navHash = document.getElementById('nav-hashtags');
+        if (navHash) navHash.classList.add('active');
         loadFollowedHashtags();
     }
 }
@@ -1585,6 +1629,10 @@ async function clearAllNotifications() {
 
 // Cargar valores de Perfil en el formulario de edición
 async function loadProfileFormValues() {
+    if (!document.getElementById('tab-profile')) {
+        window.location.href = '/profile';
+        return;
+    }
     if (!currentProfileData) {
         try {
             const res = await fetch('/api/v1/accounts/verify_credentials', {
@@ -1832,6 +1880,10 @@ async function viewProfileByUrl(profileUrl) {
 // ---------------------------
 async function viewProfile(accountId, fromHashChange = false) {
     if (!accountId) return;
+    if (!document.getElementById('tab-profile-view')) {
+        window.location.href = '/@id-' + accountId;
+        return;
+    }
     if (fromHashChange && activeProfileViewId === accountId && document.getElementById('tab-profile-view').style.display === 'block') {
         return;
     }
@@ -2187,6 +2239,10 @@ function formatStatNumber(num) {
 // ---------------------------
 async function viewTootThread(statusId, fromHashChange = false) {
     if (!statusId) return;
+    if (!document.getElementById('tab-thread-view')) {
+        window.location.href = `/users/iam/statuses/${statusId}`;
+        return;
+    }
     
     activeThreadId = statusId;
     const threadPath = `/users/iam/statuses/${statusId}`;
@@ -2817,6 +2873,10 @@ let selectedListId = null;
 let listActiveSubView = 'feed';
 
 async function loadLists() {
+    if (!document.getElementById('tab-lists')) {
+        window.location.href = '/lists';
+        return;
+    }
     try {
         const res = await fetch('/api/v1/lists', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -3028,6 +3088,10 @@ let allCollections = [];
 let selectedCollectionId = null;
 
 async function loadCollections() {
+    if (!document.getElementById('tab-collections')) {
+        window.location.href = '/collections';
+        return;
+    }
     try {
         const res = await fetch('/api/v1/collections', {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -3206,6 +3270,10 @@ async function saveCollectionModal() {
 let followedTags = [];
 
 async function loadFollowedHashtags() {
+    if (!document.getElementById('tab-followed-hashtags')) {
+        window.location.href = '/followed-hashtags';
+        return;
+    }
     const container = document.getElementById('followed-hashtags-container');
     container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--text-muted);">Cargando hashtags...</div>';
 

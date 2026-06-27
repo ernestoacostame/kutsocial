@@ -1456,12 +1456,8 @@ HTML;
      * Verifica de fondo si un enlace remoto enlaza de vuelta a este perfil con rel="me".
      */
     private static function verifyLinkRelation(string $url, string $username): bool {
-        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         
-        $profileUrl1 = "$proto://$domain/users/$username";
-        $profileUrl2 = "$proto://$domain/@$username";
-
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -1489,15 +1485,37 @@ HTML;
         foreach ($matches as $match) {
             $attrs = $match[2]; // Atributos de la etiqueta (ej: href="..." rel="me")
             
-            // Comprobar rel="me"
-            if (!preg_match('/\brel=["\'][^"\']*?\bme\b[^"\']*?["\']/i', $attrs) && !preg_match('/\brel=me\b/i', $attrs)) {
+            // Extraer valor de href
+            if (!preg_match('/href=["\']([^"\']+)["\']/i', $attrs, $hrefMatch)) {
                 continue;
             }
-
-            // Comprobar href
-            $escaped1 = preg_quote($profileUrl1, '/');
-            $escaped2 = preg_quote($profileUrl2, '/');
-            if (preg_match('/href=["\'](' . $escaped1 . '|' . $escaped2 . ')["\']/i', $attrs)) {
+            $href = html_entity_decode($hrefMatch[1]);
+            
+            // Extraer rel
+            $hasRelMe = false;
+            if (preg_match('/rel=["\']([^"\']+)["\']/i', $attrs, $relMatch)) {
+                $rels = array_map('trim', explode(' ', strtolower($relMatch[1])));
+                if (in_array('me', $rels)) {
+                    $hasRelMe = true;
+                }
+            } elseif (preg_match('/rel=me/i', $attrs)) {
+                $hasRelMe = true;
+            }
+            
+            if (!$hasRelMe) {
+                continue;
+            }
+            
+            // Normalizar y comprobar si coincide con el perfil local
+            $cleanHref = rtrim(strtolower($href), '/');
+            
+            $target1_http = rtrim(strtolower("http://$domain/users/$username"), '/');
+            $target1_https = rtrim(strtolower("https://$domain/users/$username"), '/');
+            $target2_http = rtrim(strtolower("http://$domain/@$username"), '/');
+            $target2_https = rtrim(strtolower("https://$domain/@$username"), '/');
+            
+            if ($cleanHref === $target1_http || $cleanHref === $target1_https || 
+                $cleanHref === $target2_http || $cleanHref === $target2_https) {
                 return true;
             }
         }
