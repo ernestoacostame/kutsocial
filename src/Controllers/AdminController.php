@@ -153,6 +153,7 @@ class AdminController {
         </head>
         <body>
             <div class="login-card">
+                <img src="/kutsocial_logo.svg" alt="Logo" style="width: 56px; height: 56px; margin: 0 auto 15px auto; display: block;">
                 <h2>KutSocial Admin</h2>
                 
                 {$errorHtml}
@@ -674,7 +675,10 @@ class AdminController {
         </head>
         <body>
             <nav class="navbar">
-                <div class="nav-logo">KutSocial Admin Panel</div>
+                <div class="nav-logo" style="display: flex; align-items: center; gap: 10px;">
+                    <img src="/kutsocial_logo.svg" alt="Logo" style="width: 28px; height: 28px;">
+                    <span>KutSocial Admin Panel</span>
+                </div>
                 <div class="nav-user">
                     <span style="font-size: 14.5px; font-weight: 600;">@{$admin['username']}</span>
                     <a href="/" class="btn-link">Ver Web</a>
