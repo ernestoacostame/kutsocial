@@ -42,6 +42,12 @@ case "$INPUT" in
   *)     NEW="$INPUT" ;;
 esac
 
+# --- Validar formato de versión ---
+if [[ ! "$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  echo "❌ Error: La versión '$NEW' no es válida. Debe tener el formato X.Y.Z o usar: patch, minor, major."
+  exit 1
+fi
+
 echo "🚀 Nueva versión: v$NEW"
 echo ""
 
