@@ -330,11 +330,8 @@ async function initApp() {
     
     if (activeSection === 'feed') {
         currentTimeline = currentTimelineVal;
+        showTab('feed', true);
         loadTimeline();
-    } else if (activeSection === 'notifications') {
-        loadNotifications();
-    } else if (activeSection === 'profile') {
-        loadProfileFormValues();
     } else if (activeSection === 'profile-view') {
         if (activeProfileId) {
             viewProfile(activeProfileId, true);
@@ -343,12 +340,8 @@ async function initApp() {
         if (activeThreadId) {
             viewTootThread(activeThreadId, true);
         }
-    } else if (activeSection === 'lists') {
-        loadLists();
-    } else if (activeSection === 'collections') {
-        loadCollections();
-    } else if (activeSection === 'followed-hashtags') {
-        loadFollowedHashtags();
+    } else {
+        showTab(activeSection, true);
     }
 
     // Cargar e iniciar badge de notificaciones
