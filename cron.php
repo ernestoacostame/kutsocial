@@ -29,7 +29,21 @@ try {
     exit("Fallo de base de datos en worker: " . $e->getMessage() . "\n");
 }
 
+// Mecanismo de bloqueo para evitar ejecuciones concurrentes de cron.php
+$lockFile = dirname(KUTSOCIAL_DB_PATH) . '/cron.lock';
+$lockFp = @fopen($lockFile, 'c');
+if (!$lockFp || !@flock($lockFp, LOCK_EX | LOCK_NB)) {
+    if (php_sapi_name() === 'cli') {
+        echo "El worker ya está ejecutándose en otro proceso.\n";
+    } else {
+        header("Content-Type: text/plain");
+        echo "OK: Worker ya en ejecución";
+    }
+    exit(0);
+}
+
 // Si es petición web, responder rápido y seguir procesando en segundo plano
+
 if (php_sapi_name() !== 'cli') {
     header("Content-Type: text/plain");
     echo "OK: Procesando cola en segundo plano";

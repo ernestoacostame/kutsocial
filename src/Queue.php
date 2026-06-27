@@ -151,8 +151,13 @@ class Queue {
                 $backoffSeconds = pow(3, $job['attempts'] + 1); // 9s, 27s, 81s, 243s...
                 $next = date('Y-m-d H:i:s', time() + $backoffSeconds);
 
-                $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
-                $failStmt->execute([$e->getMessage(), $next, $job['id']]);
+                try {
+                    $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
+                    $failStmt->execute([$e->getMessage(), $next, $job['id']]);
+                } catch (Exception $e2) {
+                    // Si falla incluso al marcar como fallido (ej. base de datos bloqueada temporalmente),
+                    // ignorar para que el worker no falle con un error fatal y pueda continuar en la siguiente ejecución.
+                }
             }
         }
 
