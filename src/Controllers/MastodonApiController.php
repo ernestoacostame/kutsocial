@@ -1981,6 +1981,13 @@ HTML;
                         $aspect = $height > 0 ? $width / $height : 1.0;
                     }
 
+                    // Cargar descripción de archivo si existe
+                    $descFile = $uploadsDir . "/media_" . $mId . ".txt";
+                    $description = null;
+                    if (file_exists($descFile)) {
+                        $description = trim(file_get_contents($descFile));
+                    }
+
                     $mediaAttachments[] = [
                         'id' => $mId,
                         'type' => 'image',
@@ -1997,7 +2004,7 @@ HTML;
                                 'aspect' => $aspect
                             ]
                         ],
-                        'description' => null,
+                        'description' => $description,
                         'blurhash' => 'L6PZfHnd.Txu_N%M_Mx]URt7bIWA'
                     ];
                 }
@@ -3461,6 +3468,12 @@ HTML;
             $aspect = $height > 0 ? $width / $height : 1.0;
         }
 
+        $description = trim($_POST['description'] ?? $_GET['description'] ?? '');
+        if (!empty($description)) {
+            $descFile = $uploadsDir . '/media_' . $mediaId . '.txt';
+            file_put_contents($descFile, $description);
+        }
+
         $attachment = [
             'id' => $mediaId,
             'type' => 'image',
@@ -3477,7 +3490,74 @@ HTML;
                     'aspect' => $aspect
                 ]
             ],
-            'description' => $_POST['description'] ?? null,
+            'description' => !empty($description) ? $description : null,
+            'blurhash' => 'L6PZfHnd.Txu_N%M_Mx]URt7bIWA'
+        ];
+
+        Router::json($attachment);
+    }
+
+    public static function updateMedia(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $mediaId = preg_replace('/[^a-zA-Z0-9]/', '', $params['id']);
+        $uploadsDir = dirname(Database::getDbPath()) . '/uploads';
+        
+        $matches = glob($uploadsDir . "/media_" . $mediaId . ".*");
+        if (empty($matches)) {
+            Router::json(['error' => 'Media not found'], 404);
+            return;
+        }
+
+        $filePath = $matches[0];
+        $filename = basename($filePath);
+
+        $body = Router::getRequestBody();
+        $description = trim($body['description'] ?? $_POST['description'] ?? $_GET['description'] ?? '');
+
+        $descFile = $uploadsDir . '/media_' . $mediaId . '.txt';
+        if (!empty($description)) {
+            file_put_contents($descFile, $description);
+        } else {
+            if (file_exists($descFile)) {
+                unlink($descFile);
+            }
+        }
+
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $fileUrl = "$proto://$domain/data/uploads/$filename";
+
+        $width = 600;
+        $height = 400;
+        $aspect = 1.5;
+        if ($size = @getimagesize($filePath)) {
+            $width = $size[0];
+            $height = $size[1];
+            $aspect = $height > 0 ? $width / $height : 1.0;
+        }
+
+        $attachment = [
+            'id' => $mediaId,
+            'type' => 'image',
+            'url' => $fileUrl,
+            'preview_url' => $fileUrl,
+            'remote_url' => null,
+            'text_url' => $fileUrl,
+            'meta' => [
+                'focus' => ['x' => 0.0, 'y' => 0.0],
+                'original' => [
+                    'width' => $width,
+                    'height' => $height,
+                    'size' => "{$width}x{$height}",
+                    'aspect' => $aspect
+                ]
+            ],
+            'description' => !empty($description) ? $description : null,
             'blurhash' => 'L6PZfHnd.Txu_N%M_Mx]URt7bIWA'
         ];
 
@@ -4689,5 +4769,149 @@ HTML;
         }
 
         Router::json($statuses);
+    }
+
+    public static function getFavourites(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("
+            SELECT s.*, 
+                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                   a.locked, a.discoverable, a.fields
+            FROM favourites f
+            JOIN statuses s ON f.status_id = s.id
+            JOIN accounts a ON s.account_id = a.id
+            WHERE f.account_id = ?
+            ORDER BY f.id DESC
+        ");
+        $stmt->execute([$account['id']]);
+        $rows = $stmt->fetchAll();
+
+        $statuses = [];
+        foreach ($rows as $row) {
+            $statuses[] = self::formatStatus($row, $account['id']);
+        }
+
+        Router::json($statuses);
+    }
+
+    public static function proxyMedia(): void {
+        $url = $_GET['url'] ?? '';
+        if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+            header("HTTP/1.1 400 Bad Request");
+            echo "URL inválida o ausente.";
+            return;
+        }
+
+        $cacheDir = dirname(Database::getDbPath()) . '/cache';
+        if (!is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0755, true);
+        }
+
+        $urlHash = md5($url);
+        $cachePath = $cacheDir . '/' . $urlHash;
+        $metaPath = $cachePath . '.meta';
+
+        $cachedMeta = [];
+        if (file_exists($metaPath)) {
+            $cachedMeta = json_decode(file_get_contents($metaPath), true) ?: [];
+        }
+
+        $etag = $cachedMeta['etag'] ?? null;
+        $lastModified = $cachedMeta['last_modified'] ?? null;
+        $contentType = $cachedMeta['content_type'] ?? 'image/jpeg';
+        $lastVerified = $cachedMeta['last_verified'] ?? 0;
+
+        $hasCache = file_exists($cachePath);
+        
+        // Cachear verificación durante 1 hora (3600 segundos) para optimización extrema
+        if ($hasCache && (time() - $lastVerified < 3600)) {
+            header("Content-Type: " . $contentType);
+            header("Cache-Control: public, max-age=86400");
+            readfile($cachePath);
+            return;
+        }
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+        curl_setopt($ch, CURLOPT_HEADER, true);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'KutSocialImageProxy/1.0');
+
+        $headers = [];
+        if ($hasCache) {
+            if ($etag) {
+                $headers[] = "If-None-Match: " . $etag;
+            }
+            if ($lastModified) {
+                $headers[] = "If-Modified-Since: " . $lastModified;
+            }
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        curl_close($ch);
+
+        if ($hasCache && ($httpCode == 304 || $response === false)) {
+            $cachedMeta['last_verified'] = time();
+            file_put_contents($metaPath, json_encode($cachedMeta));
+
+            header("Content-Type: " . $contentType);
+            header("Cache-Control: public, max-age=86400");
+            readfile($cachePath);
+            return;
+        }
+
+        if ($httpCode == 200 && $response !== false) {
+            $headerText = substr($response, 0, $headerSize);
+            $body = substr($response, $headerSize);
+
+            $newEtag = null;
+            $newLastMod = null;
+            $newType = 'image/jpeg';
+
+            $lines = explode("\r\n", $headerText);
+            foreach ($lines as $line) {
+                if (stripos($line, 'ETag:') === 0) {
+                    $newEtag = trim(substr($line, 5));
+                } elseif (stripos($line, 'Last-Modified:') === 0) {
+                    $newLastMod = trim(substr($line, 14));
+                } elseif (stripos($line, 'Content-Type:') === 0) {
+                    $newType = trim(substr($line, 13));
+                }
+            }
+
+            file_put_contents($cachePath, $body);
+            file_put_contents($metaPath, json_encode([
+                'etag' => $newEtag,
+                'last_modified' => $newLastMod,
+                'content_type' => $newType,
+                'last_verified' => time()
+            ]));
+
+            header("Content-Type: " . $newType);
+            header("Cache-Control: public, max-age=86400");
+            echo $body;
+            return;
+        }
+
+        if ($hasCache) {
+            header("Content-Type: " . $contentType);
+            header("Cache-Control: public, max-age=86400");
+            readfile($cachePath);
+        } else {
+            header("Location: " . $url);
+        }
     }
 }

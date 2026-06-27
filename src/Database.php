@@ -346,6 +346,16 @@ class Database {
                 "ALTER TABLE accounts ADD COLUMN smtp_from TEXT NULL",
                 "ALTER TABLE accounts ADD COLUMN email_notifications INTEGER DEFAULT 0",
                 "ALTER TABLE accounts ADD COLUMN attribution_domains TEXT NULL"
+            ],
+            13 => [
+                "CREATE INDEX IF NOT EXISTS idx_statuses_account_id ON statuses(account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_statuses_in_reply_to_id ON statuses(in_reply_to_id)",
+                "CREATE INDEX IF NOT EXISTS idx_follows_account_id ON follows(account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_follows_target_account_id ON follows(target_account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_favourites_status_id ON favourites(status_id)",
+                "CREATE INDEX IF NOT EXISTS idx_favourites_account_id ON favourites(account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_bookmarks_account_id ON bookmarks(account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_bookmarks_status_id ON bookmarks(status_id)"
             ]
         ];
     }

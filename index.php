@@ -82,6 +82,8 @@ $router->post('/api/v1/follow_requests/:id/reject', [MastodonApiController::clas
 
 // Marcadores (Bookmarks)
 $router->get('/api/v1/bookmarks', [MastodonApiController::class, 'getBookmarks']);
+$router->get('/api/v1/favourites', [MastodonApiController::class, 'getFavourites']);
+$router->get('/api/proxy', [MastodonApiController::class, 'proxyMedia']);
 
 // Notificaciones con fallback
 $router->get('/api/v1/notifications', [MastodonApiController::class, 'getNotifications']);
@@ -114,6 +116,8 @@ $router->get('/api/v1/streaming', [MastodonApiController::class, 'getStreaming']
 // Carga Real de Multimedia (Mastodon compatible)
 $router->post('/api/v1/media', [MastodonApiController::class, 'uploadMedia']);
 $router->post('/api/v2/media', [MastodonApiController::class, 'uploadMedia']);
+$router->put('/api/v1/media/:id', [MastodonApiController::class, 'updateMedia']);
+$router->post('/api/v1/media/:id', [MastodonApiController::class, 'updateMedia']);
 
 // Encuestas Reales (Mastodon compatible)
 $router->post('/api/v1/polls/:id/votes', [MastodonApiController::class, 'votePoll']);

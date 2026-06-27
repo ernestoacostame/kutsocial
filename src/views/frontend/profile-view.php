@@ -31,7 +31,7 @@
                     <span id="profile-view-mutual-badge" style="display: none; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: var(--secondary); font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600; align-items: center; gap: 4px;">
                         <span class="material-icons-outlined" style="font-size: 12px; vertical-align: middle;">compare_arrows</span> Mutuo
                     </span>
-                    <span style="color: var(--text-muted); cursor: pointer; font-size: 13px;" title="Información del perfil">ⓘ</span>
+                    <span style="color: var(--text-muted); cursor: pointer; font-size: 13px;" title="Información del perfil" onclick="showProfileTechnicalInfo(event)">ⓘ</span>
                 </div>
             </div>
 
@@ -69,6 +69,7 @@
         <div style="display: flex; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.1);">
             <button id="profile-subtab-activity" class="subtab-btn active" onclick="switchProfileSubtab('activity')">Actividad</button>
             <button id="profile-subtab-media" class="subtab-btn" onclick="switchProfileSubtab('media')">Multimedia</button>
+            <button id="profile-subtab-favourites" class="subtab-btn" onclick="switchProfileSubtab('favourites')" style="display: none;">Favoritos</button>
         </div>
 
         <div id="profile-feed" class="feed-container" style="padding: 15px 0;"></div>
