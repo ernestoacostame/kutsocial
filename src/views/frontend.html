@@ -1023,6 +1023,118 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+
+        /* Modales Generales */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+        .modal-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 440px;
+            padding: 20px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .modal-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin: 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .modal-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            color: var(--text-color);
+            font-size: 14px;
+        }
+        .modal-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+        .modal-btn-cancel {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .modal-btn-confirm {
+            background: var(--primary);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        .list-nav-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 10px 12px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            border-radius: 8px;
+            cursor: pointer;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .list-nav-btn:hover, .list-nav-btn.active {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-color);
+        }
+        .list-nav-btn.active {
+            border-left: 3px solid var(--primary);
+            border-radius: 0 8px 8px 0;
+            padding-left: 9px;
+        }
+        .tag-follow-card {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s;
+        }
+        .tag-follow-card:hover {
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.04);
+        }
     </style>
 </head>
 <body>
@@ -1080,6 +1192,21 @@
                     <li class="nav-item">
                         <a href="#" id="nav-bookmarks" class="nav-link" onclick="switchTimeline('bookmarks')">
                             <span class="material-icons-outlined">bookmark_border</span> Marcadores
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" id="nav-lists" class="nav-link" onclick="showTab('lists')">
+                            <span class="material-icons-outlined">list</span> Listas
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" id="nav-collections" class="nav-link" onclick="showTab('collections')">
+                            <span class="material-icons-outlined">folder</span> Colecciones
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="#" id="nav-hashtags" class="nav-link" onclick="showTab('followed-hashtags')">
+                            <span class="material-icons-outlined">tag</span> Hashtags Seguidos
                         </a>
                     </li>
                     <li class="nav-item">
@@ -1369,6 +1496,7 @@
                     <!-- Datos del Perfil -->
                     <div class="profile-info-container" style="padding: 20px;">
                         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: -10px; margin-bottom: 15px;">
+                            <button id="profile-view-manage-lists-btn" class="btn-publish" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); font-size: 14px; padding: 6px 16px; border-radius: 20px; cursor: pointer; display: none; transition: all 0.2s;" onclick="openManageListsModal()">Organizar</button>
                             <button id="profile-view-action-btn" class="btn-publish" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); font-size: 14px; padding: 6px 16px; border-radius: 20px; cursor: pointer; transition: all 0.2s;">Editar perfil</button>
                         </div>
 
@@ -1420,6 +1548,89 @@
                     </div>
 
                     <div id="profile-feed" class="feed-container" style="padding: 15px 0;"></div>
+                </div>
+            </div>
+
+            <!-- Pestaña de Listas -->
+            <div id="tab-lists" style="display: none;" class="composer-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 20px;">
+                    <h2 style="font-size: 18px; margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <span class="material-icons-outlined" style="color: var(--primary);">list</span> Mis Listas
+                    </h2>
+                    <button onclick="showCreateListModal()" class="btn-publish" style="width: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0; box-shadow: none;">+ Nueva Lista</button>
+                </div>
+                <div id="lists-layout" style="display: grid; grid-template-columns: 200px 1fr; gap: 20px;">
+                    <div id="lists-sidebar" style="border-right: 1px solid var(--border-color); padding-right: 15px; display: flex; flex-direction: column; gap: 8px; min-height: 200px;">
+                        <!-- Se llena vía JS -->
+                    </div>
+                    <div id="list-content-area">
+                        <div id="list-no-selection" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            Selecciona o crea una lista para ver sus miembros y publicaciones.
+                        </div>
+                        <div id="list-detail-view" style="display: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px dashed var(--border-color); padding-bottom: 10px;">
+                                <h3 id="selected-list-title" style="font-size: 18px; margin: 0; color: var(--primary);"></h3>
+                                <div style="display: flex; gap: 8px;">
+                                    <button id="btn-list-timeline" class="btn-publish" style="padding: 4px 10px; font-size: 12px; margin: 0; background: var(--primary);" onclick="loadListTimelineView()">Feed</button>
+                                    <button id="btn-list-members" class="btn-publish" style="padding: 4px 10px; font-size: 12px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color);" onclick="loadListMembersView()">Miembros</button>
+                                    <button id="btn-delete-list" class="btn-publish" style="padding: 4px 10px; font-size: 12px; margin: 0; background: var(--error); border: none;" onclick="deleteSelectedList()">Eliminar</button>
+                                </div>
+                            </div>
+                            <div id="list-members-container" style="display: none; flex-direction: column; gap: 10px; margin-bottom: 20px;">
+                                <!-- Miembros de la lista -->
+                            </div>
+                            <div id="list-feed-container" class="feed-container">
+                                <!-- Feed de la lista -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña de Colecciones -->
+            <div id="tab-collections" style="display: none;" class="composer-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 20px;">
+                    <h2 style="font-size: 18px; margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <span class="material-icons-outlined" style="color: var(--primary);">folder</span> Mis Colecciones Públicas
+                    </h2>
+                    <button onclick="showCreateCollectionModal()" class="btn-publish" style="width: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0; box-shadow: none;">+ Nueva Colección</button>
+                </div>
+                <div id="collections-layout" style="display: grid; grid-template-columns: 200px 1fr; gap: 20px;">
+                    <div id="collections-sidebar" style="border-right: 1px solid var(--border-color); padding-right: 15px; display: flex; flex-direction: column; gap: 8px; min-height: 200px;">
+                        <!-- Se llena vía JS -->
+                    </div>
+                    <div id="collection-content-area">
+                        <div id="collection-no-selection" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                            Selecciona o crea una colección para ver sus cuentas asociadas.
+                        </div>
+                        <div id="collection-detail-view" style="display: none;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <h3 id="selected-collection-title" style="font-size: 18px; margin: 0; color: var(--primary);"></h3>
+                                <button id="btn-delete-collection" class="btn-publish" style="padding: 4px 10px; font-size: 12px; margin: 0; background: var(--error); border: none;" onclick="deleteSelectedCollection()">Eliminar</button>
+                            </div>
+                            <p id="selected-collection-desc" style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;"></p>
+                            <h4 style="font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; font-weight: bold; letter-spacing: 0.5px;">Cuentas Curadas</h4>
+                            <div id="collection-accounts-container" style="display: flex; flex-direction: column; gap: 10px;">
+                                <!-- Cuentas de la colección -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pestaña de Hashtags Seguidos -->
+            <div id="tab-followed-hashtags" style="display: none;" class="composer-card">
+                <div style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+                    <h2 style="font-size: 18px; margin: 0; display: flex; align-items: center; gap: 8px;">
+                        <span class="material-icons-outlined" style="color: var(--primary);">tag</span> Hashtags Seguidos
+                    </h2>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="text" id="hashtag-follow-input" placeholder="Ej: php" style="border: 1px solid var(--border-color); border-radius: 8px; padding: 4px 12px; background: rgba(0,0,0,0.2); color: var(--text-color); font-size: 14px; width: 140px;">
+                        <button onclick="followHashtagFromInput()" class="btn-publish" style="width: auto; padding: 4px 12px; font-size: 13px; margin: 0;">Seguir</button>
+                    </div>
+                </div>
+                <div id="followed-hashtags-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;">
+                    <!-- Se llena vía JS -->
                 </div>
             </div>
 
@@ -1493,6 +1704,72 @@
             </div>
         </aside>
 
+    </div>
+
+    <!-- Modal: Crear/Editar Lista -->
+    <div id="modal-manage-list" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <h3 class="modal-title">
+                <span class="material-icons-outlined" style="color: var(--primary);">list</span>
+                <span id="list-modal-title">Nueva Lista</span>
+            </h3>
+            <input type="text" id="list-modal-input-title" class="modal-input" placeholder="Nombre de la lista (ej: Tecnología)">
+            <div class="modal-actions">
+                <button onclick="closeListModal()" class="modal-btn-cancel">Cancelar</button>
+                <button onclick="saveListModal()" class="modal-btn-confirm">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Crear/Editar Colección -->
+    <div id="modal-manage-collection" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <h3 class="modal-title">
+                <span class="material-icons-outlined" style="color: var(--primary);">folder</span>
+                <span id="collection-modal-title">Nueva Colección</span>
+            </h3>
+            <input type="text" id="collection-modal-input-title" class="modal-input" placeholder="Nombre (ej: Fotógrafos)">
+            <textarea id="collection-modal-input-desc" class="modal-input" placeholder="Descripción de la colección..." style="resize: vertical; min-height: 80px;"></textarea>
+            <div class="modal-actions">
+                <button onclick="closeCollectionModal()" class="modal-btn-cancel">Cancelar</button>
+                <button onclick="saveCollectionModal()" class="modal-btn-confirm">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Organizar cuenta en Listas / Colecciones -->
+    <div id="modal-organize-account" class="modal-overlay" style="display: none;">
+        <div class="modal-card" style="max-width: 480px;">
+            <h3 class="modal-title" style="border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 10px;">
+                <span class="material-icons-outlined" style="color: var(--primary);">bookmark_border</span>
+                <span>Organizar Cuenta</span>
+            </h3>
+            <div style="font-size: 13px; color: var(--text-muted); margin-bottom: 10px;">
+                Asocia a <strong id="organize-account-handle" style="color: var(--text-color);"></strong> en tus grupos personalizados:
+            </div>
+            
+            <div style="max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; padding-right: 5px;">
+                <!-- Sección de Listas -->
+                <div>
+                    <h4 style="font-size: 13px; font-weight: bold; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Listas (Privadas)</h4>
+                    <div id="organize-lists-checkboxes" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Se llena vía JS -->
+                    </div>
+                </div>
+                
+                <!-- Sección de Colecciones -->
+                <div>
+                    <h4 style="font-size: 13px; font-weight: bold; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;">Colecciones (Públicas)</h4>
+                    <div id="organize-collections-checkboxes" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- Se llena vía JS -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions" style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <button onclick="closeOrganizeModal()" class="modal-btn-confirm" style="width: 100%;">Listo</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -1712,9 +1989,18 @@
             const feed = document.getElementById('feed');
             feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
 
-            const url = currentTimeline === 'home' 
-                ? '/api/v1/timelines/home' 
-                : (currentTimeline === 'bookmarks' ? '/api/v1/bookmarks' : '/api/v1/timelines/public');
+            let url = '/api/v1/timelines/public';
+            if (currentTimeline === 'home') {
+                url = '/api/v1/timelines/home';
+            } else if (currentTimeline === 'bookmarks') {
+                url = '/api/v1/bookmarks';
+            } else if (currentTimeline.startsWith('list_')) {
+                const listId = currentTimeline.split('_')[1];
+                url = `/api/v1/timelines/list/${listId}`;
+            } else if (currentTimeline.startsWith('tag_')) {
+                const tagName = currentTimeline.split('_')[1];
+                url = `/api/v1/timelines/tag/${tagName}`;
+            }
             try {
                 const res = await fetch(url, {
                     headers: { 'Authorization': `Bearer ${token}` }
@@ -2189,6 +2475,10 @@
                 document.getElementById('nav-home').classList.add('active');
             } else if (type === 'bookmarks') {
                 document.getElementById('nav-bookmarks').classList.add('active');
+            } else if (type.startsWith('list_')) {
+                document.getElementById('nav-lists').classList.add('active');
+            } else if (type.startsWith('tag_')) {
+                document.getElementById('nav-hashtags').classList.add('active');
             }
             lastId = 0;
             showTab('feed');
@@ -2210,6 +2500,9 @@
             document.getElementById('tab-notifications').style.display = 'none';
             document.getElementById('tab-users-list').style.display = 'none';
             document.getElementById('tab-search-results').style.display = 'none';
+            document.getElementById('tab-lists').style.display = 'none';
+            document.getElementById('tab-collections').style.display = 'none';
+            document.getElementById('tab-followed-hashtags').style.display = 'none';
  
             if (tabName === 'feed') {
                 document.getElementById('tab-feed').style.display = 'block';
@@ -2219,6 +2512,10 @@
                     document.getElementById('nav-home').classList.add('active');
                 } else if (currentTimeline === 'bookmarks') {
                     document.getElementById('nav-bookmarks').classList.add('active');
+                } else if (currentTimeline.startsWith('list_')) {
+                    document.getElementById('nav-lists').classList.add('active');
+                } else if (currentTimeline.startsWith('tag_')) {
+                    document.getElementById('nav-hashtags').classList.add('active');
                 }
             } else if (tabName === 'profile') {
                 document.getElementById('tab-profile').style.display = 'block';
@@ -2239,6 +2536,18 @@
                 document.getElementById('tab-users-list').style.display = 'block';
             } else if (tabName === 'search-results') {
                 document.getElementById('tab-search-results').style.display = 'block';
+            } else if (tabName === 'lists') {
+                document.getElementById('tab-lists').style.display = 'block';
+                document.getElementById('nav-lists').classList.add('active');
+                loadLists();
+            } else if (tabName === 'collections') {
+                document.getElementById('tab-collections').style.display = 'block';
+                document.getElementById('nav-collections').classList.add('active');
+                loadCollections();
+            } else if (tabName === 'followed-hashtags') {
+                document.getElementById('tab-followed-hashtags').style.display = 'block';
+                document.getElementById('nav-hashtags').classList.add('active');
+                loadFollowedHashtags();
             }
         }
  
@@ -2734,10 +3043,12 @@
                     actionBtn.innerText = 'Seguir';
                     actionBtn.style.background = 'var(--primary)';
                     actionBtn.onclick = () => showLoginModal();
+                    document.getElementById('profile-view-manage-lists-btn').style.display = 'none';
                 } else if (currentProfileData && String(account.id) === String(currentProfileData.id)) {
                     actionBtn.innerText = 'Editar perfil';
                     actionBtn.style.background = 'rgba(255,255,255,0.06)';
                     actionBtn.onclick = () => showTab('profile');
+                    document.getElementById('profile-view-manage-lists-btn').style.display = 'none';
                     
                     document.getElementById('profile-view-badge').innerHTML = '⚙️';
                     document.getElementById('profile-view-role-text').innerText = 'Owner (' + window.location.hostname + ')';
@@ -2746,6 +3057,7 @@
                     actionBtn.innerText = 'Consultando...';
                     actionBtn.style.background = 'var(--primary)';
                     actionBtn.onclick = null;
+                    document.getElementById('profile-view-manage-lists-btn').style.display = 'inline-block';
 
                     const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${account.id}`, {
                         headers: { 'Authorization': `Bearer ${token}` }
@@ -3416,6 +3728,634 @@
             }
         }
 
+        function escapeJSString(str) {
+            if (!str) return '';
+            let text = str.replace(/<p>/g, '').replace(/<\/p>/g, '').replace(/<br\s*\/?>/g, '\n');
+            return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+        }
+
+        // ==========================================
+        // --- GESTIÓN DE LISTAS (LISTS JS) ---
+        // ==========================================
+        let allLists = [];
+        let selectedListId = null;
+        let listActiveSubView = 'feed';
+
+        async function loadLists() {
+            try {
+                const res = await fetch('/api/v1/lists', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error("Error cargando listas");
+                allLists = await res.json();
+                renderListsSidebar();
+                
+                if (allLists.length > 0) {
+                    if (selectedListId && allLists.some(l => l.id === selectedListId)) {
+                        selectList(selectedListId);
+                    } else {
+                        selectList(allLists[0].id);
+                    }
+                } else {
+                    document.getElementById('list-no-selection').style.display = 'block';
+                    document.getElementById('list-detail-view').style.display = 'none';
+                    selectedListId = null;
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function renderListsSidebar() {
+            const sidebar = document.getElementById('lists-sidebar');
+            sidebar.innerHTML = '';
+            allLists.forEach(l => {
+                const btn = document.createElement('button');
+                btn.className = 'list-nav-btn' + (selectedListId === l.id ? ' active' : '');
+                btn.onclick = () => selectList(l.id);
+                btn.innerHTML = `
+                    <span>📋 ${escapeHTML(l.title)}</span>
+                    <span class="material-icons-outlined" style="font-size: 14px; opacity: 0.5;">chevron_right</span>
+                `;
+                sidebar.appendChild(btn);
+            });
+        }
+
+        async function selectList(id) {
+            selectedListId = id;
+            listActiveSubView = 'feed';
+            document.querySelectorAll('#lists-sidebar .list-nav-btn').forEach((btn, idx) => {
+                if (allLists[idx] && allLists[idx].id === id) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            const list = allLists.find(l => l.id === id);
+            if (!list) return;
+
+            document.getElementById('list-no-selection').style.display = 'none';
+            document.getElementById('list-detail-view').style.display = 'block';
+            document.getElementById('selected-list-title').innerText = list.title;
+            
+            loadListTimelineView();
+        }
+
+        function loadListTimelineView() {
+            listActiveSubView = 'feed';
+            document.getElementById('btn-list-timeline').style.background = 'var(--primary)';
+            document.getElementById('btn-list-members').style.background = 'rgba(255,255,255,0.06)';
+            
+            document.getElementById('list-members-container').style.display = 'none';
+            const feedContainer = document.getElementById('list-feed-container');
+            feedContainer.style.display = 'block';
+            feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando publicaciones de la lista...</div>';
+
+            fetch(`/api/v1/timelines/list/${selectedListId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(res => res.json())
+            .then(toots => {
+                feedContainer.innerHTML = '';
+                if (toots.length === 0) {
+                    feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No hay publicaciones de miembros de esta lista.</div>';
+                    return;
+                }
+                toots.forEach(toot => {
+                    const card = createThreadTootElement(toot, false);
+                    feedContainer.appendChild(card);
+                });
+            })
+            .catch(e => {
+                feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar timeline de la lista.</div>';
+            });
+        }
+
+        function loadListMembersView() {
+            listActiveSubView = 'members';
+            document.getElementById('btn-list-timeline').style.background = 'rgba(255,255,255,0.06)';
+            document.getElementById('btn-list-members').style.background = 'var(--primary)';
+            
+            document.getElementById('list-feed-container').style.display = 'none';
+            const membersContainer = document.getElementById('list-members-container');
+            membersContainer.style.display = 'flex';
+            membersContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando miembros...</div>';
+
+            fetch(`/api/v1/lists/${selectedListId}/accounts`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(res => res.json())
+            .then(accounts => {
+                membersContainer.innerHTML = '';
+                if (accounts.length === 0) {
+                    membersContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Esta lista está vacía. Añade miembros desde sus perfiles.</div>';
+                    return;
+                }
+                accounts.forEach(acc => {
+                    const div = document.createElement('div');
+                    div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; background: rgba(255,255,255,0.02);";
+                    div.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 10px; cursor: pointer;" onclick="viewProfile('${acc.id}')">
+                            <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                            <div>
+                                <div style="font-weight:600; font-size:14px; color:var(--text-color);">${escapeHTML(acc.display_name || acc.username)}</div>
+                                <div style="font-size:12px; color:var(--text-muted);">@${escapeHTML(acc.acct)}</div>
+                            </div>
+                        </div>
+                        <button class="btn-publish" style="width:auto; padding: 4px 10px; font-size: 11px; margin: 0; background: var(--error);" onclick="removeFromList('${acc.id}', this)">Eliminar</button>
+                    `;
+                    membersContainer.appendChild(div);
+                });
+            })
+            .catch(e => {
+                membersContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar miembros de la lista.</div>';
+            });
+        }
+
+        async function removeFromList(accountId, btn) {
+            btn.innerText = 'Quitando...';
+            try {
+                const res = await fetch(`/api/v1/lists/${selectedListId}/accounts`, {
+                    method: 'DELETE',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ account_ids: [accountId] })
+                });
+                if (res.ok) {
+                    loadListMembersView();
+                } else {
+                    btn.innerText = 'Eliminar';
+                }
+            } catch (e) {
+                btn.innerText = 'Eliminar';
+            }
+        }
+
+        async function deleteSelectedList() {
+            if (!confirm('¿Seguro que deseas eliminar esta lista?')) return;
+            try {
+                const res = await fetch(`/api/v1/lists/${selectedListId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    selectedListId = null;
+                    loadLists();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function showCreateListModal() {
+            document.getElementById('list-modal-title').innerText = 'Nueva Lista';
+            document.getElementById('list-modal-input-title').value = '';
+            document.getElementById('modal-manage-list').style.display = 'flex';
+        }
+
+        function closeListModal() {
+            document.getElementById('modal-manage-list').style.display = 'none';
+        }
+
+        async function saveListModal() {
+            const title = document.getElementById('list-modal-input-title').value.trim();
+            if (!title) return alert('El nombre de la lista es requerido');
+            
+            try {
+                const res = await fetch('/api/v1/lists', {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ title: title, replies_policy: 'followed' })
+                });
+                if (res.ok) {
+                    const newList = await res.json();
+                    selectedListId = newList.id;
+                    closeListModal();
+                    loadLists();
+                } else {
+                    alert('Error al crear la lista');
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        }
+
+        // ==========================================
+        // --- GESTIÓN DE COLECCIONES (COLLECTIONS JS) ---
+        // ==========================================
+        let allCollections = [];
+        let selectedCollectionId = null;
+
+        async function loadCollections() {
+            try {
+                const res = await fetch('/api/v1/collections', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error("Error cargando colecciones");
+                const data = await res.json();
+                allCollections = data.items || [];
+                renderCollectionsSidebar();
+                
+                if (allCollections.length > 0) {
+                    if (selectedCollectionId && allCollections.some(c => c.id === selectedCollectionId)) {
+                        selectCollection(selectedCollectionId);
+                    } else {
+                        selectCollection(allCollections[0].id);
+                    }
+                } else {
+                    document.getElementById('collection-no-selection').style.display = 'block';
+                    document.getElementById('collection-detail-view').style.display = 'none';
+                    selectedCollectionId = null;
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        function renderCollectionsSidebar() {
+            const sidebar = document.getElementById('collections-sidebar');
+            sidebar.innerHTML = '';
+            allCollections.forEach(c => {
+                const btn = document.createElement('button');
+                btn.className = 'list-nav-btn' + (selectedCollectionId === c.id ? ' active' : '');
+                btn.onclick = () => selectCollection(c.id);
+                btn.innerHTML = `
+                    <span>📁 ${escapeHTML(c.title || c.name)}</span>
+                    <span class="material-icons-outlined" style="font-size: 14px; opacity: 0.5;">chevron_right</span>
+                `;
+                sidebar.appendChild(btn);
+            });
+        }
+
+        async function selectCollection(id) {
+            selectedCollectionId = id;
+            document.querySelectorAll('#collections-sidebar .list-nav-btn').forEach((btn, idx) => {
+                if (allCollections[idx] && allCollections[idx].id === id) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+
+            const collection = allCollections.find(c => c.id === id);
+            if (!collection) return;
+
+            document.getElementById('collection-no-selection').style.display = 'none';
+            document.getElementById('collection-detail-view').style.display = 'block';
+            document.getElementById('selected-collection-title').innerText = collection.title || collection.name;
+            document.getElementById('selected-collection-desc').innerText = collection.description || 'Sin descripción';
+            
+            loadCollectionAccounts();
+        }
+
+        function loadCollectionAccounts() {
+            const container = document.getElementById('collection-accounts-container');
+            container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando cuentas...</div>';
+
+            fetch(`/api/v1/collections/${selectedCollectionId}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+            .then(res => res.json())
+            .then(data => {
+                container.innerHTML = '';
+                const accounts = data.items || data.accounts || [];
+                if (accounts.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Esta colección está vacía. Añade cuentas desde sus perfiles.</div>';
+                    return;
+                }
+                accounts.forEach(acc => {
+                    const div = document.createElement('div');
+                    div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; background: rgba(255,255,255,0.02);";
+                    div.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 10px; cursor: pointer;" onclick="viewProfile('${acc.id}')">
+                            <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
+                            <div>
+                                <div style="font-weight:600; font-size:14px; color:var(--text-color);">${escapeHTML(acc.display_name || acc.username)}</div>
+                                <div style="font-size:12px; color:var(--text-muted);">@${escapeHTML(acc.acct)}</div>
+                            </div>
+                        </div>
+                        <button class="btn-publish" style="width:auto; padding: 4px 10px; font-size: 11px; margin: 0; background: var(--error);" onclick="removeFromCollection('${acc.id}', this)">Eliminar</button>
+                    `;
+                    container.appendChild(div);
+                });
+            })
+            .catch(e => {
+                container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar cuentas de la colección.</div>';
+            });
+        }
+
+        async function removeFromCollection(accountId, btn) {
+            btn.innerText = 'Quitando...';
+            try {
+                const res = await fetch(`/api/v1/collections/${selectedCollectionId}/items`, {
+                    method: 'DELETE',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ account_ids: [accountId] })
+                });
+                if (res.ok) {
+                    loadCollectionAccounts();
+                } else {
+                    btn.innerText = 'Eliminar';
+                }
+            } catch (e) {
+                btn.innerText = 'Eliminar';
+            }
+        }
+
+        async function deleteSelectedCollection() {
+            if (!confirm('¿Seguro que deseas eliminar esta colección?')) return;
+            try {
+                const res = await fetch(`/api/v1/collections/${selectedCollectionId}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    selectedCollectionId = null;
+                    loadCollections();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function showCreateCollectionModal() {
+            document.getElementById('collection-modal-title').innerText = 'Nueva Colección';
+            document.getElementById('collection-modal-input-title').value = '';
+            document.getElementById('collection-modal-input-desc').value = '';
+            document.getElementById('modal-manage-collection').style.display = 'flex';
+        }
+
+        function closeCollectionModal() {
+            document.getElementById('modal-manage-collection').style.display = 'none';
+        }
+
+        async function saveCollectionModal() {
+            const title = document.getElementById('collection-modal-input-title').value.trim();
+            const desc = document.getElementById('collection-modal-input-desc').value.trim();
+            if (!title) return alert('El nombre de la colección es requerido');
+            
+            try {
+                const res = await fetch('/api/v1/collections', {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ title: title, description: desc })
+                });
+                if (res.ok) {
+                    const newColl = await res.json();
+                    selectedCollectionId = newColl.id;
+                    closeCollectionModal();
+                    loadCollections();
+                } else {
+                    alert('Error al crear la colección');
+                }
+            } catch (e) {
+                alert('Error de conexión');
+            }
+        }
+
+        // ==========================================
+        // --- HASHTAGS SEGUIDOS (FOLLOWED HASHTAGS JS) ---
+        // ==========================================
+        let followedTags = [];
+
+        async function loadFollowedHashtags() {
+            const container = document.getElementById('followed-hashtags-container');
+            container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--text-muted);">Cargando hashtags...</div>';
+
+            try {
+                const res = await fetch('/api/v1/followed_tags', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (!res.ok) throw new Error("Error cargando hashtags");
+                followedTags = await res.json();
+                
+                container.innerHTML = '';
+                if (followedTags.length === 0) {
+                    container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding: 20px; color: var(--text-muted);">No sigues ningún hashtag todavía.</div>';
+                    return;
+                }
+                followedTags.forEach(tag => {
+                    const div = document.createElement('div');
+                    div.className = 'tag-follow-card';
+                    div.innerHTML = `
+                        <div style="cursor:pointer; display:flex; flex-direction:column;" onclick="viewHashtagTimeline('${tag.name}')">
+                            <span style="font-weight:700; color:var(--text-color); font-size:15px;">#${escapeHTML(tag.name)}</span>
+                            <span style="font-size:11px; color:var(--text-muted); margin-top:2px;">Ver publicaciones</span>
+                        </div>
+                        <button class="btn-publish" style="width:auto; padding: 4px 10px; font-size: 11px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color);" onclick="unfollowHashtag('${tag.name}', this)">Dejar de seguir</button>
+                    `;
+                    container.appendChild(div);
+                });
+            } catch (e) {
+                container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--error);">Error al cargar hashtags seguidos.</div>';
+            }
+        }
+
+        async function followHashtagFromInput() {
+            const input = document.getElementById('hashtag-follow-input');
+            const hashtag = input.value.trim().replace(/^#/, '');
+            if (!hashtag) return;
+            
+            try {
+                const res = await fetch(`/api/v1/tags/${encodeURIComponent(hashtag)}/follow`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    input.value = '';
+                    loadFollowedHashtags();
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function followHashtag(name) {
+            try {
+                const res = await fetch(`/api/v1/tags/${encodeURIComponent(name)}/follow`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    loadFollowedHashtags();
+                    return true;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+            return false;
+        }
+
+        async function unfollowHashtag(name, btn) {
+            if (btn) btn.innerText = 'Dejando...';
+            try {
+                const res = await fetch(`/api/v1/tags/${encodeURIComponent(name)}/unfollow`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    loadFollowedHashtags();
+                } else if (btn) {
+                    btn.innerText = 'Dejar de seguir';
+                }
+            } catch (e) {
+                if (btn) btn.innerText = 'Dejar de seguir';
+            }
+        }
+
+        function viewHashtagTimeline(name) {
+            switchTimeline('tag_' + name);
+        }
+
+        // ==========================================
+        // --- MODAL ORGANIZAR (ORGANIZE ACCOUNT MODAL JS) ---
+        // ==========================================
+        let organizeAccountId = null;
+
+        async function openManageListsModal() {
+            organizeAccountId = activeProfileViewId;
+            if (!organizeAccountId) return;
+
+            const handleText = document.getElementById('profile-view-handle').innerText;
+            document.getElementById('organize-account-handle').innerText = handleText;
+
+            const listsContainer = document.getElementById('organize-lists-checkboxes');
+            listsContainer.innerHTML = '<div style="font-size:12px; color:var(--text-muted);">Cargando listas...</div>';
+            
+            const collsContainer = document.getElementById('organize-collections-checkboxes');
+            collsContainer.innerHTML = '<div style="font-size:12px; color:var(--text-muted);">Cargando colecciones...</div>';
+
+            document.getElementById('modal-organize-account').style.display = 'flex';
+
+            try {
+                const listRes = await fetch('/api/v1/lists', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const lists = await listRes.json();
+                
+                const collRes = await fetch('/api/v1/collections', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const collData = await collRes.json();
+                const colls = collData.items || [];
+
+                listsContainer.innerHTML = '';
+                if (lists.length === 0) {
+                    listsContainer.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style: italic;">No tienes listas creadas.</div>';
+                } else {
+                    for (const list of lists) {
+                        const inList = await checkAccountInList(list.id, organizeAccountId);
+                        const label = document.createElement('label');
+                        label.style = "display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; padding: 4px 0;";
+                        label.innerHTML = `
+                            <input type="checkbox" ${inList ? 'checked' : ''} onchange="toggleAccountListMembership('${list.id}', '${organizeAccountId}', this)">
+                            <span>${escapeHTML(list.title)}</span>
+                        `;
+                        listsContainer.appendChild(label);
+                    }
+                }
+
+                collsContainer.innerHTML = '';
+                if (colls.length === 0) {
+                    collsContainer.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style: italic;">No tienes colecciones creadas.</div>';
+                } else {
+                    for (const coll of colls) {
+                        const inColl = await checkAccountInCollection(coll.id, organizeAccountId);
+                        const label = document.createElement('label');
+                        label.style = "display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; padding: 4px 0;";
+                        label.innerHTML = `
+                            <input type="checkbox" ${inColl ? 'checked' : ''} onchange="toggleAccountCollectionMembership('${coll.id}', '${organizeAccountId}', this)">
+                            <span>${escapeHTML(coll.title || coll.name)}</span>
+                        `;
+                        collsContainer.appendChild(label);
+                    }
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function checkAccountInList(listId, accId) {
+            try {
+                const res = await fetch(`/api/v1/lists/${listId}/accounts`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const accs = await res.json();
+                return accs.some(a => String(a.id) === String(accId));
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function checkAccountInCollection(collId, accId) {
+            try {
+                const res = await fetch(`/api/v1/collections/${collId}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const data = await res.json();
+                const accs = data.items || data.accounts || [];
+                return accs.some(a => String(a.id) === String(accId));
+            } catch (e) {
+                return false;
+            }
+        }
+
+        async function toggleAccountListMembership(listId, accId, checkbox) {
+            checkbox.disabled = true;
+            const method = checkbox.checked ? 'POST' : 'DELETE';
+            try {
+                const res = await fetch(`/api/v1/lists/${listId}/accounts`, {
+                    method: method,
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ account_ids: [accId] })
+                });
+                if (!res.ok) checkbox.checked = !checkbox.checked;
+            } catch (e) {
+                checkbox.checked = !checkbox.checked;
+            } finally {
+                checkbox.disabled = false;
+            }
+        }
+
+        async function toggleAccountCollectionMembership(collId, accId, checkbox) {
+            checkbox.disabled = true;
+            const method = checkbox.checked ? 'POST' : 'DELETE';
+            try {
+                const res = await fetch(`/api/v1/collections/${collId}/items`, {
+                    method: method,
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ account_ids: [accId] })
+                });
+                if (!res.ok) checkbox.checked = !checkbox.checked;
+            } catch (e) {
+                checkbox.checked = !checkbox.checked;
+            } finally {
+                checkbox.disabled = false;
+            }
+        }
+
+        function closeOrganizeModal() {
+            document.getElementById('modal-organize-account').style.display = 'none';
+        }
+
         function escapeHTML(str) {
             if (!str) return '';
             return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
@@ -3426,6 +4366,27 @@
             let text = str.replace(/<p>/g, '').replace(/<\/p>/g, '').replace(/<br\s*\/?>/g, '\n');
             return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
         }
+
+        // Interceptar clicks en links de hashtag dentro de toots
+        document.addEventListener('click', function(e) {
+            const link = e.target.closest('.toot-content a');
+            if (!link) return;
+            
+            const href = link.getAttribute('href') || '';
+            const text = link.textContent.trim();
+            
+            if (link.classList.contains('hashtag') || text.startsWith('#') || href.includes('/tags/')) {
+                let tag = text.replace(/^#/, '');
+                if (!tag && href.includes('/tags/')) {
+                    const match = href.match(/\/tags\/([^/?#]+)/);
+                    if (match) tag = match[1];
+                }
+                if (tag) {
+                    e.preventDefault();
+                    viewHashtagTimeline(tag);
+                }
+            }
+        });
     </script>
 </body>
 </html>

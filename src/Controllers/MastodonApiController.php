@@ -557,19 +557,26 @@ HTML;
         $account = self::getAuthenticatedAccount();
         if (!$account) {
             Router::json(['error' => 'Unauthorized'], 401);
+            return;
         }
 
-        // Devolvemos colecciones/listas públicas del servidor
-        // Mapeado sencillo
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT * FROM collections WHERE account_id = ? ORDER BY id DESC");
+        $stmt->execute([$account['id']]);
+        $rows = $stmt->fetchAll();
+
+        $items = [];
+        foreach ($rows as $row) {
+            $items[] = [
+                'id' => (string)$row['id'],
+                'title' => $row['title'],
+                'name' => $row['title'],
+                'description' => $row['description']
+            ];
+        }
+
         Router::json([
-            'items' => [
-                [
-                    'id' => 'public-fed',
-                    'title' => 'Listas Federadas Públicas',
-                    'description' => 'Servicio de descubrimiento federado',
-                    'type' => 'public'
-                ]
-            ]
+            'items' => $items
         ]);
     }
 
@@ -911,6 +918,17 @@ HTML;
         $type = $_GET['type'] ?? null;
         
         $db = Database::connect();
+
+        $account = null;
+        $currUserId = null;
+        try {
+            $account = self::getAuthenticatedAccount();
+            if ($account) {
+                $currUserId = (int)$account['id'];
+            }
+        } catch (\Exception $e) {
+            // No autenticado
+        }
         
         $accounts = [];
         $statuses = [];
@@ -977,53 +995,91 @@ HTML;
             if ($type === null || $type === 'statuses') {
                 $cleanQ = preg_replace('/[^\p{L}\p{N}\s]/u', '', $q);
                 if (!empty($cleanQ)) {
-                    $stmt = $db->prepare("
-                        SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                               s.visibility as status_visibility, s.created_at as status_created_at,
-                               s.media_attachments as status_media, s.sensitive as status_sensitive,
-                               s.spoiler_text as status_spoiler,
-                               a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.note
-                        FROM statuses s
-                        JOIN accounts a ON s.account_id = a.id
-                        WHERE s.id IN (SELECT rowid FROM statuses_fts WHERE statuses_fts MATCH ?)
-                        ORDER BY s.id DESC
-                        LIMIT 10
-                    ");
-                    $stmt->execute([$cleanQ . '*']);
+                    if ($currUserId !== null) {
+                        $sql = "
+                            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                                   s.visibility as status_visibility, s.created_at as status_created_at,
+                                   s.media_attachments as status_media, s.sensitive as status_sensitive,
+                                   s.spoiler_text as status_spoiler,
+                                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.note
+                            FROM statuses s
+                            JOIN accounts a ON s.account_id = a.id
+                            WHERE s.id IN (SELECT rowid FROM statuses_fts WHERE statuses_fts MATCH ?)
+                              AND (
+                                  s.visibility IN ('public', 'unlisted')
+                                  OR (s.visibility = 'private' AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
+                                  OR (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
+                              )
+                            ORDER BY s.id DESC
+                            LIMIT 10
+                        ";
+                        $queryParams = [$cleanQ . '*', $currUserId, $currUserId, $currUserId, '%@' . $account['username'] . '%', '%/users/' . $account['username'] . '%'];
+                    } else {
+                        $sql = "
+                            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                                   s.visibility as status_visibility, s.created_at as status_created_at,
+                                   s.media_attachments as status_media, s.sensitive as status_sensitive,
+                                   s.spoiler_text as status_spoiler,
+                                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.note
+                            FROM statuses s
+                            JOIN accounts a ON s.account_id = a.id
+                            WHERE s.id IN (SELECT rowid FROM statuses_fts WHERE statuses_fts MATCH ?)
+                              AND s.visibility IN ('public', 'unlisted')
+                            ORDER BY s.id DESC
+                            LIMIT 10
+                        ";
+                        $queryParams = [$cleanQ . '*'];
+                    }
+                    $stmt = $db->prepare($sql);
+                    $stmt->execute($queryParams);
                     $localStatuses = $stmt->fetchAll();
                 } else {
                     $localStatuses = [];
                 }
                 
                 if (empty($localStatuses)) {
-                    $stmt = $db->prepare("
-                        SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                               s.visibility as status_visibility, s.created_at as status_created_at,
-                               s.media_attachments as status_media, s.sensitive as status_sensitive,
-                               s.spoiler_text as status_spoiler,
-                               a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.note
-                        FROM statuses s
-                        JOIN accounts a ON s.account_id = a.id
-                        WHERE s.content LIKE ?
-                        ORDER BY s.id DESC
-                        LIMIT 10
-                    ");
-                    $stmt->execute(['%' . $q . '%']);
+                    if ($currUserId !== null) {
+                        $sql = "
+                            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                                   s.visibility as status_visibility, s.created_at as status_created_at,
+                                   s.media_attachments as status_media, s.sensitive as status_sensitive,
+                                   s.spoiler_text as status_spoiler,
+                                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.note
+                            FROM statuses s
+                            JOIN accounts a ON s.account_id = a.id
+                            WHERE s.content LIKE ?
+                              AND (
+                                  s.visibility IN ('public', 'unlisted')
+                                  OR (s.visibility = 'private' AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
+                                  OR (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
+                              )
+                            ORDER BY s.id DESC
+                            LIMIT 10
+                        ";
+                        $queryParams = ['%' . $q . '%', $currUserId, $currUserId, $currUserId, '%@' . $account['username'] . '%', '%/users/' . $account['username'] . '%'];
+                    } else {
+                        $sql = "
+                            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                                   s.visibility as status_visibility, s.created_at as status_created_at,
+                                   s.media_attachments as status_media, s.sensitive as status_sensitive,
+                                   s.spoiler_text as status_spoiler,
+                                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.note
+                            FROM statuses s
+                            JOIN accounts a ON s.account_id = a.id
+                            WHERE s.content LIKE ?
+                              AND s.visibility IN ('public', 'unlisted')
+                            ORDER BY s.id DESC
+                            LIMIT 10
+                        ";
+                        $queryParams = ['%' . $q . '%'];
+                    }
+                    $stmt = $db->prepare($sql);
+                    $stmt->execute($queryParams);
                     $localStatuses = $stmt->fetchAll();
                 }
                 
                 // Filtrar según bloqueos de moderación
                 $localStatuses = self::filterStatuses($localStatuses);
-                
-                $currUserId = null;
-                try {
-                    $currentAccount = self::getAuthenticatedAccount();
-                    if ($currentAccount) {
-                        $currUserId = (int)$currentAccount['id'];
-                    }
-                } catch (\Exception $e) {
-                    // No autenticado
-                }
 
                 foreach ($localStatuses as $s) {
                     $statuses[] = self::formatStatus($s, $currUserId);
@@ -1713,6 +1769,12 @@ HTML;
                 (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
                 OR
                 (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
+                OR
+                (s.visibility IN ('public', 'unlisted') AND EXISTS (
+                    SELECT 1 FROM followed_hashtags fh 
+                    WHERE fh.account_id = ? 
+                      AND (s.content LIKE '%#' || fh.hashtag || '%' OR s.content LIKE '%/tags/' || fh.hashtag || '%')
+                ))
             )"
         ];
         $queryParams = [
@@ -1720,7 +1782,8 @@ HTML;
             $account['id'],
             $account['id'],
             '%@' . $account['username'] . '%',
-            '%/users/' . $account['username'] . '%'
+            '%/users/' . $account['username'] . '%',
+            $account['id']
         ];
 
         if ($maxId !== null) {
@@ -1957,6 +2020,7 @@ HTML;
         // 1. Procesar menciones
         $mentionedActors = [];
         $mentionedInboxes = [];
+        $tags = [];
         preg_match_all('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/', $content, $mMatches, PREG_SET_ORDER);
         foreach ($mMatches as $match) {
             $mUsername = $match[1];
@@ -1993,6 +2057,25 @@ HTML;
                 if (!empty($mAcc['inbox_url']) && !in_array($mAcc['inbox_url'], $mentionedInboxes)) {
                     $mentionedInboxes[] = $mAcc['inbox_url'];
                 }
+
+                $mentionName = $mAcc['domain']
+                    ? "@{$mAcc['username']}@{$mAcc['domain']}"
+                    : "@{$mAcc['username']}";
+
+                $tagExists = false;
+                foreach ($tags as $t) {
+                    if (isset($t['href']) && $t['href'] === $mActorUrl) {
+                        $tagExists = true;
+                        break;
+                    }
+                }
+                if (!$tagExists) {
+                    $tags[] = [
+                        'type' => 'Mention',
+                        'href' => $mActorUrl,
+                        'name' => $mentionName
+                    ];
+                }
             }
         }
 
@@ -2015,6 +2098,24 @@ HTML;
                     : "$proto://$domain/users/{$parent['username']}";
                 if (!empty($parent['inbox_url'])) {
                     $parentInboxUrl = $parent['inbox_url'];
+                }
+
+                $tagExists = false;
+                foreach ($tags as $t) {
+                    if (isset($t['href']) && $t['href'] === $parentActorUrl) {
+                        $tagExists = true;
+                        break;
+                    }
+                }
+                if (!$tagExists) {
+                    $parentMentionName = $parent['domain']
+                        ? "@{$parent['username']}@{$parent['domain']}"
+                        : "@{$parent['username']}";
+                    $tags[] = [
+                        'type' => 'Mention',
+                        'href' => $parentActorUrl,
+                        'name' => $parentMentionName
+                    ];
                 }
             }
         }
@@ -2094,6 +2195,10 @@ HTML;
                 'to' => $to,
                 'cc' => $cc
             ];
+
+            if (!empty($tags)) {
+                $noteObject['tag'] = $tags;
+            }
 
             if ($inReplyToUri) {
                 $noteObject['inReplyTo'] = $inReplyToUri;
@@ -2782,6 +2887,12 @@ HTML;
             return $row ? self::formatStatus($row, $currUserId) : null;
         };
 
+        $mainStatus = $statusFetcher($id);
+        if (!$mainStatus) {
+            Router::json(['error' => 'Status no encontrado'], 404);
+            return;
+        }
+
         $ancestors = [];
         $parentId = $status['in_reply_to_id'];
         while ($parentId !== null) {
@@ -2838,7 +2949,8 @@ HTML;
                         } else {
                             $username = $account['username'] ?? '';
                             $actorUrlPattern = "/users/" . $username;
-                            if (str_contains($row['status_content'], $actorUrlPattern)) {
+                            if (str_contains($row['status_content'], $actorUrlPattern) ||
+                                preg_match('/@' . preg_quote($username, '/') . '\b/i', $row['status_content'])) {
                                 $authorized = true;
                             }
                         }
@@ -2854,7 +2966,7 @@ HTML;
 
         Router::json([
             'ancestors' => $ancestors,
-            'status' => $statusFetcher($id),
+            'status' => $mainStatus,
             'descendants' => $descendants
         ]);
     }
@@ -3895,5 +4007,600 @@ HTML;
         }
 
         Router::json([]);
+    }
+
+    // ==========================================
+    // --- LISTAS (LISTS) ---
+    // ==========================================
+
+    public static function getLists(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT * FROM lists WHERE account_id = ? ORDER BY id DESC");
+        $stmt->execute([$account['id']]);
+        $rows = $stmt->fetchAll();
+        $lists = [];
+        foreach ($rows as $row) {
+            $lists[] = [
+                'id' => (string)$row['id'],
+                'title' => $row['title'],
+                'replies_policy' => $row['replies_policy']
+            ];
+        }
+        Router::json($lists);
+    }
+
+    public static function createList(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $body = Router::getRequestBody();
+        $title = trim($body['title'] ?? $_POST['title'] ?? '');
+        $repliesPolicy = trim($body['replies_policy'] ?? $_POST['replies_policy'] ?? 'followed');
+        if (empty($title)) {
+            Router::json(['error' => 'El título es requerido'], 400);
+            return;
+        }
+        $db = Database::connect();
+        $stmt = $db->prepare("INSERT INTO lists (account_id, title, replies_policy) VALUES (?, ?, ?)");
+        $stmt->execute([$account['id'], $title, $repliesPolicy]);
+        $id = $db->lastInsertId();
+        Router::json([
+            'id' => (string)$id,
+            'title' => $title,
+            'replies_policy' => $repliesPolicy
+        ]);
+    }
+
+    public static function getList(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $listId = (int)$params['id'];
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT * FROM lists WHERE id = ? AND account_id = ? LIMIT 1");
+        $stmt->execute([$listId, $account['id']]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            Router::json(['error' => 'Lista no encontrada'], 404);
+            return;
+        }
+        Router::json([
+            'id' => (string)$row['id'],
+            'title' => $row['title'],
+            'replies_policy' => $row['replies_policy']
+        ]);
+    }
+
+    public static function updateList(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $listId = (int)$params['id'];
+        $body = Router::getRequestBody();
+        $title = trim($body['title'] ?? $_POST['title'] ?? '');
+        $repliesPolicy = trim($body['replies_policy'] ?? $_POST['replies_policy'] ?? '');
+        
+        $db = Database::connect();
+        $stmtCheck = $db->prepare("SELECT * FROM lists WHERE id = ? AND account_id = ? LIMIT 1");
+        $stmtCheck->execute([$listId, $account['id']]);
+        $row = $stmtCheck->fetch();
+        if (!$row) {
+            Router::json(['error' => 'Lista no encontrada'], 404);
+            return;
+        }
+
+        $newTitle = !empty($title) ? $title : $row['title'];
+        $newPolicy = !empty($repliesPolicy) ? $repliesPolicy : $row['replies_policy'];
+
+        $stmtUpdate = $db->prepare("UPDATE lists SET title = ?, replies_policy = ? WHERE id = ?");
+        $stmtUpdate->execute([$newTitle, $newPolicy, $listId]);
+
+        Router::json([
+            'id' => (string)$listId,
+            'title' => $newTitle,
+            'replies_policy' => $newPolicy
+        ]);
+    }
+
+    public static function deleteList(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $listId = (int)$params['id'];
+        $db = Database::connect();
+        $stmt = $db->prepare("DELETE FROM lists WHERE id = ? AND account_id = ?");
+        $stmt->execute([$listId, $account['id']]);
+        Router::json((object)[]);
+    }
+
+    public static function getListAccounts(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $listId = (int)$params['id'];
+        $db = Database::connect();
+        $stmtCheck = $db->prepare("SELECT id FROM lists WHERE id = ? AND account_id = ? LIMIT 1");
+        $stmtCheck->execute([$listId, $account['id']]);
+        if (!$stmtCheck->fetchColumn()) {
+            Router::json(['error' => 'Lista no encontrada'], 404);
+            return;
+        }
+
+        $stmtAccs = $db->prepare("
+            SELECT a.* FROM accounts a
+            JOIN list_accounts la ON a.id = la.account_id
+            WHERE la.list_id = ?
+        ");
+        $stmtAccs->execute([$listId]);
+        $rows = $stmtAccs->fetchAll();
+        $accounts = [];
+        foreach ($rows as $row) {
+            $accounts[] = self::formatAccount($row);
+        }
+        Router::json($accounts);
+    }
+
+    public static function addAccountsToList(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $listId = (int)$params['id'];
+        $body = Router::getRequestBody();
+        $accountIds = $body['account_ids'] ?? $_POST['account_ids'] ?? [];
+        if (!is_array($accountIds)) {
+            $accountIds = [$accountIds];
+        }
+
+        $db = Database::connect();
+        $stmtCheck = $db->prepare("SELECT id FROM lists WHERE id = ? AND account_id = ? LIMIT 1");
+        $stmtCheck->execute([$listId, $account['id']]);
+        if (!$stmtCheck->fetchColumn()) {
+            Router::json(['error' => 'Lista no encontrada'], 404);
+            return;
+        }
+
+        $stmtInsert = $db->prepare("INSERT OR IGNORE INTO list_accounts (list_id, account_id) VALUES (?, ?)");
+        foreach ($accountIds as $accId) {
+            $stmtInsert->execute([$listId, (int)$accId]);
+        }
+        Router::json((object)[]);
+    }
+
+    public static function removeAccountsFromList(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $listId = (int)$params['id'];
+        $body = Router::getRequestBody();
+        $accountIds = $body['account_ids'] ?? $_GET['account_ids'] ?? $_POST['account_ids'] ?? [];
+        if (!is_array($accountIds)) {
+            $accountIds = [$accountIds];
+        }
+
+        $db = Database::connect();
+        $stmtCheck = $db->prepare("SELECT id FROM lists WHERE id = ? AND account_id = ? LIMIT 1");
+        $stmtCheck->execute([$listId, $account['id']]);
+        if (!$stmtCheck->fetchColumn()) {
+            Router::json(['error' => 'Lista no encontrada'], 404);
+            return;
+        }
+
+        $stmtDelete = $db->prepare("DELETE FROM list_accounts WHERE list_id = ? AND account_id = ?");
+        foreach ($accountIds as $accId) {
+            $stmtDelete->execute([$listId, (int)$accId]);
+        }
+        Router::json((object)[]);
+    }
+
+    public static function getListTimeline(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $listId = (int)$params['id'];
+        $db = Database::connect();
+
+        $stmtCheck = $db->prepare("SELECT id FROM lists WHERE id = ? AND account_id = ? LIMIT 1");
+        $stmtCheck->execute([$listId, $account['id']]);
+        if (!$stmtCheck->fetchColumn()) {
+            Router::json(['error' => 'Lista no encontrada'], 404);
+            return;
+        }
+
+        $maxId = isset($_GET['max_id']) && is_numeric($_GET['max_id']) ? (int)$_GET['max_id'] : null;
+        $sinceId = isset($_GET['since_id']) && is_numeric($_GET['since_id']) ? (int)$_GET['since_id'] : null;
+        $minId = isset($_GET['min_id']) && is_numeric($_GET['min_id']) ? (int)$_GET['min_id'] : null;
+        $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? (int)$_GET['limit'] : 30;
+        if ($limit < 1) $limit = 30;
+        if ($limit > 80) $limit = 80;
+
+        $whereClauses = [
+            "s.visibility IN ('public', 'unlisted', 'private')",
+            "s.account_id IN (SELECT account_id FROM list_accounts WHERE list_id = ?)"
+        ];
+        $queryParams = [$listId];
+
+        if ($maxId !== null) {
+            $whereClauses[] = "s.id < ?";
+            $queryParams[] = $maxId;
+        }
+        if ($sinceId !== null) {
+            $whereClauses[] = "s.id > ?";
+            $queryParams[] = $sinceId;
+        }
+        if ($minId !== null) {
+            $whereClauses[] = "s.id > ?";
+            $queryParams[] = $minId;
+        }
+
+        $whereSql = implode(" AND ", $whereClauses);
+
+        $stmt = $db->prepare("
+            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                   s.visibility as status_visibility, s.created_at as status_created_at, 
+                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                   a.locked, a.discoverable
+            FROM statuses s
+            JOIN accounts a ON s.account_id = a.id
+            WHERE $whereSql
+            ORDER BY s.id DESC
+            LIMIT ?
+        ");
+        
+        $queryParams[] = $limit;
+        $stmt->execute($queryParams);
+        $rows = $stmt->fetchAll();
+
+        $rows = self::filterStatuses($rows);
+
+        $statuses = [];
+        foreach ($rows as $s) {
+            $statuses[] = self::formatStatus($s, (int)$account['id']);
+        }
+
+        Router::json($statuses);
+    }
+
+    // ==========================================
+    // --- COLECCIONES (COLLECTIONS) ---
+    // ==========================================
+
+    public static function createCollection(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $body = Router::getRequestBody();
+        $title = trim($body['title'] ?? $_POST['title'] ?? $body['name'] ?? $_POST['name'] ?? '');
+        $description = trim($body['description'] ?? $_POST['description'] ?? '');
+        if (empty($title)) {
+            Router::json(['error' => 'El título es requerido'], 400);
+            return;
+        }
+        $db = Database::connect();
+        $stmt = $db->prepare("INSERT INTO collections (account_id, title, description) VALUES (?, ?, ?)");
+        $stmt->execute([$account['id'], $title, $description]);
+        $id = $db->lastInsertId();
+        Router::json([
+            'id' => (string)$id,
+            'title' => $title,
+            'name' => $title,
+            'description' => $description,
+            'items' => []
+        ]);
+    }
+
+    public static function getCollection(array $params): void {
+        $collectionId = (int)$params['id'];
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT * FROM collections WHERE id = ? LIMIT 1");
+        $stmt->execute([$collectionId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            Router::json(['error' => 'Colección no encontrada'], 404);
+            return;
+        }
+
+        $stmtAccs = $db->prepare("
+            SELECT a.* FROM accounts a
+            JOIN collection_accounts ca ON a.id = ca.account_id
+            WHERE ca.collection_id = ?
+        ");
+        $stmtAccs->execute([$collectionId]);
+        $accRows = $stmtAccs->fetchAll();
+        $items = [];
+        foreach ($accRows as $accRow) {
+            $items[] = self::formatAccount($accRow);
+        }
+
+        Router::json([
+            'id' => (string)$row['id'],
+            'title' => $row['title'],
+            'name' => $row['title'],
+            'description' => $row['description'],
+            'items' => $items
+        ]);
+    }
+
+    public static function updateCollection(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $collectionId = (int)$params['id'];
+        $body = Router::getRequestBody();
+        $title = trim($body['title'] ?? $_POST['title'] ?? $body['name'] ?? $_POST['name'] ?? '');
+        $description = trim($body['description'] ?? $_POST['description'] ?? '');
+
+        $db = Database::connect();
+        $stmtCheck = $db->prepare("SELECT * FROM collections WHERE id = ? AND account_id = ? LIMIT 1");
+        $stmtCheck->execute([$collectionId, $account['id']]);
+        $row = $stmtCheck->fetch();
+        if (!$row) {
+            Router::json(['error' => 'Colección no encontrada o no autorizada'], 404);
+            return;
+        }
+
+        $newTitle = !empty($title) ? $title : $row['title'];
+        $newDescription = !empty($description) ? $description : $row['description'];
+
+        $stmtUpdate = $db->prepare("UPDATE collections SET title = ?, description = ? WHERE id = ?");
+        $stmtUpdate->execute([$newTitle, $newDescription, $collectionId]);
+
+        Router::json([
+            'id' => (string)$collectionId,
+            'title' => $newTitle,
+            'name' => $newTitle,
+            'description' => $newDescription
+        ]);
+    }
+
+    public static function deleteCollection(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $collectionId = (int)$params['id'];
+        $db = Database::connect();
+        $stmt = $db->prepare("DELETE FROM collections WHERE id = ? AND account_id = ?");
+        $stmt->execute([$collectionId, $account['id']]);
+        Router::json((object)[]);
+    }
+
+    public static function addAccountsToCollection(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $collectionId = (int)$params['id'];
+        $body = Router::getRequestBody();
+        $accountIds = $body['account_ids'] ?? $_POST['account_ids'] ?? [];
+        if (!is_array($accountIds)) {
+            $accountIds = [$accountIds];
+        }
+
+        $db = Database::connect();
+        $stmtCheck = $db->prepare("SELECT id FROM collections WHERE id = ? AND account_id = ? LIMIT 1");
+        $stmtCheck->execute([$collectionId, $account['id']]);
+        if (!$stmtCheck->fetchColumn()) {
+            Router::json(['error' => 'Colección no encontrada'], 404);
+            return;
+        }
+
+        $stmtInsert = $db->prepare("INSERT OR IGNORE INTO collection_accounts (collection_id, account_id) VALUES (?, ?)");
+        foreach ($accountIds as $accId) {
+            $stmtInsert->execute([$collectionId, (int)$accId]);
+        }
+        Router::json((object)[]);
+    }
+
+    public static function removeAccountsFromCollection(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $collectionId = (int)$params['id'];
+        $body = Router::getRequestBody();
+        $accountIds = $body['account_ids'] ?? $_GET['account_ids'] ?? $_POST['account_ids'] ?? [];
+        if (!is_array($accountIds)) {
+            $accountIds = [$accountIds];
+        }
+
+        $db = Database::connect();
+        $stmtCheck = $db->prepare("SELECT id FROM collections WHERE id = ? AND account_id = ? LIMIT 1");
+        $stmtCheck->execute([$collectionId, $account['id']]);
+        if (!$stmtCheck->fetchColumn()) {
+            Router::json(['error' => 'Colección no encontrada'], 404);
+            return;
+        }
+
+        $stmtDelete = $db->prepare("DELETE FROM collection_accounts WHERE collection_id = ? AND account_id = ?");
+        foreach ($accountIds as $accId) {
+            $stmtDelete->execute([$collectionId, (int)$accId]);
+        }
+        Router::json((object)[]);
+    }
+
+    // ==========================================
+    // --- HASHTAGS SEGUIDOS (FOLLOWED TAGS) ---
+    // ==========================================
+
+    public static function getFollowedTags(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT hashtag FROM followed_hashtags WHERE account_id = ? ORDER BY id DESC");
+        $stmt->execute([$account['id']]);
+        $rows = $stmt->fetchAll();
+
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
+        $tags = [];
+        foreach ($rows as $row) {
+            $h = $row['hashtag'];
+            $tags[] = [
+                'name' => $h,
+                'url' => "$proto://$domain/tags/$h",
+                'history' => [],
+                'following' => true
+            ];
+        }
+        Router::json($tags);
+    }
+
+    public static function followTag(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $tagName = ltrim(trim($params['name']), '#');
+        if (empty($tagName)) {
+            Router::json(['error' => 'Hashtag inválido'], 400);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("INSERT OR IGNORE INTO followed_hashtags (account_id, hashtag) VALUES (?, ?)");
+        $stmt->execute([$account['id'], $tagName]);
+
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
+        Router::json([
+            'name' => $tagName,
+            'url' => "$proto://$domain/tags/$tagName",
+            'history' => [],
+            'following' => true
+        ]);
+    }
+
+    public static function unfollowTag(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $tagName = ltrim(trim($params['name']), '#');
+        if (empty($tagName)) {
+            Router::json(['error' => 'Hashtag inválido'], 400);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("DELETE FROM followed_hashtags WHERE account_id = ? AND hashtag = ?");
+        $stmt->execute([$account['id'], $tagName]);
+
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
+        Router::json([
+            'name' => $tagName,
+            'url' => "$proto://$domain/tags/$tagName",
+            'history' => [],
+            'following' => false
+        ]);
+    }
+
+    public static function getTagTimeline(array $params): void {
+        $account = null;
+        $currUserId = null;
+        try {
+            $account = self::getAuthenticatedAccount();
+            if ($account) {
+                $currUserId = (int)$account['id'];
+            }
+        } catch (\Exception $e) {
+            // No autenticado
+        }
+
+        $tagName = ltrim(trim($params['name']), '#');
+        $db = Database::connect();
+
+        $maxId = isset($_GET['max_id']) && is_numeric($_GET['max_id']) ? (int)$_GET['max_id'] : null;
+        $sinceId = isset($_GET['since_id']) && is_numeric($_GET['since_id']) ? (int)$_GET['since_id'] : null;
+        $minId = isset($_GET['min_id']) && is_numeric($_GET['min_id']) ? (int)$_GET['min_id'] : null;
+        $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? (int)$_GET['limit'] : 30;
+        if ($limit < 1) $limit = 30;
+        if ($limit > 80) $limit = 80;
+
+        $whereClauses = [
+            "s.visibility IN ('public', 'unlisted')",
+            "(s.content LIKE ? OR s.content LIKE ?)"
+        ];
+        $queryParams = ['%#' . $tagName . '%', '%/tags/' . $tagName . '%'];
+
+        if ($maxId !== null) {
+            $whereClauses[] = "s.id < ?";
+            $queryParams[] = $maxId;
+        }
+        if ($sinceId !== null) {
+            $whereClauses[] = "s.id > ?";
+            $queryParams[] = $sinceId;
+        }
+        if ($minId !== null) {
+            $whereClauses[] = "s.id > ?";
+            $queryParams[] = $minId;
+        }
+
+        $whereSql = implode(" AND ", $whereClauses);
+
+        $stmt = $db->prepare("
+            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                   s.visibility as status_visibility, s.created_at as status_created_at, 
+                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                   a.locked, a.discoverable
+            FROM statuses s
+            JOIN accounts a ON s.account_id = a.id
+            WHERE $whereSql
+            ORDER BY s.id DESC
+            LIMIT ?
+        ");
+
+        $queryParams[] = $limit;
+        $stmt->execute($queryParams);
+        $rows = $stmt->fetchAll();
+
+        $rows = self::filterStatuses($rows);
+
+        $statuses = [];
+        foreach ($rows as $s) {
+            $statuses[] = self::formatStatus($s, $currUserId);
+        }
+
+        Router::json($statuses);
     }
 }

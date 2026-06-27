@@ -117,6 +117,31 @@ $router->post('/api/v2/media', [MastodonApiController::class, 'uploadMedia']);
 $router->post('/api/v1/polls/:id/votes', [MastodonApiController::class, 'votePoll']);
 $router->get('/api/v1/polls/:id', [MastodonApiController::class, 'getPoll']);
 
+// --- Listas (Lists) ---
+$router->get('/api/v1/lists', [MastodonApiController::class, 'getLists']);
+$router->post('/api/v1/lists', [MastodonApiController::class, 'createList']);
+$router->get('/api/v1/lists/:id', [MastodonApiController::class, 'getList']);
+$router->put('/api/v1/lists/:id', [MastodonApiController::class, 'updateList']);
+$router->delete('/api/v1/lists/:id', [MastodonApiController::class, 'deleteList']);
+$router->get('/api/v1/lists/:id/accounts', [MastodonApiController::class, 'getListAccounts']);
+$router->post('/api/v1/lists/:id/accounts', [MastodonApiController::class, 'addAccountsToList']);
+$router->delete('/api/v1/lists/:id/accounts', [MastodonApiController::class, 'removeAccountsFromList']);
+$router->get('/api/v1/timelines/list/:id', [MastodonApiController::class, 'getListTimeline']);
+
+// --- Colecciones (Collections) ---
+$router->post('/api/v1/collections', [MastodonApiController::class, 'createCollection']);
+$router->get('/api/v1/collections/:id', [MastodonApiController::class, 'getCollection']);
+$router->patch('/api/v1/collections/:id', [MastodonApiController::class, 'updateCollection']);
+$router->delete('/api/v1/collections/:id', [MastodonApiController::class, 'deleteCollection']);
+$router->post('/api/v1/collections/:id/items', [MastodonApiController::class, 'addAccountsToCollection']);
+$router->delete('/api/v1/collections/:id/items', [MastodonApiController::class, 'removeAccountsFromCollection']);
+
+// --- Hashtags Seguidos (Followed Tags) ---
+$router->get('/api/v1/followed_tags', [MastodonApiController::class, 'getFollowedTags']);
+$router->post('/api/v1/tags/:name/follow', [MastodonApiController::class, 'followTag']);
+$router->post('/api/v1/tags/:name/unfollow', [MastodonApiController::class, 'unfollowTag']);
+$router->get('/api/v1/timelines/tag/:name', [MastodonApiController::class, 'getTagTimeline']);
+
 // --- Importaciones y Exportaciones ---
 $router->get('/api/v1/export/posts', [MastodonApiController::class, 'exportPosts']);
 $router->get('/api/v1/export/follows', [MastodonApiController::class, 'exportFollows']);

@@ -288,6 +288,43 @@ class Database {
                 "ALTER TABLE accounts ADD COLUMN followers_count INTEGER DEFAULT 0",
                 "ALTER TABLE accounts ADD COLUMN following_count INTEGER DEFAULT 0",
                 "ALTER TABLE accounts ADD COLUMN statuses_count INTEGER DEFAULT 0"
+            ],
+            11 => [
+                "CREATE TABLE IF NOT EXISTS lists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    title TEXT NOT NULL,
+                    replies_policy TEXT NOT NULL DEFAULT 'followed',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )",
+                "CREATE TABLE IF NOT EXISTS list_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    list_id INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(list_id, account_id)
+                )",
+                "CREATE TABLE IF NOT EXISTS collections (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    title TEXT NOT NULL,
+                    description TEXT DEFAULT '',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )",
+                "CREATE TABLE IF NOT EXISTS collection_accounts (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(collection_id, account_id)
+                )",
+                "CREATE TABLE IF NOT EXISTS followed_hashtags (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    hashtag TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(account_id, hashtag)
+                )"
             ]
         ];
     }
