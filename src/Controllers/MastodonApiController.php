@@ -2008,7 +2008,8 @@ HTML;
         $stmtLimit->execute();
         $maxChars = (int)($stmtLimit->fetchColumn() ?: 500);
 
-        if (mb_strlen($content) > $maxChars) {
+        $contentLen = function_exists('mb_strlen') ? \mb_strlen($content) : strlen($content);
+        if ($contentLen > $maxChars) {
             Router::json(['error' => "El estado no puede superar el límite de {$maxChars} caracteres."], 400);
             return;
         }
