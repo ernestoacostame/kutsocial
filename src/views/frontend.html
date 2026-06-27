@@ -1984,8 +1984,8 @@
                 composer.style.display = 'none';
             }
             
-            // Cargar perfil del dueño
-            if (window.KUTSOCIAL_OWNER) {
+            // Cargar perfil del dueño o enrutar por hash
+            if (!handleHashRouting() && window.KUTSOCIAL_OWNER) {
                 viewProfile(window.KUTSOCIAL_OWNER.id);
             }
         }
@@ -2083,6 +2083,37 @@
             }
         }
 
+        function handleHashRouting() {
+            const hash = window.location.hash;
+            if (!hash) return false;
+
+            const tab = hash.substring(1);
+            if (tab === 'public' || tab === 'home' || tab === 'bookmarks') {
+                switchTimeline(tab, true);
+                return true;
+            } else if (tab === 'notifications' || tab === 'lists' || tab === 'collections' || tab === 'followed-hashtags' || tab === 'profile') {
+                if (tab === 'profile') {
+                    showTab('profile', true);
+                } else {
+                    showTab(tab, true);
+                }
+                return true;
+            } else if (tab.startsWith('profile-view-')) {
+                const profileId = tab.substring('profile-view-'.length);
+                viewProfile(profileId, true);
+                return true;
+            } else if (tab.startsWith('thread-view-')) {
+                const threadId = tab.substring('thread-view-'.length);
+                viewTootThread(threadId, true);
+                return true;
+            }
+            return false;
+        }
+
+        window.addEventListener('hashchange', () => {
+            handleHashRouting();
+        });
+
         // Inicializar Aplicación Autenticada
         async function initApp() {
             document.getElementById('login-container').style.display = 'none';
@@ -2121,8 +2152,10 @@
             // 2. Obtener estadísticas de instancia
             loadInstanceStats();
 
-            // 3. Cargar timeline inicial
-            loadTimeline();
+            // 3. Cargar timeline inicial o enrutar por hash
+            if (!handleHashRouting()) {
+                loadTimeline();
+            }
 
             // Cargar e iniciar badge de notificaciones
             updateNotificationBadge();
@@ -3059,8 +3092,14 @@
             }
         }
 
-        function switchTimeline(type) {
+        function switchTimeline(type, fromHashChange = false) {
+            if (fromHashChange && currentTimeline === type && document.getElementById('tab-feed').style.display === 'block') {
+                return;
+            }
             currentTimeline = type;
+            if (window.location.hash !== '#' + type) {
+                window.location.hash = type;
+            }
             document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
             if (type === 'public') {
                 document.getElementById('nav-public').classList.add('active');
@@ -3074,7 +3113,7 @@
                 document.getElementById('nav-hashtags').classList.add('active');
             }
             lastId = 0;
-            showTab('feed');
+            showTab('feed', fromHashChange);
             loadTimeline();
         }
 
@@ -3083,7 +3122,17 @@
             document.getElementById('char-count').innerText = maxTootChars - text.length;
         }
 
-        function showTab(tabName) {
+        function showTab(tabName, fromHashChange = false) {
+            const tabElement = document.getElementById('tab-' + tabName);
+            if (fromHashChange && tabElement && tabElement.style.display === 'block') {
+                return;
+            }
+            if (tabName !== 'feed' && tabName !== 'profile-view' && tabName !== 'thread-view') {
+                if (window.location.hash !== '#' + tabName) {
+                    window.location.hash = tabName;
+                }
+            }
+
             document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
             
             document.getElementById('tab-feed').style.display = 'none';
@@ -3609,8 +3658,14 @@
         // ---------------------------
         // VISTA DE PERFIL Y SEGUIMIENTOS
         // ---------------------------
-        async function viewProfile(accountId) {
+        async function viewProfile(accountId, fromHashChange = false) {
             if (!accountId) return;
+            if (fromHashChange && activeProfileViewId === accountId && document.getElementById('tab-profile-view').style.display === 'block') {
+                return;
+            }
+            if (window.location.hash !== '#profile-view-' + accountId) {
+                window.location.hash = 'profile-view-' + accountId;
+            }
             
             const activeTab = document.getElementById('tab-feed').style.display !== 'none' 
                 ? 'feed' 
@@ -3945,13 +4000,20 @@
         // ---------------------------
         // VISTA DE CONVERSACIÓN (HILOS)
         // ---------------------------
-        async function viewTootThread(statusId) {
+        async function viewTootThread(statusId, fromHashChange = false) {
+            if (fromHashChange && document.getElementById('tab-thread-view').style.display === 'block') {
+                return;
+            }
+            if (window.location.hash !== '#thread-view-' + statusId) {
+                window.location.hash = 'thread-view-' + statusId;
+            }
+            
             const activeTab = document.getElementById('tab-feed').style.display !== 'none' 
                 ? 'feed' 
                 : (document.getElementById('tab-profile-view').style.display !== 'none' ? 'profile-view' : 'feed');
             previousTab = activeTab;
 
-            showTab('thread-view');
+            showTab('thread-view', fromHashChange);
             
             const ancestorsContainer = document.getElementById('thread-ancestors');
             const mainContainer = document.getElementById('thread-main');
