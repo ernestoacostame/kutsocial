@@ -160,6 +160,52 @@ $router->get('/', function() {
     $path = __DIR__ . '/src/views/frontend.html';
     if (file_exists($path)) {
         $html = file_get_contents($path);
+        
+        // Migración automática local a vistas separadas si aún no se ha hecho
+        if (strpos($html, '<div id="tab-feed">') !== false) {
+            $startToken = '<div id="tab-feed">';
+            $endToken = '</main>';
+            $startPos = strpos($html, $startToken);
+            $endPos = strpos($html, $endToken);
+            if ($startPos !== false && $endPos !== false) {
+                $before = substr($html, 0, $startPos);
+                $after = substr($html, $endPos);
+                $includes = "
+            <?php include __DIR__ . '/frontend/feed.php'; ?>
+
+            <?php include __DIR__ . '/frontend/notifications.php'; ?>
+
+            <?php include __DIR__ . '/frontend/profile.php'; ?>
+
+            <?php include __DIR__ . '/frontend/profile-view.php'; ?>
+
+            <?php include __DIR__ . '/frontend/lists.php'; ?>
+
+            <?php include __DIR__ . '/frontend/collections.php'; ?>
+
+            <?php include __DIR__ . '/frontend/followed-hashtags.php'; ?>
+
+            <?php include __DIR__ . '/frontend/users-list.php'; ?>
+
+            <?php include __DIR__ . '/frontend/search-results.php'; ?>
+
+            <?php include __DIR__ . '/frontend/thread-view.php'; ?>
+                ";
+                $newContent = $before . $includes . "\n        " . $after;
+                file_put_contents($path, $newContent);
+            }
+        }
+
+        // Limpiar archivo temporal si existe
+        if (file_exists(__DIR__ . '/create_layout.php')) {
+            unlink(__DIR__ . '/create_layout.php');
+        }
+
+        // Evaluar frontend.html como PHP (permite los includes de las vistas)
+        ob_start();
+        include $path;
+        $html = ob_get_clean();
+
         $version = \KutSocial\Database::getVersion();
         $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_VERSION = '{$version}';</script>", $html);
         try {
