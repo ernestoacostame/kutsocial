@@ -177,6 +177,8 @@ function runInstallation(string $username, string $email, string $password, stri
         . "require_once __DIR__ . '/version.php';\n"
         . "define('KUTSOCIAL_DOMAIN', '" . addslashes($domain) . "');\n"
         . "define('KUTSOCIAL_DB_PATH', __DIR__ . '/data/kutsocial.db');\n\n"
+        . "// SSL Verification for outgoing requests (set to true in production with valid certificates)\n"
+        . "define('KUTSOCIAL_SSL_VERIFY', false);\n\n"
         . "// Autocargar clases del núcleo\n"
         . "spl_autoload_register(function (\$class) {\n"
         . "    \$prefix = 'KutSocial\\\\';\n"

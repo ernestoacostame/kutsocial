@@ -132,20 +132,27 @@ class MastodonApiController {
 
     private static function generateCodeForUser(int $userId): string {
         $secret = self::getSigningSecret();
-        $hash = hash_hmac('sha256', 'authcode_' . $userId, $secret);
-        return "code_" . $userId . "_" . $hash;
+        $issuedAt = time();
+        $hash = hash_hmac('sha256', 'authcode_' . $userId . ':' . $issuedAt, $secret);
+        return "code_" . $userId . "_" . $issuedAt . "_" . $hash;
     }
 
     private static function verifyCodeAndGetUserId(string $code): ?int {
         $parts = explode('_', $code);
-        if (count($parts) !== 3 || $parts[0] !== 'code') {
+        if (count($parts) !== 4 || $parts[0] !== 'code') {
             return null;
         }
         $userId = (int)$parts[1];
-        $hash = $parts[2];
+        $issuedAt = (int)$parts[2];
+        $hash = $parts[3];
+
+        // Authorization codes expire after 120 seconds
+        if (time() - $issuedAt > 120) {
+            return null;
+        }
 
         $secret = self::getSigningSecret();
-        $expectedHash = hash_hmac('sha256', 'authcode_' . $userId, $secret);
+        $expectedHash = hash_hmac('sha256', 'authcode_' . $userId . ':' . $issuedAt, $secret);
 
         if (!hash_equals($expectedHash, $hash)) {
             return null;
@@ -157,10 +164,10 @@ class MastodonApiController {
      * Endpoint GET /oauth/authorize
      */
     public static function showAuthorize(): void {
-        $clientId = $_GET['client_id'] ?? '';
-        $redirectUri = $_GET['redirect_uri'] ?? '';
-        $responseType = $_GET['response_type'] ?? '';
-        $scope = $_GET['scope'] ?? '';
+        $clientId = htmlspecialchars($_GET['client_id'] ?? '', ENT_QUOTES, 'UTF-8');
+        $redirectUri = htmlspecialchars($_GET['redirect_uri'] ?? '', ENT_QUOTES, 'UTF-8');
+        $responseType = htmlspecialchars($_GET['response_type'] ?? '', ENT_QUOTES, 'UTF-8');
+        $scope = htmlspecialchars($_GET['scope'] ?? '', ENT_QUOTES, 'UTF-8');
 
         $html = <<<HTML
 <!DOCTYPE html>
@@ -479,6 +486,13 @@ HTML;
 HTML;
             Router::html($html);
         } else {
+            // Validate redirect_uri to prevent open redirect attacks
+            $parsedRedirect = parse_url($redirectUri);
+            $scheme = $parsedRedirect['scheme'] ?? '';
+            if (!in_array($scheme, ['http', 'https', 'kutsocial', 'mastodon'], true)) {
+                Router::json(['error' => 'redirect_uri inválida'], 400);
+                return;
+            }
             $redirectUrl = $redirectUri;
             if (str_contains($redirectUrl, '?')) {
                 $redirectUrl .= '&code=' . urlencode($code);
@@ -494,6 +508,12 @@ HTML;
      * Endpoint POST /oauth/token
      */
     public static function postToken(): void {
+        // Rate limiting: max 10 token requests per 5 minutes per IP
+        if (AdminController::isRateLimited('oauth_token', 10, 300)) {
+            Router::json(['error' => 'too_many_requests', 'error_description' => 'Demasiados intentos. Intenta de nuevo en unos minutos.'], 429);
+            return;
+        }
+
         $body = Router::getRequestBody();
         $grantType = $body['grant_type'] ?? '';
 
@@ -852,6 +872,11 @@ HTML;
     // --- Helpers auxiliares ---
 
     private static function getTableRowCount(string $table, string $where = null): int {
+        // Only allow known table names to prevent SQL injection
+        $allowedTables = ['accounts', 'statuses', 'follows', 'jobs', 'favourites', 'bookmarks'];
+        if (!in_array($table, $allowedTables, true)) {
+            return 0;
+        }
         try {
             $db = Database::connect();
             $sql = "SELECT COUNT(*) FROM " . $table;
@@ -865,7 +890,12 @@ HTML;
         }
     }
 
+    private static ?string $_signingSecretCache = null;
+
     private static function getSigningSecret(): string {
+        if (self::$_signingSecretCache !== null) {
+            return self::$_signingSecretCache;
+        }
         $db = Database::connect();
         $stmt = $db->prepare("SELECT value FROM options WHERE key = 'jwt_secret' LIMIT 1");
         $stmt->execute();
@@ -875,33 +905,61 @@ HTML;
             $ins = $db->prepare("INSERT INTO options (key, value) VALUES ('jwt_secret', ?)");
             $ins->execute([$secret]);
         }
+        self::$_signingSecretCache = $secret;
         return $secret;
     }
 
     private static function generateTokenForUser(int $userId): string {
         $secret = self::getSigningSecret();
-        $hash = hash_hmac('sha256', $userId, $secret);
-        return "token_" . $userId . "_" . $hash;
+        $issuedAt = time();
+        $hash = hash_hmac('sha256', $userId . ':' . $issuedAt, $secret);
+        return "token_" . $userId . "_" . $issuedAt . "_" . $hash;
     }
 
+    private static ?array $_authenticatedAccountCache = null;
+    private static bool $_authCacheChecked = false;
+
     public static function getAuthenticatedAccount(): ?array {
+        if (self::$_authCacheChecked) {
+            return self::$_authenticatedAccountCache;
+        }
+        self::$_authCacheChecked = true;
+
         $token = Router::getBearerToken();
         if (!$token) {
+            self::$_authenticatedAccountCache = null;
             return null;
         }
 
         $parts = explode('_', $token);
-        if (count($parts) !== 3 || $parts[0] !== 'token') {
+        // Support both legacy 3-part tokens and new 4-part tokens with timestamp
+        if ($parts[0] !== 'token' || (count($parts) !== 3 && count($parts) !== 4)) {
+            self::$_authenticatedAccountCache = null;
             return null;
         }
 
         $userId = (int)$parts[1];
-        $hash = $parts[2];
 
-        $secret = self::getSigningSecret();
-        $expectedHash = hash_hmac('sha256', $userId, $secret);
+        if (count($parts) === 4) {
+            // New format: token_userId_issuedAt_hash
+            $issuedAt = (int)$parts[2];
+            $hash = $parts[3];
+            // Tokens expire after 90 days
+            if (time() - $issuedAt > 86400 * 90) {
+                self::$_authenticatedAccountCache = null;
+                return null;
+            }
+            $secret = self::getSigningSecret();
+            $expectedHash = hash_hmac('sha256', $userId . ':' . $issuedAt, $secret);
+        } else {
+            // Legacy format: token_userId_hash (no expiration)
+            $hash = $parts[2];
+            $secret = self::getSigningSecret();
+            $expectedHash = hash_hmac('sha256', $userId, $secret);
+        }
 
         if (!hash_equals($expectedHash, $hash)) {
+            self::$_authenticatedAccountCache = null;
             return null;
         }
 
@@ -910,7 +968,8 @@ HTML;
         $stmt->execute([$userId]);
         $account = $stmt->fetch();
 
-        return $account ?: null;
+        self::$_authenticatedAccountCache = $account ?: null;
+        return self::$_authenticatedAccountCache;
     }
 
     public static function search(): void {
@@ -1409,7 +1468,7 @@ HTML;
             CURLOPT_TIMEOUT => 4,
             CURLOPT_MAXFILESIZE => 102400, // Cargar máximo 100 KB para evitar abusos
             CURLOPT_USERAGENT => 'KutSocial-LinkVerifier/1.0',
-            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
             CURLOPT_SSL_VERIFYHOST => false
         ]);
         
@@ -1530,7 +1589,7 @@ HTML;
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
                 CURLOPT_TIMEOUT => 5,
-                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
                 CURLOPT_SSL_VERIFYHOST => false
             ]);
             $resp = curl_exec($ch);
@@ -1551,7 +1610,7 @@ HTML;
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
                 CURLOPT_TIMEOUT => 5,
-                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
                 CURLOPT_SSL_VERIFYHOST => false
             ]);
             $outboxResp = curl_exec($ch);
@@ -1575,7 +1634,7 @@ HTML;
                             "User-Agent: KutSocial/1.0; (+https://$domain)"
                         ],
                         CURLOPT_TIMEOUT => 5,
-                        CURLOPT_SSL_VERIFYPEER => false,
+                        CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
                         CURLOPT_SSL_VERIFYHOST => false
                     ]);
                     $pageResp = curl_exec($ch);
@@ -1731,15 +1790,13 @@ HTML;
             JOIN accounts a ON s.account_id = a.id
             WHERE $whereSql
             ORDER BY s.id DESC
-            LIMIT $limit
+            LIMIT ?
         ");
+        $queryParams[] = $limit;
         $stmt->execute($queryParams);
         $rows = self::filterStatuses($stmt->fetchAll());
 
-        $timeline = [];
-        foreach ($rows as $row) {
-            $timeline[] = self::formatStatus($row, $currUserId);
-        }
+        $timeline = self::formatStatusesBatch($rows, $currUserId);
 
         self::setLinkHeader($timeline);
 
@@ -1813,15 +1870,13 @@ HTML;
             JOIN accounts a ON s.account_id = a.id
             WHERE $whereSql
             ORDER BY s.id DESC
-            LIMIT $limit
+            LIMIT ?
         ");
+        $queryParams[] = $limit;
         $stmt->execute($queryParams);
         $rows = self::filterStatuses($stmt->fetchAll());
 
-        $timeline = [];
-        foreach ($rows as $row) {
-            $timeline[] = self::formatStatus($row, (int)$account['id']);
-        }
+        $timeline = self::formatStatusesBatch($rows, (int)$account['id']);
 
         self::setLinkHeader($timeline);
 
@@ -1875,18 +1930,16 @@ HTML;
             JOIN accounts a ON s.account_id = a.id
             $whereSql
             ORDER BY s.id DESC
-            LIMIT $limit
+            LIMIT ?
         ");
+        $queryParams[] = $limit;
         $stmt->execute($queryParams);
         $rows = self::filterStatuses($stmt->fetchAll());
 
         $currUser = self::getAuthenticatedAccount();
         $currUserId = $currUser ? (int)$currUser['id'] : null;
 
-        $timeline = [];
-        foreach ($rows as $row) {
-            $timeline[] = self::formatStatus($row, $currUserId);
-        }
+        $timeline = self::formatStatusesBatch($rows, $currUserId);
 
         self::setLinkHeader($timeline);
 
@@ -2357,8 +2410,117 @@ HTML;
         
         return '<p>' . nl2br($escaped) . '</p>';
     }
+    /**
+     * Batch-format multiple statuses, pre-loading all related data in batch queries
+     * to eliminate N+1 query patterns. Reduces ~8 queries/status to ~8 queries total.
+     */
+    private static function formatStatusesBatch(array $rows, ?int $currentAccountId = null): array {
+        if (empty($rows)) {
+            return [];
+        }
 
-    private static function formatStatus(array $row, ?int $currentAccountId = null): array {
+        $db = Database::connect();
+        $statusIds = array_map(fn($r) => (int)$r['status_id'], $rows);
+        $accountIds = array_unique(array_map(fn($r) => (int)$r['account_id'], $rows));
+
+        // Build placeholders for IN clauses
+        $statusPlaceholders = implode(',', array_fill(0, count($statusIds), '?'));
+        $accountPlaceholders = implode(',', array_fill(0, count($accountIds), '?'));
+
+        // 1. Batch favourite counts
+        $favCounts = [];
+        $stmt = $db->prepare("SELECT status_id, COUNT(*) as c FROM favourites WHERE status_id IN ($statusPlaceholders) GROUP BY status_id");
+        $stmt->execute($statusIds);
+        foreach ($stmt->fetchAll() as $r) {
+            $favCounts[(int)$r['status_id']] = (int)$r['c'];
+        }
+
+        // 2. Batch reply counts
+        $replyCounts = [];
+        $stmt = $db->prepare("SELECT in_reply_to_id, COUNT(*) as c FROM statuses WHERE in_reply_to_id IN ($statusPlaceholders) GROUP BY in_reply_to_id");
+        $stmt->execute($statusIds);
+        foreach ($stmt->fetchAll() as $r) {
+            $replyCounts[(int)$r['in_reply_to_id']] = (int)$r['c'];
+        }
+
+        // 3. Batch user favourites and bookmarks check
+        $userFavourites = [];
+        $userBookmarks = [];
+        if ($currentAccountId !== null) {
+            $stmt = $db->prepare("SELECT status_id FROM favourites WHERE account_id = ? AND status_id IN ($statusPlaceholders)");
+            $stmt->execute(array_merge([$currentAccountId], $statusIds));
+            foreach ($stmt->fetchAll() as $r) {
+                $userFavourites[(int)$r['status_id']] = true;
+            }
+
+            $stmt = $db->prepare("SELECT status_id FROM bookmarks WHERE account_id = ? AND status_id IN ($statusPlaceholders)");
+            $stmt->execute(array_merge([$currentAccountId], $statusIds));
+            foreach ($stmt->fetchAll() as $r) {
+                $userBookmarks[(int)$r['status_id']] = true;
+            }
+        }
+
+        // 4. Batch polls
+        $polls = [];
+        $stmt = $db->prepare("SELECT * FROM polls WHERE status_id IN ($statusPlaceholders)");
+        $stmt->execute($statusIds);
+        $pollRows = $stmt->fetchAll();
+        $pollIds = [];
+        foreach ($pollRows as $pr) {
+            $polls[(int)$pr['status_id']] = $pr;
+            $pollIds[] = (int)$pr['id'];
+        }
+
+        // 4b. Batch poll votes
+        $pollVoteCounts = [];
+        $pollUserVotes = [];
+        if (!empty($pollIds)) {
+            $pollPlaceholders = implode(',', array_fill(0, count($pollIds), '?'));
+            $stmt = $db->prepare("SELECT poll_id, choice_index, COUNT(*) as qty FROM poll_votes WHERE poll_id IN ($pollPlaceholders) GROUP BY poll_id, choice_index");
+            $stmt->execute($pollIds);
+            foreach ($stmt->fetchAll() as $r) {
+                $pollVoteCounts[(int)$r['poll_id']][(int)$r['choice_index']] = (int)$r['qty'];
+            }
+
+            if ($currentAccountId !== null) {
+                $stmt = $db->prepare("SELECT poll_id, choice_index FROM poll_votes WHERE poll_id IN ($pollPlaceholders) AND account_id = ?");
+                $stmt->execute(array_merge($pollIds, [$currentAccountId]));
+                foreach ($stmt->fetchAll() as $r) {
+                    $pollUserVotes[(int)$r['poll_id']] = (int)$r['choice_index'];
+                }
+            }
+        }
+
+        // 5. Batch show_source flags
+        $showSourceFlags = [];
+        $stmt = $db->prepare("SELECT id, show_source FROM accounts WHERE id IN ($accountPlaceholders)");
+        $stmt->execute($accountIds);
+        foreach ($stmt->fetchAll() as $r) {
+            $showSourceFlags[(int)$r['id']] = (bool)($r['show_source'] ?? 1);
+        }
+
+        // Now format each status using pre-loaded data
+        $result = [];
+        foreach ($rows as $row) {
+            $statusId = (int)$row['status_id'];
+            $result[] = self::formatStatus(
+                $row,
+                $currentAccountId,
+                $favCounts[$statusId] ?? 0,
+                $replyCounts[$statusId] ?? 0,
+                $userFavourites[$statusId] ?? false,
+                $userBookmarks[$statusId] ?? false,
+                $polls[$statusId] ?? null,
+                $pollVoteCounts,
+                $pollUserVotes,
+                $showSourceFlags[(int)$row['account_id']] ?? true
+            );
+        }
+
+        return $result;
+    }
+
+    private static function formatStatus(array $row, ?int $currentAccountId = null, ?int $batchFavCount = null, ?int $batchRepCount = null, ?bool $batchFavourited = null, ?bool $batchBookmarked = null, ?array $batchPollRow = null, ?array $batchPollVoteCounts = null, ?array $batchPollUserVotes = null, ?bool $batchShowSource = null): array {
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
  
@@ -2400,16 +2562,18 @@ HTML;
  
         $db = Database::connect();
  
-        $showSource = true;
-        try {
-            $stmtShowSource = $db->prepare("SELECT show_source FROM accounts WHERE id = ? LIMIT 1");
-            $stmtShowSource->execute([$row['account_id']]);
-            $showSourceVal = $stmtShowSource->fetchColumn();
-            if ($showSourceVal !== false) {
-                $showSource = (bool)$showSourceVal;
+        $showSource = $batchShowSource ?? true;
+        if ($batchShowSource === null) {
+            try {
+                $stmtShowSource = $db->prepare("SELECT show_source FROM accounts WHERE id = ? LIMIT 1");
+                $stmtShowSource->execute([$row['account_id']]);
+                $showSourceVal = $stmtShowSource->fetchColumn();
+                if ($showSourceVal !== false) {
+                    $showSource = (bool)$showSourceVal;
+                }
+            } catch (\Exception $e) {
+                // Ignorar
             }
-        } catch (\Exception $e) {
-            // Ignorar
         }
  
         $application = null;
@@ -2440,28 +2604,40 @@ HTML;
         }
         $statusId = (int)$row['status_id'];
  
-        // Favourites count
-        $stmtFav = $db->prepare("SELECT COUNT(*) FROM favourites WHERE status_id = ?");
-        $stmtFav->execute([$statusId]);
-        $favCount = (int)$stmtFav->fetchColumn();
+        // Favourites count (use batch data if available)
+        if ($batchFavCount !== null) {
+            $favCount = $batchFavCount;
+        } else {
+            $stmtFav = $db->prepare("SELECT COUNT(*) FROM favourites WHERE status_id = ?");
+            $stmtFav->execute([$statusId]);
+            $favCount = (int)$stmtFav->fetchColumn();
+        }
  
-        // Replies count
-        $stmtRep = $db->prepare("SELECT COUNT(*) FROM statuses WHERE in_reply_to_id = ?");
-        $stmtRep->execute([$statusId]);
-        $repCount = (int)$stmtRep->fetchColumn();
+        // Replies count (use batch data if available)
+        if ($batchRepCount !== null) {
+            $repCount = $batchRepCount;
+        } else {
+            $stmtRep = $db->prepare("SELECT COUNT(*) FROM statuses WHERE in_reply_to_id = ?");
+            $stmtRep->execute([$statusId]);
+            $repCount = (int)$stmtRep->fetchColumn();
+        }
  
         // Checks de interacción para usuario logueado
-        $favourited = false;
-        $bookmarked = false;
- 
-        if ($currentAccountId !== null) {
-            $stmtFavCheck = $db->prepare("SELECT 1 FROM favourites WHERE account_id = ? AND status_id = ? LIMIT 1");
-            $stmtFavCheck->execute([$currentAccountId, $statusId]);
-            $favourited = (bool)$stmtFavCheck->fetchColumn();
- 
-            $stmtBookCheck = $db->prepare("SELECT 1 FROM bookmarks WHERE account_id = ? AND status_id = ? LIMIT 1");
-            $stmtBookCheck->execute([$currentAccountId, $statusId]);
-            $bookmarked = (bool)$stmtBookCheck->fetchColumn();
+        if ($batchFavourited !== null) {
+            $favourited = $batchFavourited;
+            $bookmarked = $batchBookmarked ?? false;
+        } else {
+            $favourited = false;
+            $bookmarked = false;
+            if ($currentAccountId !== null) {
+                $stmtFavCheck = $db->prepare("SELECT 1 FROM favourites WHERE account_id = ? AND status_id = ? LIMIT 1");
+                $stmtFavCheck->execute([$currentAccountId, $statusId]);
+                $favourited = (bool)$stmtFavCheck->fetchColumn();
+
+                $stmtBookCheck = $db->prepare("SELECT 1 FROM bookmarks WHERE account_id = ? AND status_id = ? LIMIT 1");
+                $stmtBookCheck->execute([$currentAccountId, $statusId]);
+                $bookmarked = (bool)$stmtBookCheck->fetchColumn();
+            }
         }
  
         // Cargar attachments guardados
@@ -2473,11 +2649,15 @@ HTML;
             }
         }
  
-        // Cargar encuesta si existe
+        // Cargar encuesta si existe (use batch data if available)
         $poll = null;
-        $stmtPoll = $db->prepare("SELECT * FROM polls WHERE status_id = ? LIMIT 1");
-        $stmtPoll->execute([$statusId]);
-        if ($pollRow = $stmtPoll->fetch()) {
+        $pollRow = $batchPollRow;
+        if ($pollRow === null) {
+            $stmtPoll = $db->prepare("SELECT * FROM polls WHERE status_id = ? LIMIT 1");
+            $stmtPoll->execute([$statusId]);
+            $pollRow = $stmtPoll->fetch() ?: null;
+        }
+        if ($pollRow) {
             $options = json_decode($pollRow['options_json'], true) ?: [];
             
             $votesCount = [];
@@ -2485,28 +2665,44 @@ HTML;
                 $votesCount[$idx] = 0;
             }
             
-            $stmtVotes = $db->prepare("SELECT choice_index, COUNT(*) as qty FROM poll_votes WHERE poll_id = ? GROUP BY choice_index");
-            $stmtVotes->execute([$pollRow['id']]);
-            $votesRows = $stmtVotes->fetchAll();
-            $totalVotes = 0;
-            foreach ($votesRows as $vr) {
-                $cIdx = (int)$vr['choice_index'];
-                $qty = (int)$vr['qty'];
-                if (isset($votesCount[$cIdx])) {
-                    $votesCount[$cIdx] = $qty;
+            // Use batch vote counts if available
+            if ($batchPollVoteCounts !== null && isset($batchPollVoteCounts[(int)$pollRow['id']])) {
+                $totalVotes = 0;
+                foreach ($batchPollVoteCounts[(int)$pollRow['id']] as $cIdx => $qty) {
+                    if (isset($votesCount[$cIdx])) {
+                        $votesCount[$cIdx] = $qty;
+                    }
+                    $totalVotes += $qty;
                 }
-                $totalVotes += $qty;
+            } else {
+                $stmtVotes = $db->prepare("SELECT choice_index, COUNT(*) as qty FROM poll_votes WHERE poll_id = ? GROUP BY choice_index");
+                $stmtVotes->execute([$pollRow['id']]);
+                $votesRows = $stmtVotes->fetchAll();
+                $totalVotes = 0;
+                foreach ($votesRows as $vr) {
+                    $cIdx = (int)$vr['choice_index'];
+                    $qty = (int)$vr['qty'];
+                    if (isset($votesCount[$cIdx])) {
+                        $votesCount[$cIdx] = $qty;
+                    }
+                    $totalVotes += $qty;
+                }
             }
  
             $voted = false;
             $ownVote = null;
             if ($currentAccountId !== null) {
-                $stmtVoted = $db->prepare("SELECT choice_index FROM poll_votes WHERE poll_id = ? AND account_id = ? LIMIT 1");
-                $stmtVoted->execute([$pollRow['id'], $currentAccountId]);
-                $voteVal = $stmtVoted->fetch();
-                if ($voteVal !== false) {
+                if ($batchPollUserVotes !== null && isset($batchPollUserVotes[(int)$pollRow['id']])) {
                     $voted = true;
-                    $ownVote = (int)$voteVal['choice_index'];
+                    $ownVote = $batchPollUserVotes[(int)$pollRow['id']];
+                } elseif ($batchPollUserVotes === null) {
+                    $stmtVoted = $db->prepare("SELECT choice_index FROM poll_votes WHERE poll_id = ? AND account_id = ? LIMIT 1");
+                    $stmtVoted->execute([$pollRow['id'], $currentAccountId]);
+                    $voteVal = $stmtVoted->fetch();
+                    if ($voteVal !== false) {
+                        $voted = true;
+                        $ownVote = (int)$voteVal['choice_index'];
+                    }
                 }
             }
  
@@ -2856,15 +3052,13 @@ HTML;
             JOIN accounts a ON s.account_id = a.id
             WHERE $whereSql
             ORDER BY b.id DESC
-            LIMIT $limit
+            LIMIT ?
         ");
+        $queryParams[] = $limit;
         $stmt->execute($queryParams);
         $rows = self::filterStatuses($stmt->fetchAll());
 
-        $timeline = [];
-        foreach ($rows as $row) {
-            $timeline[] = self::formatStatus($row, (int)$account['id']);
-        }
+        $timeline = self::formatStatusesBatch($rows, (int)$account['id']);
 
         self::setLinkHeader($timeline);
 
@@ -3277,53 +3471,76 @@ HTML;
         header("Link: <$nextUrl>; rel=\"next\", <$prevUrl>; rel=\"prev\"");
     }
 
-    private static function filterStatuses(array $rows): array {
+    private static ?array $_moderationBlocksCache = null;
+
+    /**
+     * Get cached moderation blocks (loaded once per request).
+     */
+    private static function getModerationBlocks(): array {
+        if (self::$_moderationBlocksCache !== null) {
+            return self::$_moderationBlocksCache;
+        }
         $db = Database::connect();
         $blocks = $db->query("SELECT type, target FROM moderation_blocks")->fetchAll();
-        if (empty($blocks)) {
-            return $rows;
-        }
 
-        $blockedDomains = [];
-        $blockedAccounts = [];
-        $blockedWords = [];
-        $blockedHashtags = [];
-        $blockedLanguages = [];
+        $result = [
+            'domains' => [],
+            'accounts' => [],
+            'words' => [],
+            'hashtags' => [],
+            'languages' => []
+        ];
 
         foreach ($blocks as $b) {
             $t = strtolower($b['target']);
-            if ($b['type'] === 'domain') {
-                $blockedDomains[] = $t;
-            } elseif ($b['type'] === 'account') {
-                $blockedAccounts[] = $t;
-            } elseif ($b['type'] === 'word') {
-                $blockedWords[] = $t;
-            } elseif ($b['type'] === 'hashtag') {
-                if (!str_starts_with($t, '#')) {
-                    $t = '#' . $t;
-                }
-                $blockedHashtags[] = $t;
-            } elseif ($b['type'] === 'language') {
-                $blockedLanguages[] = $t;
+            switch ($b['type']) {
+                case 'domain':
+                    $result['domains'][$t] = true;
+                    break;
+                case 'account':
+                    $result['accounts'][$t] = true;
+                    break;
+                case 'word':
+                    $result['words'][] = $t;
+                    break;
+                case 'hashtag':
+                    $result['hashtags'][] = str_starts_with($t, '#') ? $t : '#' . $t;
+                    break;
+                case 'language':
+                    $result['languages'][$t] = true;
+                    break;
             }
+        }
+
+        self::$_moderationBlocksCache = $result;
+        return $result;
+    }
+
+    private static function filterStatuses(array $rows): array {
+        $blocks = self::getModerationBlocks();
+
+        // Quick return if no blocks
+        if (empty($blocks['domains']) && empty($blocks['accounts']) && empty($blocks['words']) && empty($blocks['hashtags']) && empty($blocks['languages'])) {
+            return $rows;
         }
 
         $filtered = [];
         foreach ($rows as $row) {
             $domain = strtolower($row['domain'] ?? '');
-            if (!empty($domain) && in_array($domain, $blockedDomains)) {
+            // O(1) hash lookup instead of O(n) in_array
+            if (!empty($domain) && isset($blocks['domains'][$domain])) {
                 continue;
             }
 
             $username = strtolower($row['username'] ?? '');
             $acct = $domain ? $username . '@' . $domain : $username;
-            if (in_array($username, $blockedAccounts) || in_array($acct, $blockedAccounts)) {
+            if (isset($blocks['accounts'][$username]) || isset($blocks['accounts'][$acct])) {
                 continue;
             }
 
             $content = strtolower($row['status_content'] ?? '');
             $hasBlockedWord = false;
-            foreach ($blockedWords as $word) {
+            foreach ($blocks['words'] as $word) {
                 if (str_contains($content, $word)) {
                     $hasBlockedWord = true;
                     break;
@@ -3334,7 +3551,7 @@ HTML;
             }
 
             $hasBlockedHashtag = false;
-            foreach ($blockedHashtags as $hash) {
+            foreach ($blocks['hashtags'] as $hash) {
                 if (str_contains($content, $hash)) {
                     $hasBlockedHashtag = true;
                     break;
@@ -3345,7 +3562,7 @@ HTML;
             }
 
             $lang = strtolower($row['language'] ?? '');
-            if (!empty($lang) && in_array($lang, $blockedLanguages)) {
+            if (!empty($lang) && isset($blocks['languages'][$lang])) {
                 continue;
             }
 
@@ -3397,6 +3614,16 @@ HTML;
         if (!in_array($ext, $allowedExtensions)) {
             self::log("uploadMedia: Extensión de archivo no permitida: '$ext'");
             Router::json(['error' => 'Extensión de archivo multimedia no permitida.'], 400);
+            return;
+        }
+
+        // Validate actual MIME type of file content (prevents disguised uploads)
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $realMime = $finfo->file($file['tmp_name']);
+        $allowedMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!in_array($realMime, $allowedMimes, true)) {
+            self::log("uploadMedia: MIME type real no permitido: '$realMime' (extensión: '$ext')");
+            Router::json(['error' => 'El contenido del archivo no corresponde a un tipo de imagen válido.'], 400);
             return;
         }
 

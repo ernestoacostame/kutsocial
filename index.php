@@ -27,6 +27,11 @@ require_once __DIR__ . '/config.php';
 $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 if (str_starts_with($requestUri, '/admin')) {
     if (session_status() === PHP_SESSION_NONE) {
+        // Session security hardening
+        ini_set('session.cookie_httponly', 1);
+        ini_set('session.cookie_secure', isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 1 : 0);
+        ini_set('session.cookie_samesite', 'Lax');
+        ini_set('session.use_strict_mode', 1);
         session_start();
     }
 }
@@ -41,7 +46,14 @@ use KutSocial\Controllers\AdminController;
 // 3. Inicializar base de datos
 try {
     Database::setDbPath(KUTSOCIAL_DB_PATH);
-    Database::runMigrations();
+    // Cache migration state to avoid running on every request
+    $migrationCacheFile = dirname(KUTSOCIAL_DB_PATH) . '/.migration_version';
+    $currentMigrationCount = Database::getMigrationCount();
+    $cachedVersion = @file_get_contents($migrationCacheFile);
+    if ($cachedVersion === false || (int)$cachedVersion !== $currentMigrationCount) {
+        Database::runMigrations();
+        @file_put_contents($migrationCacheFile, (string)$currentMigrationCount);
+    }
 } catch (Exception $e) {
     http_response_code(500);
     exit("Fallo crítico de base de datos: " . $e->getMessage());

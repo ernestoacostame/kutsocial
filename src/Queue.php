@@ -41,7 +41,7 @@ class Queue {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT_MS => 100, // Timeout extremadamente bajo para no bloquear
             CURLOPT_NOSIGNAL => 1,
-            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
             CURLOPT_SSL_VERIFYHOST => false
         ]);
         curl_exec($ch);
@@ -177,7 +177,7 @@ class Queue {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 15,
             CURLOPT_FAILONERROR => true,
-            CURLOPT_SSL_VERIFYPEER => false, // Opcional, pero previene problemas locales de certificados en entornos de desarrollo
+            CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false, // Opcional, pero previene problemas locales de certificados en entornos de desarrollo
             CURLOPT_SSL_VERIFYHOST => false
         ]);
 

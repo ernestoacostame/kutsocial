@@ -97,7 +97,8 @@ class NotificationHelper {
         $host = $recipient['smtp_host'];
         $port = (int)$recipient['smtp_port'];
         $user = $recipient['smtp_user'];
-        $pass = $recipient['smtp_pass'];
+        // Decrypt SMTP password (backward-compatible with plaintext values)
+        $pass = \KutSocial\CryptoHelper::decrypt($recipient['smtp_pass'] ?? '');
         $from = $recipient['smtp_from'] ?: ('no-reply@' . ($_SERVER['HTTP_HOST'] ?? 'localhost'));
 
         // Wrap body in a basic HTML template
@@ -142,7 +143,9 @@ class NotificationHelper {
             if (!$author) return;
 
             $authorHandle = $author['domain'] ? '@' . $author['username'] . '@' . $author['domain'] : '@' . $author['username'];
-            $authorName = $author['display_name'] ?: $author['username'];
+            $authorName = htmlspecialchars($author['display_name'] ?: $author['username'], ENT_QUOTES, 'UTF-8');
+            // Sanitize content for email HTML body
+            $safeContent = strip_tags($status['content'], '<p><br><a><strong><em>');
 
             $recipientId = null;
 
@@ -163,7 +166,7 @@ class NotificationHelper {
                         "<h3>¡Hola @{$parentUser['username']}!</h3>
                          <p><strong>$authorName</strong> ($authorHandle) ha respondido a tu publicación:</p>
                          <div style='border-left: 4px solid #6366f1; padding-left: 12px; margin: 15px 0; color: #cbd5e1; font-style: italic; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;'>
-                             {$status['content']}
+                             {$safeContent}
                          </div>
                          <p>Puedes verla en tu panel de KutSocial.</p>"
                     );
@@ -187,7 +190,7 @@ class NotificationHelper {
                         "<h3>¡Hola @{$user['username']}!</h3>
                          <p><strong>$authorName</strong> ($authorHandle) te ha mencionado en una publicación:</p>
                          <div style='border-left: 4px solid #6366f1; padding-left: 12px; margin: 15px 0; color: #cbd5e1; font-style: italic; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;'>
-                             {$status['content']}
+                             {$safeContent}
                          </div>
                          <p>Puedes verla en tu panel de KutSocial.</p>"
                     );
@@ -247,7 +250,7 @@ class NotificationHelper {
         curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
         curl_setopt($ch, CURLOPT_TIMEOUT, 6);
-        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+        curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false);
         curl_setopt($ch, CURLOPT_USERAGENT, 'KutSocial-CardParser/1.0');
         $html = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

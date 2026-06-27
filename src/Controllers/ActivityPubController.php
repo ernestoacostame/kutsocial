@@ -585,7 +585,7 @@ class ActivityPubController {
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
                 CURLOPT_TIMEOUT => 10,
-                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
                 CURLOPT_SSL_VERIFYHOST => false
             ]);
             $resp = curl_exec($ch);
@@ -792,7 +792,7 @@ class ActivityPubController {
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
                 CURLOPT_TIMEOUT => 5,
-                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
                 CURLOPT_SSL_VERIFYHOST => false
             ]);
             $resp = curl_exec($ch);
@@ -844,7 +844,7 @@ class ActivityPubController {
                     "User-Agent: KutSocial/1.0; (+https://$localDomain)"
                 ],
                 CURLOPT_TIMEOUT => 5,
-                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
                 CURLOPT_SSL_VERIFYHOST => false
             ]);
             $resp = curl_exec($ch);
@@ -944,7 +944,7 @@ class ActivityPubController {
                     "User-Agent: KutSocial/1.0; (+https://$localDomain)"
                 ],
                 CURLOPT_TIMEOUT => 4,
-                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
                 CURLOPT_SSL_VERIFYHOST => false
             ]);
             $resp = curl_exec($ch);

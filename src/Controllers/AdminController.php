@@ -28,7 +28,77 @@ class AdminController {
             header("Location: /admin/login");
             exit;
         }
+        // Verify CSRF for POST requests
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            self::verifyCsrfToken();
+        }
         return $user;
+    }
+
+    /**
+     * Generate a CSRF token and store it in the session.
+     */
+    public static function generateCsrfToken(): string {
+        if (empty($_SESSION['csrf_token'])) {
+            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+        }
+        return $_SESSION['csrf_token'];
+    }
+
+    /**
+     * Verify the CSRF token from POST data or fail.
+     */
+    private static function verifyCsrfToken(): void {
+        $token = $_POST['csrf_token'] ?? '';
+        $sessionToken = $_SESSION['csrf_token'] ?? '';
+        if (empty($sessionToken) || !hash_equals($sessionToken, $token)) {
+            http_response_code(403);
+            exit('Solicitud inválida: token CSRF no válido. <a href="/admin/dashboard">Volver</a>');
+        }
+    }
+
+    /**
+     * Rate limiting helper: returns true if the request should be blocked.
+     * @param string $endpoint The endpoint identifier
+     * @param int $maxAttempts Maximum attempts allowed
+     * @param int $windowSeconds Time window in seconds
+     */
+    public static function isRateLimited(string $endpoint, int $maxAttempts = 5, int $windowSeconds = 300): bool {
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+        try {
+            $db = Database::connect();
+            
+            // Clean old entries
+            $db->exec("DELETE FROM rate_limits WHERE datetime(last_attempt, '+{$windowSeconds} seconds') < datetime('now')");
+            
+            $stmt = $db->prepare("SELECT attempts, first_attempt FROM rate_limits WHERE ip_address = ? AND endpoint = ? LIMIT 1");
+            $stmt->execute([$ip, $endpoint]);
+            $row = $stmt->fetch();
+            
+            if ($row) {
+                $firstAttempt = strtotime($row['first_attempt']);
+                if (time() - $firstAttempt > $windowSeconds) {
+                    // Window expired, reset
+                    $del = $db->prepare("DELETE FROM rate_limits WHERE ip_address = ? AND endpoint = ?");
+                    $del->execute([$ip, $endpoint]);
+                    $ins = $db->prepare("INSERT INTO rate_limits (ip_address, endpoint) VALUES (?, ?)");
+                    $ins->execute([$ip, $endpoint]);
+                    return false;
+                }
+                if ((int)$row['attempts'] >= $maxAttempts) {
+                    return true;
+                }
+                $upd = $db->prepare("UPDATE rate_limits SET attempts = attempts + 1, last_attempt = datetime('now') WHERE ip_address = ? AND endpoint = ?");
+                $upd->execute([$ip, $endpoint]);
+            } else {
+                $ins = $db->prepare("INSERT INTO rate_limits (ip_address, endpoint) VALUES (?, ?)");
+                $ins->execute([$ip, $endpoint]);
+            }
+            return false;
+        } catch (\Exception $e) {
+            // If rate limiting fails, don't block the request
+            return false;
+        }
     }
 
     /**
@@ -196,6 +266,13 @@ class AdminController {
      * Handle admin login post.
      */
     public static function handleLogin(): void {
+        // Rate limiting: max 5 login attempts per 5 minutes
+        if (self::isRateLimited('admin_login', 5, 300)) {
+            $_SESSION['login_error'] = "Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.";
+            header("Location: /admin/login");
+            exit;
+        }
+
         $db = Database::connect();
 
         // Si es el paso de verificar el token 2FA
@@ -299,7 +376,9 @@ class AdminController {
         $smtpPort = (int)($admin['smtp_port'] ?? 587);
         if ($smtpPort <= 0) $smtpPort = 587;
         $smtpUser = htmlspecialchars($admin['smtp_user'] ?? '');
-        $smtpPass = htmlspecialchars($admin['smtp_pass'] ?? '');
+        // Show masked password in the form — never expose the real password
+        $smtpPassRaw = $admin['smtp_pass'] ?? '';
+        $smtpPass = !empty($smtpPassRaw) ? '••••••••' : '';
         $smtpFrom = htmlspecialchars($admin['smtp_from'] ?? '');
         $emailNotificationsChecked = !empty($admin['email_notifications']) ? 'checked' : '';
         $attributionDomains = htmlspecialchars($admin['attribution_domains'] ?? '');
@@ -1341,6 +1420,15 @@ class AdminController {
         $html = str_replace('{else_relays}', $hasRelays ? '<!--' : '-->', $html);
         $html = str_replace('{endif_relays}', $hasRelays ? '-->' : '', $html);
 
+        // Inject CSRF token into all POST forms
+        $csrfToken = self::generateCsrfToken();
+        $csrfInput = '<input type="hidden" name="csrf_token" value="' . htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') . '">';
+        $html = preg_replace(
+            '/(<form\s[^>]*method="POST"[^>]*>)/i',
+            '$1' . "\n" . '            ' . $csrfInput,
+            $html
+        );
+
         Router::html($html);
     }
 
@@ -1368,6 +1456,16 @@ class AdminController {
             $smtpPort = (int)($_POST['smtp_port'] ?? 587);
             $smtpUser = trim($_POST['smtp_user'] ?? '');
             $smtpPass = $_POST['smtp_pass'] ?? '';
+            // Only re-encrypt if the password was actually changed (not the masked placeholder)
+            if ($smtpPass === '••••••••' || $smtpPass === '') {
+                // Keep existing password — fetch current value
+                $stmtCurr = $db->prepare("SELECT smtp_pass FROM accounts WHERE id = ? LIMIT 1");
+                $stmtCurr->execute([$_SESSION['admin_account_id']]);
+                $smtpPass = $stmtCurr->fetchColumn() ?: null;
+            } else {
+                // Encrypt new password before storage
+                $smtpPass = \KutSocial\CryptoHelper::encrypt($smtpPass);
+            }
             $smtpFrom = trim($_POST['smtp_from'] ?? '');
             $emailNotifications = isset($_POST['email_notifications']) ? 1 : 0;
             $attributionDomains = trim($_POST['attribution_domains'] ?? '');
@@ -1661,13 +1759,22 @@ class AdminController {
             case 'rollback':
                 set_time_limit(120);
                 $backupFile = $_POST['backup_file'] ?? $_GET['backup_file'] ?? null;
+                // Validate backup file path to prevent path traversal
+                if ($backupFile) {
+                    $realBackupPath = realpath($backupFile);
+                    $realUpdateDir = realpath($updater->getUpdateDir());
+                    if (!$realBackupPath || !$realUpdateDir || !str_starts_with($realBackupPath, $realUpdateDir)) {
+                        echo json_encode(['error' => 'Ruta del archivo de respaldo no válida.']);
+                        break;
+                    }
+                }
                 $result = $updater->rollback($backupFile);
                 echo json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
                 break;
 
             default:
                 http_response_code(400);
-                echo json_encode(['error' => 'Acción no válida: ' . $action]);
+                echo json_encode(['error' => 'Acción no válida.']);
                 break;
         }
         exit;
