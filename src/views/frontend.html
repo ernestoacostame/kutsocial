@@ -1789,6 +1789,9 @@
         let token = localStorage.getItem('kutsocial_token');
         let currentTimeline = 'public';
         let lastId = 0;
+        let oldestId = null;
+        let hasMoreToots = true;
+        let isLoadingToots = false;
         let eventSource = null;
 
         // Comprobación de autenticación
@@ -1808,6 +1811,15 @@
             if (textarea) {
                 textarea.addEventListener('input', handleComposerInput);
                 textarea.addEventListener('keydown', handleComposerKeydown);
+            }
+        });
+
+        // Event listener de scroll para carga diferida (Infinite Scroll)
+        window.addEventListener('scroll', () => {
+            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 600) {
+                if (!isLoadingToots && hasMoreToots && currentTimeline !== 'bookmarks') {
+                    loadTimeline(true);
+                }
             }
         });
 
@@ -2001,9 +2013,27 @@
             } catch (e) {}
         }
 
-        async function loadTimeline() {
+        async function loadTimeline(loadMore = false) {
+            if (isLoadingToots) return;
+            if (loadMore && !hasMoreToots) return;
+
+            isLoadingToots = true;
+
             const feed = document.getElementById('feed');
-            feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+            let loadingIndicator = null;
+
+            if (!loadMore) {
+                feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+                lastId = 0;
+                oldestId = null;
+                hasMoreToots = true;
+            } else {
+                loadingIndicator = document.createElement('div');
+                loadingIndicator.id = 'infinite-scroll-loading';
+                loadingIndicator.style = 'text-align:center; padding: 20px; color: var(--text-muted);';
+                loadingIndicator.innerText = 'Cargando más publicaciones...';
+                feed.appendChild(loadingIndicator);
+            }
 
             let url = '/api/v1/timelines/public';
             if (currentTimeline === 'home') {
@@ -2017,34 +2047,70 @@
                 const tagName = currentTimeline.split('_')[1];
                 url = `/api/v1/timelines/tag/${tagName}`;
             }
+
+            const limit = 20;
+            const separator = url.includes('?') ? '&' : '?';
+            let fetchUrl = `${url}${separator}limit=${limit}`;
+            if (loadMore && oldestId !== null) {
+                fetchUrl += `&max_id=${oldestId}`;
+            }
+
             try {
-                const res = await fetch(url, {
+                const res = await fetch(fetchUrl, {
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
                 const toots = await res.json();
-                feed.innerHTML = '';
-                
+
+                if (loadingIndicator && loadingIndicator.parentNode) {
+                    loadingIndicator.parentNode.removeChild(loadingIndicator);
+                }
+
+                if (!loadMore) {
+                    feed.innerHTML = '';
+                }
+
                 if (toots.length === 0) {
-                    feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No hay publicaciones todavía.</div>';
+                    if (!loadMore) {
+                        feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No hay publicaciones todavía.</div>';
+                    }
+                    hasMoreToots = false;
+                    isLoadingToots = false;
                     return;
                 }
 
                 toots.forEach(toot => {
                     const idInt = parseInt(toot.id);
-                    if (idInt > lastId) {
-                        lastId = idInt;
+                    if (!loadMore) {
+                        if (idInt > lastId) {
+                            lastId = idInt;
+                        }
+                    }
+                    if (oldestId === null || idInt < oldestId) {
+                        oldestId = idInt;
                     }
                     prependToot(toot, false);
                 });
 
-                // Iniciar Streaming en tiempo real con SSE (solo para federación pública/home, no marcadores)
-                if (currentTimeline !== 'bookmarks') {
-                    startStreaming();
-                } else if (eventSource) {
-                    eventSource.close();
+                if (toots.length < limit) {
+                    hasMoreToots = false;
+                }
+
+                if (!loadMore) {
+                    if (currentTimeline !== 'bookmarks') {
+                        startStreaming();
+                    } else if (eventSource) {
+                        eventSource.close();
+                    }
                 }
             } catch (e) {
-                feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar timeline.</div>';
+                if (loadingIndicator && loadingIndicator.parentNode) {
+                    loadingIndicator.parentNode.removeChild(loadingIndicator);
+                }
+                if (!loadMore) {
+                    feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar timeline.</div>';
+                }
+            } finally {
+                isLoadingToots = false;
             }
         }
 
@@ -2519,9 +2585,23 @@
                 });
 
                 if (response.ok) {
+                    const newToot = await response.json();
                     textarea.value = '';
                     cancelComposerContext();
-                    loadTimeline();
+                    
+                    if (editTootId) {
+                        loadTimeline(false);
+                    } else {
+                        if (currentTimeline === 'home' || currentTimeline === 'public') {
+                            const idInt = parseInt(newToot.id);
+                            if (idInt > lastId) {
+                                lastId = idInt;
+                            }
+                            prependToot(newToot, true);
+                        } else {
+                            loadTimeline(false);
+                        }
+                    }
                 } else {
                     const errData = await response.json();
                     alert('Error: ' + (errData.error || 'No se pudo publicar.'));
