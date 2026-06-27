@@ -510,7 +510,7 @@ class AdminController {
         }
 
         // Construir la página HTML del Dashboard
-        $html = <<<HTML
+        $html = <<<'HTML'
         <!DOCTYPE html>
         <html lang="es">
         <head>
@@ -1403,6 +1403,9 @@ class AdminController {
         </html>
         HTML;
 
+        $csrfToken = self::generateCsrfToken();
+        $csrfInput = '<input type="hidden" name="csrf_token" value="' . htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') . '">';
+
         // Reemplazos de plantillas simples
         $html = str_replace('{$currentVersion}', $currentVersion, $html);
         $html = str_replace('{$maxChars}', (string)$maxChars, $html);
@@ -1435,8 +1438,6 @@ class AdminController {
         $html = str_replace('{endif_relays}', $hasRelays ? '-->' : '', $html);
 
         // Inject CSRF token into all POST forms
-        $csrfToken = self::generateCsrfToken();
-        $csrfInput = '<input type="hidden" name="csrf_token" value="' . htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') . '">';
         $html = preg_replace(
             '/(<form\s[^>]*method="POST"[^>]*>)/i',
             '$1' . "\n" . '            ' . $csrfInput,
