@@ -2585,20 +2585,13 @@
             if (!card || !card._toot) return;
             const toot = card._toot;
 
-            if (toot.reblogged) {
-                if (confirm('¿Quieres deshacer el re-toot?')) {
-                    executeReblog(tootId, btn, false);
-                }
-                return;
-            }
-
             const rect = btn.getBoundingClientRect();
             const menu = document.createElement('div');
             menu.className = 'reblog-context-menu';
             menu.style = `
                 position: fixed;
-                top: ${rect.bottom + window.scrollY + 6}px;
-                left: ${rect.left + window.scrollX}px;
+                top: ${rect.bottom + 6}px;
+                left: ${rect.left}px;
                 background: #1e1f22;
                 border: 1px solid #2f3037;
                 border-radius: 8px;
@@ -2611,7 +2604,11 @@
             `;
 
             const optReblog = document.createElement('button');
-            optReblog.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--text-color);">repeat</span> Re-tootear';
+            if (toot.reblogged) {
+                optReblog.innerHTML = '<span class="material-icons" style="font-size:16px; margin-right:8px; color: #10b981;">repeat</span> Deshacer Re-toot';
+            } else {
+                optReblog.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--text-color);">repeat</span> Re-tootear';
+            }
             optReblog.style = 'background:none; border:none; color:#fff; padding: 8px 16px; text-align:left; font-size:13px; cursor:pointer; display:flex; align-items:center; width:100%;';
             optReblog.onmouseover = () => optReblog.style.background = 'rgba(255,255,255,0.06)';
             optReblog.onmouseout = () => optReblog.style.background = 'none';
@@ -2619,7 +2616,7 @@
                 e.stopPropagation();
                 menu.remove();
                 activeReblogMenu = null;
-                executeReblog(tootId, btn, true);
+                executeReblog(tootId, btn, !toot.reblogged);
             };
 
             const optQuote = document.createElement('button');

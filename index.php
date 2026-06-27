@@ -38,6 +38,7 @@ if (str_starts_with($requestUri, '/admin')) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
+    
 }
 
 use KutSocial\Router;
