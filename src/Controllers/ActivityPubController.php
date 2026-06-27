@@ -401,6 +401,10 @@ class ActivityPubController {
             $inReplyToId
         ]);
 
+        $newStatusId = (int)$db->lastInsertId();
+        \KutSocial\NotificationHelper::fetchAndSaveLinkCard($newStatusId, $content);
+        \KutSocial\NotificationHelper::notifyMentionOrReply($newStatusId);
+
         self::log("handleCreate: Publicación remota '$uri' guardada exitosamente con visibilidad '$visibility'");
     }
 
@@ -497,6 +501,11 @@ class ActivityPubController {
             VALUES (?, ?, ?, ?)
         ");
         $stmt->execute([$remoteAccount['id'], $localAccount['id'], $activity['id'] ?? null, $status]);
+
+        // Disparar notificación por correo
+        if ($status === 'accepted') {
+            \KutSocial\NotificationHelper::notifyFollow((int)$localAccount['id'], (int)$remoteAccount['id']);
+        }
 
         // 3. Responder con un Accept encolado si el estado es accepted
         if ($status === 'accepted') {

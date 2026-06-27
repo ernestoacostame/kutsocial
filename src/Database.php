@@ -16,6 +16,17 @@ class Database {
         return self::$dbPath;
     }
 
+    public static function getVersion(): string {
+        $versionFile = __DIR__ . '/../version.php';
+        if (file_exists($versionFile)) {
+            $content = file_get_contents($versionFile);
+            if (preg_match("/define\('KUTSOCIAL_VERSION',\s*'([^']+)'\)/", $content, $matches)) {
+                return $matches[1];
+            }
+        }
+        return defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0';
+    }
+
     public static function connect(): PDO {
         if (self::$instance !== null) {
             return self::$instance;
@@ -325,6 +336,16 @@ class Database {
                     created_at TEXT NOT NULL DEFAULT (datetime('now')),
                     UNIQUE(account_id, hashtag)
                 )"
+            ],
+            12 => [
+                "ALTER TABLE statuses ADD COLUMN card TEXT NULL",
+                "ALTER TABLE accounts ADD COLUMN smtp_host TEXT NULL",
+                "ALTER TABLE accounts ADD COLUMN smtp_port INTEGER NULL",
+                "ALTER TABLE accounts ADD COLUMN smtp_user TEXT NULL",
+                "ALTER TABLE accounts ADD COLUMN smtp_pass TEXT NULL",
+                "ALTER TABLE accounts ADD COLUMN smtp_from TEXT NULL",
+                "ALTER TABLE accounts ADD COLUMN email_notifications INTEGER DEFAULT 0",
+                "ALTER TABLE accounts ADD COLUMN attribution_domains TEXT NULL"
             ]
         ];
     }

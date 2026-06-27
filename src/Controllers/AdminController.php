@@ -292,8 +292,17 @@ class AdminController {
             $updatesHistory = $db->query("SELECT * FROM updates ORDER BY id DESC LIMIT 20")->fetchAll();
         } catch (Exception $e) {}
 
-        $currentVersion = KUTSOCIAL_VERSION;
+        $currentVersion = \KutSocial\Database::getVersion();
         $is2faActive = !empty($admin['otp_secret']);
+
+        $smtpHost = htmlspecialchars($admin['smtp_host'] ?? '');
+        $smtpPort = (int)($admin['smtp_port'] ?? 587);
+        if ($smtpPort <= 0) $smtpPort = 587;
+        $smtpUser = htmlspecialchars($admin['smtp_user'] ?? '');
+        $smtpPass = htmlspecialchars($admin['smtp_pass'] ?? '');
+        $smtpFrom = htmlspecialchars($admin['smtp_from'] ?? '');
+        $emailNotificationsChecked = !empty($admin['email_notifications']) ? 'checked' : '';
+        $attributionDomains = htmlspecialchars($admin['attribution_domains'] ?? '');
 
         // Mensaje de éxito de ajustes
         $successMsg = $_SESSION['admin_success_msg'] ?? '';
@@ -705,6 +714,51 @@ class AdminController {
                                 <input type="password" name="update_github_token" id="update_github_token" value="{$githubToken}" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; color: white;">
                                 <p class="help-text">Token de Acceso Personal (PAT) de GitHub para poder buscar y descargar de forma segura actualizaciones de KutSocial.</p>
                             </div>
+
+                            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 30px 0;">
+                            
+                            <h3>📧 Configuración de Correo Electrónico (Notificaciones SMTP)</h3>
+                            <div class="form-group" style="margin-top: 15px; display: flex; align-items: center; gap: 10px;">
+                                <input type="checkbox" name="email_notifications" id="email_notifications" value="1" {$emailNotificationsChecked} style="width: auto; cursor: pointer;">
+                                <label for="email_notifications" style="margin-bottom: 0; cursor: pointer; font-weight: 600;">Activar notificaciones por correo electrónico</label>
+                            </div>
+                            <div id="smtp-settings-wrapper" style="margin-top: 15px;">
+                                <div class="form-group" style="margin-bottom: 15px;">
+                                    <label for="smtp_host">Servidor SMTP</label>
+                                    <input type="text" name="smtp_host" id="smtp_host" value="{$smtpHost}" placeholder="smtp.ejemplo.com" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; color: white;">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 15px;">
+                                    <label for="smtp_port">Puerto SMTP</label>
+                                    <input type="number" name="smtp_port" id="smtp_port" value="{$smtpPort}" min="1" max="65535" placeholder="587" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; color: white;">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 15px;">
+                                    <label for="smtp_user">Usuario SMTP</label>
+                                    <input type="text" name="smtp_user" id="smtp_user" value="{$smtpUser}" placeholder="usuario@ejemplo.com" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; color: white;">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 15px;">
+                                    <label for="smtp_pass">Contraseña SMTP</label>
+                                    <input type="password" name="smtp_pass" id="smtp_pass" value="{$smtpPass}" placeholder="••••••••" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; color: white;">
+                                </div>
+                                <div class="form-group" style="margin-bottom: 15px;">
+                                    <label for="smtp_from">Correo Remitente (From)</label>
+                                    <input type="email" name="smtp_from" id="smtp_from" value="{$smtpFrom}" placeholder="kutsocial@ejemplo.com" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; color: white;">
+                                    <p class="help-text">El correo que aparecerá como remitente de las notificaciones.</p>
+                                </div>
+                            </div>
+
+                            <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 30px 0;">
+
+                            <h3>✍️ Atribución de Autor (Estilo Mastodon)</h3>
+                            <p class="help-text">Cuando se comparta un enlace de tus sitios autorizados, las publicaciones de KutSocial y Mastodon te atribuirán la autoría si el sitio tiene esta etiqueta en su HTML:</p>
+                            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; font-family: monospace; font-size: 13px; margin: 10px 0; color: #818cf8; user-select: all; cursor: pointer;">
+                                &lt;meta name="fediverse:creator" content="@{$admin['username']}@{$_SERVER['HTTP_HOST']}"&gt;
+                            </div>
+                            <div class="form-group" style="margin-top: 15px;">
+                                <label for="attribution_domains">Sitios web permitidos para atribuirte (Uno por línea)</label>
+                                <textarea name="attribution_domains" id="attribution_domains" rows="5" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; color: white; font-family: monospace;" placeholder="tudominio.com&#10;www.otromedio.net">{$attributionDomains}</textarea>
+                                <p class="help-text">Protege tu cuenta de falsas atribuciones. Solo se te acreditará la autoría en enlaces que provengan de los dominios aquí listados.</p>
+                            </div>
+
                             <button type="submit" class="btn-submit" style="margin-top: 20px;">Guardar Ajustes</button>
                         </form>
                     </div>
@@ -1307,6 +1361,38 @@ class AdminController {
 
             $stmt2 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('update_github_token', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
             $stmt2->execute([$githubToken]);
+
+            // Guardar preferencias SMTP y Atribución
+            $smtpHost = trim($_POST['smtp_host'] ?? '');
+            $smtpPort = (int)($_POST['smtp_port'] ?? 587);
+            $smtpUser = trim($_POST['smtp_user'] ?? '');
+            $smtpPass = $_POST['smtp_pass'] ?? '';
+            $smtpFrom = trim($_POST['smtp_from'] ?? '');
+            $emailNotifications = isset($_POST['email_notifications']) ? 1 : 0;
+            $attributionDomains = trim($_POST['attribution_domains'] ?? '');
+
+            $adminId = $_SESSION['admin_account_id'];
+            $stmtUser = $db->prepare("
+                UPDATE accounts SET 
+                    smtp_host = ?, 
+                    smtp_port = ?, 
+                    smtp_user = ?, 
+                    smtp_pass = ?, 
+                    smtp_from = ?, 
+                    email_notifications = ?, 
+                    attribution_domains = ?
+                WHERE id = ?
+            ");
+            $stmtUser->execute([
+                $smtpHost ?: null,
+                $smtpPort ?: null,
+                $smtpUser ?: null,
+                $smtpPass ?: null,
+                $smtpFrom ?: null,
+                $emailNotifications,
+                $attributionDomains ?: null,
+                $adminId
+            ]);
 
             $_SESSION['admin_success_msg'] = "Ajustes generales guardados correctamente.";
         }

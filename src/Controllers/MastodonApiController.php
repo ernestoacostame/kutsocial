@@ -31,6 +31,7 @@ class MastodonApiController {
             'description' => 'KutSocial: Alternativa ultraligera construida sobre PHP y SQLite.',
             'email' => 'admin@' . $domain,
             'version' => '4.6.0-kutsocial',
+            'kutsocial_version' => \KutSocial\Database::getVersion(),
             'urls' => [
                 'streaming_api' => 'wss://' . $domain . '/api/v1/streaming'
             ],
@@ -1986,6 +1987,9 @@ HTML;
         $stmt->execute([$account['id'], $uri, $content, $visibility, $inReplyToId, $sensitive, $spoilerText, !empty($mediaAttachments) ? json_encode($mediaAttachments) : null, $language]);
         $newId = $db->lastInsertId();
 
+        \KutSocial\NotificationHelper::fetchAndSaveLinkCard((int)$newId, $content);
+        \KutSocial\NotificationHelper::notifyMentionOrReply((int)$newId);
+
         // Procesamiento de Encuestas (Polls)
         $pollData = $body['poll'] ?? null;
         if (!$pollData && isset($_POST['poll']) && is_array($_POST['poll'])) {
@@ -2558,7 +2562,19 @@ HTML;
             'mentions' => [],
             'tags' => [],
             'emojis' => [],
-            'card' => null,
+            'card' => (function() use ($row, $db) {
+                if (array_key_exists('card', $row)) {
+                    return !empty($row['card']) ? json_decode($row['card'], true) : null;
+                }
+                $statusId = $row['status_id'] ?? $row['id'] ?? null;
+                if ($statusId) {
+                    $stmt = $db->prepare("SELECT card FROM statuses WHERE id = ? LIMIT 1");
+                    $stmt->execute([$statusId]);
+                    $cardStr = $stmt->fetchColumn();
+                    return !empty($cardStr) ? json_decode($cardStr, true) : null;
+                }
+                return null;
+            })(),
             'poll' => $poll,
             'application' => $application
         ];
@@ -2651,9 +2667,17 @@ HTML;
                 VALUES (?, ?, ?, datetime('now'))
             ");
             $stmt->execute([$account['id'], $targetId, $status]);
+
+            if (!$isRemote && $status === 'accepted') {
+                \KutSocial\NotificationHelper::notifyFollow((int)$targetId, (int)$account['id']);
+            }
         } else {
             $stmt = $db->prepare("UPDATE follows SET status = ? WHERE id = ?");
             $stmt->execute([$status, $existing]);
+
+            if (!$isRemote && $status === 'accepted') {
+                \KutSocial\NotificationHelper::notifyFollow((int)$targetId, (int)$account['id']);
+            }
         }
 
         // Send federated ActivityPub Follow activity if remote

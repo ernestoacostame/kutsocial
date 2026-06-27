@@ -158,10 +158,7 @@ $router->get('/', function() {
     $path = __DIR__ . '/src/views/frontend.html';
     if (file_exists($path)) {
         $html = file_get_contents($path);
-        if (file_exists(__DIR__ . '/version.php')) {
-            require_once __DIR__ . '/version.php';
-        }
-        $version = defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0';
+        $version = \KutSocial\Database::getVersion();
         $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_VERSION = '{$version}';</script>", $html);
         try {
             $db = \KutSocial\Database::connect();

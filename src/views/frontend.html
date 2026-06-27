@@ -1348,7 +1348,9 @@
             <div id="tab-notifications" style="display: none;" class="composer-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px;">
                     <h2 style="margin: 0; font-size: 18px;">🔔 Notificaciones</h2>
-                    <button id="btn-clear-notifications" onclick="clearAllNotifications()" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--error); padding: 5px 12px; border-radius: 15px; font-size: 12.5px; cursor: pointer; font-weight: 600; transition: all 0.2s;">Limpiar todo</button>
+                    <button id="btn-clear-notifications" onclick="clearAllNotifications()" style="display: flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--error); padding: 6px 14px; border-radius: 18px; font-size: 13px; cursor: pointer; font-weight: 600; transition: all 0.2s; font-family: inherit;">
+                        <span class="material-icons-outlined" style="font-size: 16px;">brush</span> Limpiar todo
+                    </button>
                 </div>
                 <div id="notifications-list" style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
                     <!-- Inyectadas dinámicamente -->
@@ -1974,6 +1976,9 @@
                 const data = await res.json();
                 document.getElementById('stat-users').innerText = data.stats.user_count;
                 document.getElementById('stat-toots').innerText = data.stats.status_count;
+                if (data.kutsocial_version) {
+                    document.getElementById('stat-version').innerText = 'v' + data.kutsocial_version;
+                }
                 if (data.configuration && data.configuration.statuses && data.configuration.statuses.max_characters) {
                     maxTootChars = parseInt(data.configuration.statuses.max_characters);
                     const composerText = document.getElementById('composer-text');
@@ -2118,15 +2123,63 @@
             // Renderizar Multimedia subida si existe
             let mediaHTML = '';
             if (toot.media_attachments && toot.media_attachments.length > 0) {
-                mediaHTML = `<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">`;
+                mediaHTML = `<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; width: 100%;">`;
                 toot.media_attachments.forEach(media => {
-                    mediaHTML += `
-                        <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; max-height: 250px; display: flex;">
-                            <img src="${media.url}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer; border-radius: 8px;" onclick="window.open('${media.url}')">
-                        </div>
-                    `;
+                    const type = (media.type || '').toLowerCase();
+                    const url = media.url || '';
+                    if (type === 'video' || type === 'gifv' || url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.endsWith('.m4v')) {
+                        mediaHTML += `
+                            <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; display: flex; width: 100%;">
+                                <video src="${url}" poster="${media.preview_url || ''}" controls loop playsinline style="width: 100%; max-height: 350px; background: #000; border-radius: 8px;"></video>
+                            </div>
+                        `;
+                    } else if (type === 'audio' || url.endsWith('.mp3') || url.endsWith('.ogg') || url.endsWith('.wav') || url.endsWith('.m4a') || url.endsWith('.aac')) {
+                        mediaHTML += `
+                            <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); width: 100%; padding: 8px; display: flex; flex-direction: column; background: rgba(0,0,0,0.2);">
+                                <audio src="${url}" controls style="width: 100%;"></audio>
+                            </div>
+                        `;
+                    } else {
+                        mediaHTML += `
+                            <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; max-height: 250px; display: flex;">
+                                <img src="${url}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer; border-radius: 8px;" onclick="window.open('${url}')">
+                            </div>
+                        `;
+                    }
                 });
                 mediaHTML += `</div>`;
+            }
+
+            // Renderizar Tarjeta de Enlace (Card preview) si existe
+            let cardHTML = '';
+            if (toot.card) {
+                const card = toot.card;
+                const authorAttributionHTML = (card.author_name && card.author_url) ? `
+                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 8px; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px; font-size: 11.5px; color: var(--text-muted);">
+                        <span class="material-icons-outlined" style="font-size: 14px; color: var(--primary);">person</span>
+                        <span>Más de: <a href="#" onclick="event.preventDefault(); event.stopPropagation(); viewProfileByUrl('${card.author_url}')" style="color: var(--primary); font-weight: 600; text-decoration: none;">${escapeHTML(card.author_name)}</a></span>
+                    </div>
+                ` : '';
+
+                const parsedDomain = (u) => { try { return new URL(u).hostname; } catch(e) { return ''; } };
+
+                cardHTML = `
+                    <div class="toot-link-card" onclick="window.open('${card.url}')" style="display: flex; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin-top: 12px; cursor: pointer; background: rgba(255,255,255,0.01); transition: all 0.2s; max-height: 140px; text-align: left; width: 100%;">
+                        ${card.image ? `
+                            <div style="width: 120px; min-width: 120px; background-image: url('${card.image}'); background-size: cover; background-position: center; border-right: 1px solid var(--border-color);"></div>
+                        ` : ''}
+                        <div style="padding: 12px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; flex: 1;">
+                            <div>
+                                <div style="font-weight: 700; font-size: 14px; color: var(--text-color); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(card.title)}</div>
+                                <div style="font-size: 12px; color: var(--text-muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(card.description)}</div>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11px; color: var(--text-muted);">
+                                <span>🔗 ${escapeHTML(card.provider_name || parsedDomain(card.url))}</span>
+                            </div>
+                            ${authorAttributionHTML}
+                        </div>
+                    </div>
+                `;
             }
 
             // Renderizar Encuesta interactiva si existe
@@ -2187,6 +2240,7 @@
                     </div>
                     ${contentHTML}
                     ${mediaHTML}
+                    ${cardHTML}
                     ${pollHTML}
                     
                     <div class="toot-actions" style="margin-top: 12px;">
@@ -2988,6 +3042,26 @@
 
         function goBackFromUsersList() {
             showTab('profile-view');
+        }
+
+        async function viewProfileByUrl(profileUrl) {
+            try {
+                const res = await fetch(`/api/v1/search?q=${encodeURIComponent(profileUrl)}&resolve=true`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.accounts && data.accounts.length > 0) {
+                        viewProfile(data.accounts[0].id);
+                    } else {
+                        window.open(profileUrl);
+                    }
+                } else {
+                    window.open(profileUrl);
+                }
+            } catch (e) {
+                window.open(profileUrl);
+            }
         }
 
         // ---------------------------
