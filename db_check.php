@@ -56,13 +56,18 @@ try {
     $accounts = $db->query("SELECT id, username, domain, inbox_url, created_at FROM accounts ORDER BY id DESC LIMIT 20")->fetchAll();
     print_r($accounts);
     
-    echo "\n=== JOBS ===\n";
-    $jobs = $db->query("SELECT id, activity_type, status, attempts, last_error, created_at FROM jobs ORDER BY id DESC LIMIT 20")->fetchAll();
-    if (empty($jobs)) {
-        echo "No hay registros en jobs\n";
-    } else {
-        print_r($jobs);
-    }
+    echo "\n=== FOLLOWS COUNT BY STATUS ===\n";
+    $followsCount = $db->query("SELECT status, COUNT(*) as qty FROM follows GROUP BY status")->fetchAll();
+    print_r($followsCount);
+
+    echo "\n=== JOBS COUNT BY TYPE AND STATUS ===\n";
+    $jobsCount = $db->query("SELECT activity_type, status, COUNT(*) as qty FROM jobs GROUP BY activity_type, status")->fetchAll();
+    print_r($jobsCount);
+
+    echo "\n=== FAILED JOBS SAMPLES ===\n";
+    $failedJobs = $db->query("SELECT id, activity_type, attempts, last_error, created_at FROM jobs WHERE status = 'failed' ORDER BY id DESC LIMIT 10")->fetchAll();
+    print_r($failedJobs);
+
     
     // 2. Probar petición local de Inbox
     echo "\n=== LOCAL INBOX ROUTING TEST ===\n";

@@ -4,6 +4,10 @@
  * Ejecutable mediante Cron (CLI) o peticiones HTTP asíncronas
  */
 
+// Evitar abortar el script si el cliente (curl/navegador) desconecta
+ignore_user_abort(true);
+set_time_limit(300); // 5 minutos máximo de ejecución
+
 // Normalizar HTTPS detrás de proxy inverso
 if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
     $_SERVER['HTTPS'] = 'on';
@@ -25,15 +29,26 @@ try {
     exit("Fallo de base de datos en worker: " . $e->getMessage() . "\n");
 }
 
-// Límite de tareas a procesar por ejecución
-$limit = 10;
-$processed = Queue::process($limit);
+// Si es petición web, responder rápido y seguir procesando en segundo plano
+if (php_sapi_name() !== 'cli') {
+    header("Content-Type: text/plain");
+    echo "OK: Procesando cola en segundo plano";
+    if (function_exists('fastcgi_finish_request')) {
+        fastcgi_finish_request();
+    }
+}
+
+// Procesar tareas en bucle hasta que no queden más o se alcance un límite seguro
+$totalProcessed = 0;
+$maxTasks = 200; // Límite para evitar bloqueos prolongados
+$batchSize = 10;
+
+do {
+    $processed = Queue::process($batchSize);
+    $totalProcessed += $processed;
+} while ($processed > 0 && $totalProcessed < $maxTasks);
 
 if (php_sapi_name() === 'cli') {
-    echo "[" . date('Y-m-d H:i:s') . "] Cola de tareas procesada. Tareas ejecutadas: $processed\n";
-} else {
-    // Si es petición web asíncrona, responder rápido y liberar conexión
-    header("Content-Type: text/plain");
-    echo "OK: $processed";
-    exit;
+    echo "[" . date('Y-m-d H:i:s') . "] Cola de tareas procesada. Tareas ejecutadas: $totalProcessed\n";
 }
+
