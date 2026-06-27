@@ -12,7 +12,7 @@
 
 /* Estilos de la página de Login */
 body.admin-login-body {
-    font-family: 'Outfit', sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background-color: var(--bg-color);
     color: var(--text-color);
     display: flex;
@@ -78,7 +78,7 @@ body.admin-login-body {
 
 /* Estilos de la página del Dashboard */
 body.admin-dashboard-body {
-    font-family: 'Outfit', sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background-color: var(--bg-color);
     color: var(--text-color);
     min-height: 100vh;

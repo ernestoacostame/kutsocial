@@ -356,6 +356,10 @@ class Database {
                 "CREATE INDEX IF NOT EXISTS idx_favourites_account_id ON favourites(account_id)",
                 "CREATE INDEX IF NOT EXISTS idx_bookmarks_account_id ON bookmarks(account_id)",
                 "CREATE INDEX IF NOT EXISTS idx_bookmarks_status_id ON bookmarks(status_id)"
+            ],
+            14 => [
+                "ALTER TABLE statuses ADD COLUMN reblog_of_id INTEGER REFERENCES statuses(id) ON DELETE SET NULL",
+                "CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_id ON statuses(reblog_of_id)"
             ]
         ];
     }

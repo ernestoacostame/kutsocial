@@ -388,9 +388,15 @@
             border-radius: 16px;
             padding: 20px;
             display: flex;
-            gap: 16px;
+            flex-direction: column;
+            gap: 8px;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
             animation: slideIn 0.4s ease-out;
+        }
+        .toot-card-body {
+            display: flex;
+            gap: 16px;
+            width: 100%;
         }
 
         @keyframes slideIn {
@@ -1153,11 +1159,25 @@
         .media-toggle-btn,
         .media-alt-btn {
             width: auto !important;
+            height: auto !important;
             margin-top: 0 !important;
             box-shadow: none !important;
             background: rgba(0, 0, 0, 0.65) !important;
             color: #fff !important;
-            cursor: pointer;
+            border-radius: 20px !important;
+            border: none !important;
+            cursor: pointer !important;
+            padding: 4px 10px !important;
+            font-size: 11px !important;
+            font-weight: 600 !important;
+            transform: none !important;
+        }
+        .media-alt-btn {
+            background: rgba(0, 0, 0, 0.75) !important;
+            border-radius: 4px !important;
+            padding: 3px 8px !important;
+            font-size: 10px !important;
+            font-weight: bold !important;
         }
         .media-toggle-btn:hover,
         .media-alt-btn:hover {
@@ -1987,6 +2007,7 @@
         let currentProfileData = null;
         let replyToId = null;
         let editTootId = null;
+        let quoteTootId = null;
         let activeProfileViewId = null;
         let activeProfileFeedToots = [];
         let activeProfileSubtab = 'activity';
@@ -2114,7 +2135,7 @@
                 url = `/api/v1/timelines/tag/${tagName}`;
             }
 
-            const limit = 20;
+            const limit = 15;
             const separator = url.includes('?') ? '&' : '?';
             let fetchUrl = `${url}${separator}limit=${limit}`;
             if (loadMore && oldestId !== null) {
@@ -2226,10 +2247,20 @@
         }
 
         function createThreadTootElement(toot, isMain = false) {
+            let isReblog = false;
+            let rebloggedBy = null;
+            let originalTootId = toot.id;
+            
+            if (toot.reblog) {
+                isReblog = true;
+                rebloggedBy = toot.account;
+                toot = toot.reblog;
+            }
+
             const card = document.createElement('div');
             card.className = 'toot-card';
             card._toot = toot;
-            card.setAttribute('data-toot-id', toot.id);
+            card.setAttribute('data-toot-id', originalTootId);
             if (toot.visibility === 'direct') {
                 card.classList.add('toot-direct');
             } else if (toot.visibility === 'private') {
@@ -2248,7 +2279,60 @@
             const favClass = toot.favourited ? 'active-fav' : '';
             const bookmarkClass = toot.bookmarked ? 'active-bookmark' : '';
 
-            const sanitizedContent = sanitizeHTML(toot.content);
+            let sanitizedContent = sanitizeHTML(toot.content);
+            
+            let quotePlaceholderHTML = '';
+            const statusUrlRegex = /\/(users|@)[a-zA-Z0-9_\-\.]+\/statuses\/[a-zA-Z0-9]+/i;
+            
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = sanitizedContent;
+            const links = tempDiv.querySelectorAll('a');
+            let quoteUrl = null;
+            
+            for (let link of links) {
+                const href = link.href || '';
+                if (statusUrlRegex.test(href)) {
+                    quoteUrl = href;
+                    break;
+                }
+            }
+
+            if (quoteUrl) {
+                for (let link of links) {
+                    if (link.href === quoteUrl) {
+                        let prevNode = link.previousSibling;
+                        if (prevNode && prevNode.nodeType === 3 && prevNode.textContent.trim().endsWith('RE:')) {
+                            const txt = prevNode.textContent;
+                            prevNode.textContent = txt.substring(0, txt.lastIndexOf('RE:'));
+                        }
+                        link.remove();
+                    }
+                }
+                sanitizedContent = tempDiv.innerHTML;
+
+                const quotePlaceholderId = `quote-placeholder-${toot.id}-${Math.floor(Math.random() * 100000)}`;
+                quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container" style="margin-top:12px; border: 1px solid var(--border-color); border-radius:12px; padding:12px; background: rgba(255,255,255,0.02); transition: background 0.2s;">Cargando publicación citada...</div>`;
+                
+                setTimeout(async () => {
+                    try {
+                        const res = await fetch(`/api/v1/statuses/resolve?url=${encodeURIComponent(quoteUrl)}`, {
+                            headers: { 'Authorization': `Bearer ${token}` }
+                        });
+                        if (res.ok) {
+                            const quotedToot = await res.json();
+                            renderEmbeddedQuote(quotePlaceholderId, quotedToot);
+                        } else {
+                            const el = document.getElementById(quotePlaceholderId);
+                            if (el) el.remove();
+                        }
+                    } catch (e) {
+                        console.error("Error al resolver toot citado", e);
+                        const el = document.getElementById(quotePlaceholderId);
+                        if (el) el.remove();
+                    }
+                }, 50);
+            }
+
             let contentHTML = `<div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5; margin-bottom: 12px;' : ''}">${sanitizedContent}</div>`;
             if (toot.sensitive) {
                 contentHTML = `
@@ -2302,24 +2386,24 @@
                                 <div class="media-wrapper" style="display: ${toot.sensitive ? 'none' : 'block'}; position: relative; width: 100%;">
                                     <div style="display: flex; justify-content: center; width: 100%; position: relative;">
                                         ${mediaTag}
-                                        
-                                        <!-- Botón ALT en la esquina inferior derecha -->
-                                        ${altText ? `
-                                        <button class="media-alt-btn" onclick="toggleAltTextPopup(this, event)" style="position: absolute; bottom: 12px; right: 12px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 3px 8px; border-radius: 4px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
-                                            ALT
-                                        </button>
-                                        
-                                        <!-- Popup flotante de Alt text en la parte inferior derecha -->
-                                        <div class="media-alt-popup" style="display: none; position: absolute; bottom: 12px; right: 12px; width: 280px; max-width: 90%; background: #1e1f22; border: 1px solid #2f3037; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 30; text-align: left; padding: 12px; color: #fff; font-family: sans-serif;">
-                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #2f3037; padding-bottom: 6px;">
-                                                <span style="font-size: 12px; font-weight: bold; color: var(--text-color);">Alt text</span>
-                                                <button onclick="closeAltTextPopup(this, event)" style="background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1;">✕</button>
-                                            </div>
-                                            <div style="font-size: 12.5px; line-height: 1.4; color: #e3e4e8; word-break: break-word;">${altText}</div>
-                                        </div>
-                                        ` : ''}
                                     </div>
                                 </div>
+
+                                <!-- Botón ALT en la esquina inferior izquierda -->
+                                ${altText ? `
+                                <button class="media-alt-btn" onclick="toggleAltTextPopup(this, event)" style="display: ${toot.sensitive ? 'none' : 'block'}; position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 3px 8px; border-radius: 4px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
+                                    ALT
+                                </button>
+                                
+                                <!-- Popup flotante de Alt text en la parte inferior izquierda -->
+                                <div class="media-alt-popup" style="display: none; position: absolute; bottom: 42px; left: 12px; width: 280px; max-width: 90%; background: #1e1f22; border: 1px solid #2f3037; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 30; text-align: left; padding: 12px; color: #fff; font-family: sans-serif;">
+                                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #2f3037; padding-bottom: 6px;">
+                                        <span style="font-size: 12px; font-weight: bold; color: var(--text-color);">Alt text</span>
+                                        <button onclick="closeAltTextPopup(this, event)" style="background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1;">✕</button>
+                                    </div>
+                                    <div style="font-size: 12.5px; line-height: 1.4; color: #e3e4e8; word-break: break-word;">${altText}</div>
+                                </div>
+                                ` : ''}
 
                                 <!-- Contenedor de Advertencia / Contenido Sensible -->
                                 <div class="media-placeholder" style="display: ${toot.sensitive ? 'flex' : 'none'}; height: 220px; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;" onclick="revealMediaFromPlaceholder(this)">
@@ -2410,41 +2494,58 @@
                 </div>`;
             }
 
-            card.innerHTML = `
-                <img class="user-avatar clickable-actor" onclick="viewProfile('${toot.account.id}')" src="${proxyUrl(toot.account.avatar)}" alt="Avatar">
-                <div style="flex-grow: 1; min-width: 0;">
-                    <div class="toot-header">
-                        <div class="toot-author-details clickable-actor" onclick="viewProfile('${toot.account.id}')">
-                            <span class="toot-author-name">${toot.account.display_name}</span>
-                            <span class="toot-author-handle">@${toot.account.acct}</span>
-                            ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
-                            ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
-                        </div>
-                        <span class="toot-time clickable-actor" onclick="viewTootThread('${toot.id}')" title="Ver conversación">${dateStr}</span>
+            let reblogHeaderHTML = '';
+            if (isReblog) {
+                reblogHeaderHTML = `
+                    <div class="toot-reblog-header" style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; margin-left: 36px;">
+                        <span class="material-icons" style="font-size: 16px; color: #10b981;">repeat</span>
+                        <span><strong>${escapeHTML(rebloggedBy.display_name || rebloggedBy.username)}</strong> ha re-tooteado</span>
                     </div>
-                    ${contentHTML}
-                    ${mediaHTML}
-                    ${cardHTML}
-                    ${pollHTML}
-                    
-                    <div class="toot-actions" style="margin-top: 12px;">
-                        <button class="toot-action-btn btn-reply" onclick="handleReplyButtonClick(this)" title="Responder">
-                            <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
-                        </button>
-                        <button class="toot-action-btn ${favClass}" onclick="toggleFavourite('${toot.id}', this)" title="Favorito">
-                            <span class="${toot.favourited ? 'material-icons' : 'material-icons-outlined'}">${toot.favourited ? 'star' : 'star_border'}</span> <span class="fav-count">${toot.favourites_count || 0}</span>
-                        </button>
-                        <button class="toot-action-btn ${bookmarkClass}" onclick="toggleBookmark('${toot.id}', this)" title="Guardar">
-                            <span class="${toot.bookmarked ? 'material-icons' : 'material-icons-outlined'}">${toot.bookmarked ? 'bookmark' : 'bookmark_border'}</span>
-                        </button>
-                        ${isMyToot ? `
-                            <button class="toot-action-btn btn-edit" onclick="handleEditButtonClick(this)" title="Editar">
-                                <span class="material-icons-outlined">edit</span>
+                `;
+            }
+
+            card.innerHTML = `
+                ${reblogHeaderHTML}
+                <div class="toot-card-body">
+                    <img class="user-avatar clickable-actor" onclick="viewProfile('${toot.account.id}')" src="${proxyUrl(toot.account.avatar)}" alt="Avatar">
+                    <div style="flex-grow: 1; min-width: 0;">
+                        <div class="toot-header">
+                            <div class="toot-author-details clickable-actor" onclick="viewProfile('${toot.account.id}')">
+                                <span class="toot-author-name">${toot.account.display_name}</span>
+                                <span class="toot-author-handle">@${toot.account.acct}</span>
+                                ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
+                                ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
+                            </div>
+                            <span class="toot-time clickable-actor" onclick="viewTootThread('${toot.id}')" title="Ver conversación">${dateStr}</span>
+                        </div>
+                        ${contentHTML}
+                        ${mediaHTML}
+                        ${cardHTML}
+                        ${pollHTML}
+                        ${quotePlaceholderHTML}
+                        
+                        <div class="toot-actions" style="margin-top: 12px;">
+                            <button class="toot-action-btn btn-reply" onclick="handleReplyButtonClick(this)" title="Responder">
+                                <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
                             </button>
-                            <button class="toot-action-btn btn-delete" onclick="deleteToot('${toot.id}', this)" title="Eliminar">
-                                <span class="material-icons-outlined">delete</span>
+                            <button class="toot-action-btn ${favClass}" onclick="toggleFavourite('${toot.id}', this)" title="Favorito">
+                                <span class="${toot.favourited ? 'material-icons' : 'material-icons-outlined'}">${toot.favourited ? 'star' : 'star_border'}</span> <span class="fav-count">${toot.favourites_count || 0}</span>
                             </button>
-                        ` : ''}
+                            <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="Compartir / Citar">
+                                <span class="${toot.reblogged ? 'material-icons' : 'material-icons-outlined'}" style="${toot.reblogged ? 'color: #10b981;' : ''}">repeat</span> <span class="reblog-count" style="${toot.reblogged ? 'color: #10b981; font-weight: bold;' : ''}">${toot.reblogs_count || 0}</span>
+                            </button>
+                            <button class="toot-action-btn ${bookmarkClass}" onclick="toggleBookmark('${toot.id}', this)" title="Guardar">
+                                <span class="${toot.bookmarked ? 'material-icons' : 'material-icons-outlined'}">${toot.bookmarked ? 'bookmark' : 'bookmark_border'}</span>
+                            </button>
+                            ${isMyToot ? `
+                                <button class="toot-action-btn btn-edit" onclick="handleEditButtonClick(this)" title="Editar">
+                                    <span class="material-icons-outlined">edit</span>
+                                </button>
+                                <button class="toot-action-btn btn-delete" onclick="deleteToot('${toot.id}', this)" title="Eliminar">
+                                    <span class="material-icons-outlined">delete</span>
+                                </button>
+                            ` : ''}
+                        </div>
                     </div>
                 </div>
             `;
@@ -2465,6 +2566,197 @@
                 const toot = card._toot;
                 initEditToot(toot.id, toot.text || toot.content, toot.sensitive, toot.spoiler_text || '');
             }
+        }
+
+        let activeReblogMenu = null;
+
+        function handleReblogButtonClick(tootId, btn, event) {
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+
+            if (activeReblogMenu) {
+                activeReblogMenu.remove();
+                activeReblogMenu = null;
+            }
+
+            const card = btn.closest('.toot-card');
+            if (!card || !card._toot) return;
+            const toot = card._toot;
+
+            if (toot.reblogged) {
+                if (confirm('¿Quieres deshacer el re-toot?')) {
+                    executeReblog(tootId, btn, false);
+                }
+                return;
+            }
+
+            const rect = btn.getBoundingClientRect();
+            const menu = document.createElement('div');
+            menu.className = 'reblog-context-menu';
+            menu.style = `
+                position: fixed;
+                top: ${rect.bottom + window.scrollY + 6}px;
+                left: ${rect.left + window.scrollX}px;
+                background: #1e1f22;
+                border: 1px solid #2f3037;
+                border-radius: 8px;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+                z-index: 9999;
+                display: flex;
+                flex-direction: column;
+                padding: 6px 0;
+                min-width: 140px;
+            `;
+
+            const optReblog = document.createElement('button');
+            optReblog.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--text-color);">repeat</span> Re-tootear';
+            optReblog.style = 'background:none; border:none; color:#fff; padding: 8px 16px; text-align:left; font-size:13px; cursor:pointer; display:flex; align-items:center; width:100%;';
+            optReblog.onmouseover = () => optReblog.style.background = 'rgba(255,255,255,0.06)';
+            optReblog.onmouseout = () => optReblog.style.background = 'none';
+            optReblog.onclick = (e) => {
+                e.stopPropagation();
+                menu.remove();
+                activeReblogMenu = null;
+                executeReblog(tootId, btn, true);
+            };
+
+            const optQuote = document.createElement('button');
+            optQuote.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--text-color);">format_quote</span> Citar publicación';
+            optQuote.style = 'background:none; border:none; color:#fff; padding: 8px 16px; text-align:left; font-size:13px; cursor:pointer; display:flex; align-items:center; width:100%;';
+            optQuote.onmouseover = () => optQuote.style.background = 'rgba(255,255,255,0.06)';
+            optQuote.onmouseout = () => optQuote.style.background = 'none';
+            optQuote.onclick = (e) => {
+                e.stopPropagation();
+                menu.remove();
+                activeReblogMenu = null;
+                initQuoteToot(tootId, toot.account.acct, toot.uri);
+            };
+
+            menu.appendChild(optReblog);
+            menu.appendChild(optQuote);
+            document.body.appendChild(menu);
+            activeReblogMenu = menu;
+
+            setTimeout(() => {
+                const closeMenu = () => {
+                    if (activeReblogMenu) {
+                        activeReblogMenu.remove();
+                        activeReblogMenu = null;
+                    }
+                    document.removeEventListener('click', closeMenu);
+                };
+                document.addEventListener('click', closeMenu);
+            }, 50);
+        }
+
+        async function executeReblog(tootId, btn, isReblog) {
+            const action = isReblog ? 'reblog' : 'unreblog';
+            try {
+                const res = await fetch(`/api/v1/statuses/${tootId}/${action}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const updatedToot = await res.json();
+                    
+                    const card = btn.closest('.toot-card');
+                    if (card) {
+                        card._toot = updatedToot;
+                    }
+
+                    const reblogBtns = document.querySelectorAll(`button[onclick^="handleReblogButtonClick('${tootId}'"]`);
+                    reblogBtns.forEach(rebBtn => {
+                        const icon = rebBtn.querySelector('.material-icons') || rebBtn.querySelector('.material-icons-outlined');
+                        const countSpan = rebBtn.querySelector('.reblog-count');
+                        
+                        if (updatedToot.reblogged) {
+                            rebBtn.classList.add('active-reblog');
+                            if (icon) {
+                                icon.className = 'material-icons';
+                                icon.style.color = '#10b981';
+                            }
+                            if (countSpan) {
+                                countSpan.innerText = updatedToot.reblogs_count;
+                                countSpan.style.color = '#10b981';
+                                countSpan.style.fontWeight = 'bold';
+                            }
+                        } else {
+                            rebBtn.classList.remove('active-reblog');
+                            if (icon) {
+                                icon.className = 'material-icons-outlined';
+                                icon.style.color = '';
+                            }
+                            if (countSpan) {
+                                countSpan.innerText = updatedToot.reblogs_count;
+                                countSpan.style.color = '';
+                                countSpan.style.fontWeight = '';
+                            }
+                        }
+                    });
+                } else {
+                    alert('No se pudo procesar la acción del re-toot.');
+                }
+            } catch (e) {
+                console.error("Error al re-tootear", e);
+            }
+        }
+
+        function initQuoteToot(id, handle, uri) {
+            quoteTootId = id;
+            replyToId = null;
+            editTootId = null;
+            document.getElementById('composer-context').style.display = 'flex';
+            document.getElementById('composer-context-text').innerText = `Citando publicación de @${handle}`;
+            
+            const textarea = document.getElementById('composer-text');
+            textarea.value = `RE: ${uri}\n`;
+            textarea.focus();
+            updateCharCount();
+            showTab('feed');
+        }
+
+        function renderEmbeddedQuote(placeholderId, quotedToot) {
+            const container = document.getElementById(placeholderId);
+            if (!container) return;
+
+            const dateStr = new Date(quotedToot.created_at).toLocaleString();
+            
+            let mediaHTML = '';
+            if (quotedToot.media_attachments && quotedToot.media_attachments.length > 0) {
+                mediaHTML = `<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">`;
+                quotedToot.media_attachments.forEach(media => {
+                    const type = (media.type || '').toLowerCase();
+                    const url = type === 'audio' ? '' : proxyUrl(media.url);
+                    if (url) {
+                        mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onclick="event.stopPropagation(); window.open('${url}', '_blank')">`;
+                    }
+                });
+                mediaHTML += `</div>`;
+            }
+
+            container.style.cursor = 'pointer';
+            container.onclick = (e) => {
+                e.stopPropagation();
+                viewTootThread(quotedToot.id);
+            };
+            container.onmouseover = () => container.style.background = 'rgba(255,255,255,0.04)';
+            container.onmouseout = () => container.style.background = 'rgba(255,255,255,0.02)';
+
+            // Remover enlaces de cita internos del contenido citante si existen
+            let cleanContent = sanitizeHTML(quotedToot.content);
+
+            container.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+                    <img src="${proxyUrl(quotedToot.account.avatar)}" style="width:20px; height:20px; border-radius:50%;" alt="Avatar">
+                    <span style="font-weight:600; font-size:12.5px; color:var(--text-color);">${escapeHTML(quotedToot.account.display_name || quotedToot.account.username)}</span>
+                    <span style="font-size:11.5px; color:var(--text-muted);">@${quotedToot.account.acct}</span>
+                    <span style="font-size:11.5px; color:var(--text-muted); margin-left:auto;">${dateStr}</span>
+                </div>
+                <div style="font-size:12.5px; line-height:1.4; color:var(--text-color);">${cleanContent}</div>
+                ${mediaHTML}
+            `;
         }
 
         // Variables para Autocompletado de menciones
@@ -2679,6 +2971,8 @@
                 method = 'PUT';
             } else if (replyToId) {
                 payload.in_reply_to_id = replyToId;
+            } else if (quoteTootId) {
+                payload.quote_id = quoteTootId;
             }
 
             try {
@@ -3795,6 +4089,7 @@
         function cancelComposerContext() {
             replyToId = null;
             editTootId = null;
+            quoteTootId = null;
             document.getElementById('composer-context').style.display = 'none';
             document.getElementById('composer-text').value = '';
             document.getElementById('composer-cw-container').style.display = 'none';
@@ -3901,10 +4196,10 @@
                                              if (!altBadge) {
                                                  altBadge = document.createElement('span');
                                                  altBadge.className = 'composer-alt-badge';
-                                                 altBadge.innerText = 'ALT';
-                                                 altBadge.style = 'position: absolute; bottom: 2px; left: 2px; background: rgba(0,0,0,0.75); color: #fff; font-size: 8px; font-weight: bold; padding: 2px 4px; border-radius: 3px; pointer-events: none;';
                                                  tempDiv.appendChild(altBadge);
                                              }
+                                             altBadge.innerText = 'ALT ✓';
+                                             altBadge.style = 'position: absolute; bottom: 2px; left: 2px; background: #10b981; color: #fff; font-size: 8px; font-weight: bold; padding: 2px 4px; border-radius: 3px; pointer-events: none;';
                                          } else {
                                              if (altBadge) altBadge.remove();
                                          }
@@ -4080,10 +4375,14 @@
                 wrapper.style.display = 'block';
                 placeholder.style.display = 'none';
                 btn.innerText = 'Hide';
+                const altBtn = card.querySelector('.media-alt-btn');
+                if (altBtn) altBtn.style.display = 'block';
             } else {
                 wrapper.style.display = 'none';
                 placeholder.style.display = 'flex';
                 btn.innerText = 'Show';
+                const altBtn = card.querySelector('.media-alt-btn');
+                if (altBtn) altBtn.style.display = 'none';
                 const altPopup = card.querySelector('.media-alt-popup');
                 if (altPopup) altPopup.style.display = 'none';
             }
@@ -4097,12 +4396,14 @@
             wrapper.style.display = 'block';
             placeholder.style.display = 'none';
             btn.innerText = 'Hide';
+            const altBtn = card.querySelector('.media-alt-btn');
+            if (altBtn) altBtn.style.display = 'block';
         }
 
         function toggleAltTextPopup(btn, event) {
             event.stopPropagation();
-            const wrapper = btn.closest('.media-wrapper');
-            const popup = wrapper.querySelector('.media-alt-popup');
+            const card = btn.closest('.toot-media-card');
+            const popup = card.querySelector('.media-alt-popup');
             if (popup.style.display === 'none' || !popup.style.display) {
                 popup.style.display = 'block';
             } else {

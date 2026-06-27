@@ -229,6 +229,14 @@ class ActivityPubController {
                 self::log("postInbox: Procesando actividad de Create");
                 self::handleCreate($account, $activity);
                 break;
+            case 'Like':
+                self::log("postInbox: Procesando actividad de Like");
+                self::handleLike($account, $activity);
+                break;
+            case 'Announce':
+                self::log("postInbox: Procesando actividad de Announce");
+                self::handleAnnounce($account, $activity);
+                break;
             default:
                 self::log("postInbox: Actividad de tipo '$type' no soportada, se responde 202");
                 break;
@@ -575,6 +583,40 @@ class ActivityPubController {
                 $del = $db->prepare("DELETE FROM follows WHERE account_id = ? AND target_account_id = ?");
                 $del->execute([$remoteAccount['id'], $localAccount['id']]);
                 self::log("handleUndo: Relación de seguimiento eliminada exitosamente");
+            }
+        } elseif ($type === 'Like') {
+            $actorUrl = $activity['actor'] ?? '';
+            $objectUrl = $object['object'] ?? '';
+            if ($actorUrl && $objectUrl) {
+                $remoteAccount = self::getOrRegisterRemoteActor($actorUrl);
+                if ($remoteAccount) {
+                    $db = Database::connect();
+                    $stmt = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+                    $stmt->execute([$objectUrl]);
+                    $statusId = $stmt->fetchColumn();
+                    if ($statusId) {
+                        $del = $db->prepare("DELETE FROM favourites WHERE account_id = ? AND status_id = ?");
+                        $del->execute([$remoteAccount['id'], $statusId]);
+                        self::log("handleUndo: Like del actor remoto '{$remoteAccount['username']}' eliminado del post {$statusId}");
+                    }
+                }
+            }
+        } elseif ($type === 'Announce') {
+            $actorUrl = $activity['actor'] ?? '';
+            $objectUrl = $object['object'] ?? '';
+            if ($actorUrl && $objectUrl) {
+                $remoteAccount = self::getOrRegisterRemoteActor($actorUrl);
+                if ($remoteAccount) {
+                    $db = Database::connect();
+                    $stmt = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+                    $stmt->execute([$objectUrl]);
+                    $statusId = $stmt->fetchColumn();
+                    if ($statusId) {
+                        $del = $db->prepare("DELETE FROM statuses WHERE account_id = ? AND reblog_of_id = ? AND content = ''");
+                        $del->execute([$remoteAccount['id'], $statusId]);
+                        self::log("handleUndo: Announce del actor remoto '{$remoteAccount['username']}' eliminado del post {$statusId}");
+                    }
+                }
             }
         }
     }
@@ -986,6 +1028,216 @@ class ActivityPubController {
             // Ignorar
         }
         return 0;
+    }
+
+    private static function handleLike(array $localAccount, array $activity): void {
+        $actorUrl = $activity['actor'] ?? '';
+        $objectUrl = $activity['object'] ?? '';
+        if (empty($actorUrl) || empty($objectUrl)) return;
+
+        $remoteAccount = self::getOrRegisterRemoteActor($actorUrl);
+        if (!$remoteAccount) return;
+
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+        $stmt->execute([$objectUrl]);
+        $statusId = $stmt->fetchColumn();
+
+        if ($statusId) {
+            $stmtFav = $db->prepare("INSERT OR IGNORE INTO favourites (account_id, status_id) VALUES (?, ?)");
+            $stmtFav->execute([$remoteAccount['id'], $statusId]);
+            self::log("handleLike: Registrada interacción Like de actor {$remoteAccount['username']} en post {$statusId}");
+        }
+    }
+
+    private static function handleAnnounce(array $localAccount, array $activity): void {
+        $actorUrl = $activity['actor'] ?? '';
+        $objectUrl = $activity['object'] ?? '';
+        if (empty($actorUrl) || empty($objectUrl)) return;
+
+        $remoteAccount = self::getOrRegisterRemoteActor($actorUrl);
+        if (!$remoteAccount) return;
+
+        $db = Database::connect();
+        
+        $origStatusId = self::fetchAndRegisterRemoteStatus($objectUrl);
+        if (!$origStatusId) return;
+
+        $uri = $activity['id'] ?? ($objectUrl . '/reblog/' . bin2hex(random_bytes(4)));
+        $createdAt = $activity['published'] ?? date('c');
+
+        $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE account_id = ? AND reblog_of_id = ? AND content = '' LIMIT 1");
+        $stmtCheck->execute([$remoteAccount['id'], $origStatusId]);
+        if ($stmtCheck->fetchColumn()) {
+            self::log("handleAnnounce: Reblog ya registrado. Ignorando.");
+            return;
+        }
+
+        $stmtIns = $db->prepare("
+            INSERT INTO statuses (account_id, uri, content, visibility, reblog_of_id, created_at)
+            VALUES (?, ?, '', 'public', ?, datetime('now'))
+        ");
+        $stmtIns->execute([$remoteAccount['id'], $uri, $origStatusId]);
+        self::log("handleAnnounce: Registrada actividad de Announce de actor {$remoteAccount['username']} para post {$origStatusId}");
+    }
+
+    public static function fetchAndRegisterRemoteStatus(string $url): ?int {
+        $db = Database::connect();
+        $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+        $stmtCheck->execute([$url]);
+        $existingId = $stmtCheck->fetchColumn();
+        if ($existingId) {
+            return (int)$existingId;
+        }
+
+        try {
+            $ch = curl_init($url);
+            $localDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => [
+                    "Accept: application/activity+json, application/ld+json",
+                    "User-Agent: KutSocial/1.0; (+https://$localDomain)"
+                ],
+                CURLOPT_TIMEOUT => 6,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 3,
+                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
+            ]);
+            $resp = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode !== 200 || !$resp) {
+                return null;
+            }
+
+            $json = json_decode($resp, true);
+            if (!$json) return null;
+
+            if (isset($json['type']) && ($json['type'] === 'Create' || $json['type'] === 'Announce') && isset($json['object'])) {
+                $object = $json['object'];
+                $actorUrl = $json['actor'] ?? ($object['attributedTo'] ?? '');
+            } else {
+                $object = $json;
+                $actorUrl = $json['attributedTo'] ?? '';
+            }
+
+            if (is_array($object) && isset($object['type']) && ($object['type'] === 'Note' || $object['type'] === 'Question')) {
+                if (empty($actorUrl) && is_array($object) && isset($object['attributedTo'])) {
+                    $actorUrl = $object['attributedTo'];
+                }
+                if (is_array($actorUrl)) {
+                    $actorUrl = $actorUrl[0] ?? '';
+                }
+                if (empty($actorUrl)) {
+                    return null;
+                }
+                return self::saveRemoteStatus($object, $actorUrl);
+            }
+        } catch (\Exception $e) {
+            self::log("fetchAndRegisterRemoteStatus Error: " . $e->getMessage());
+        }
+        return null;
+    }
+
+    public static function saveRemoteStatus(array $object, string $actorUrl): ?int {
+        $type = $object['type'] ?? '';
+        if ($type !== 'Note' && $type !== 'Question') {
+            return null;
+        }
+
+        $remoteAccount = self::getOrRegisterRemoteActor($actorUrl);
+        if (!$remoteAccount) {
+            return null;
+        }
+
+        $db = Database::connect();
+        $uri = $object['id'] ?? '';
+        if (empty($uri)) {
+            return null;
+        }
+
+        $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+        $stmtCheck->execute([$uri]);
+        $existingId = $stmtCheck->fetchColumn();
+        if ($existingId) {
+            return (int)$existingId;
+        }
+
+        $content = $object['content'] ?? '';
+        $createdAt = $object['published'] ?? date('c');
+        $visibility = self::determineVisibility($object);
+
+        $attachments = [];
+        if (!empty($object['attachment'])) {
+            $attachmentList = (is_array($object['attachment']) && !isset($object['attachment'][0])) ? [$object['attachment']] : $object['attachment'];
+            if (is_array($attachmentList)) {
+                foreach ($attachmentList as $att) {
+                    $attType = $att['type'] ?? '';
+                    if ($attType === 'Document' || $attType === 'Image' || $attType === 'PropertyValue') {
+                        $url = '';
+                        if (isset($att['url'])) {
+                            if (is_string($att['url'])) {
+                                $url = $att['url'];
+                            } elseif (is_array($att['url'])) {
+                                if (isset($att['url']['href'])) {
+                                    $url = $att['url']['href'];
+                                } else {
+                                    foreach ($att['url'] as $subUrl) {
+                                        if (is_array($subUrl) && isset($subUrl['href'])) {
+                                            $url = $subUrl['href'];
+                                            break;
+                                        } elseif (is_string($subUrl)) {
+                                            $url = $subUrl;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if (empty($url)) {
+                            continue;
+                        }
+                        $description = $att['name'] ?? $att['summary'] ?? $att['description'] ?? '';
+                        $attachments[] = [
+                            'id' => bin2hex(random_bytes(6)),
+                            'type' => 'image',
+                            'url' => $url,
+                            'preview_url' => $url,
+                            'remote_url' => $url,
+                            'description' => $description
+                        ];
+                    }
+                }
+            }
+        }
+        $mediaJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+
+        $inReplyToUri = $object['inReplyTo'] ?? null;
+        $inReplyToId = null;
+        if ($inReplyToUri) {
+            $stmtReply = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+            $stmtReply->execute([$inReplyToUri]);
+            $inReplyToId = $stmtReply->fetchColumn() ?: null;
+        }
+
+        $stmtIns = $db->prepare("
+            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ");
+        $stmtIns->execute([
+            $remoteAccount['id'],
+            $uri,
+            $content,
+            $visibility,
+            date('Y-m-d H:i:s', strtotime($createdAt)),
+            $mediaJson,
+            $inReplyToId
+        ]);
+
+        return (int)$db->lastInsertId();
     }
 
     /**

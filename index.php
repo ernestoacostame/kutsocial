@@ -119,6 +119,9 @@ $router->post('/api/v1/statuses/:id/favourite', [MastodonApiController::class, '
 $router->post('/api/v1/statuses/:id/unfavourite', [MastodonApiController::class, 'unfavouriteStatus']);
 $router->post('/api/v1/statuses/:id/bookmark', [MastodonApiController::class, 'bookmarkStatus']);
 $router->post('/api/v1/statuses/:id/unbookmark', [MastodonApiController::class, 'unbookmarkStatus']);
+$router->post('/api/v1/statuses/:id/reblog', [MastodonApiController::class, 'reblogStatus']);
+$router->post('/api/v1/statuses/:id/unreblog', [MastodonApiController::class, 'unreblogStatus']);
+$router->get('/api/v1/statuses/resolve', [MastodonApiController::class, 'resolveStatusUrl']);
 $router->get('/api/v1/streaming', [MastodonApiController::class, 'getStreaming']);
 
 // Carga Real de Multimedia (Mastodon compatible)

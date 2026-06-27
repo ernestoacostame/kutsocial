@@ -763,6 +763,63 @@ HTML;
             ];
         }
 
+        // 4. Obtener notificaciones de Re-toots (Reblogs)
+        $stmtReblogs = $db->prepare("
+            SELECT s.id as status_id, s.created_at as status_created_at,
+                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                   a.locked, a.discoverable, a.fields,
+                   orig.id as orig_status_id, orig.uri as orig_status_uri, orig.content as orig_status_content,
+                   orig.visibility as orig_status_visibility, orig.created_at as orig_status_created_at,
+                   orig.in_reply_to_id as orig_in_reply_to_id, orig.sensitive as orig_sensitive,
+                   orig.spoiler_text as orig_spoiler_text, orig.media_attachments as orig_media_attachments
+            FROM statuses s
+            JOIN accounts a ON s.account_id = a.id
+            JOIN statuses orig ON s.reblog_of_id = orig.id
+            WHERE orig.account_id = ?
+              AND s.content = ''
+              AND ('reblog_' || s.id) NOT IN (
+                  SELECT notification_id FROM dismissed_notifications WHERE account_id = ?
+              )
+            ORDER BY s.id DESC LIMIT 40
+        ");
+        $stmtReblogs->execute([$currUserId, $currUserId]);
+        $reblogRows = $stmtReblogs->fetchAll();
+        foreach ($reblogRows as $row) {
+            $origRow = [
+                'status_id' => $row['orig_status_id'],
+                'status_uri' => $row['orig_status_uri'],
+                'status_content' => $row['orig_status_content'],
+                'status_visibility' => $row['orig_status_visibility'],
+                'status_created_at' => $row['orig_status_created_at'],
+                'in_reply_to_id' => $row['orig_in_reply_to_id'],
+                'sensitive' => $row['orig_sensitive'],
+                'spoiler_text' => $row['orig_spoiler_text'],
+                'media_attachments' => $row['orig_media_attachments'],
+                'account_id' => $currUserId,
+                'username' => $account['username'],
+                'domain' => null,
+                'display_name' => $account['display_name'],
+                'avatar' => $account['avatar'],
+                'header' => $account['header'],
+                'avatar_description' => $account['avatar_description'],
+                'header_description' => $account['header_description'],
+                'note' => $account['note'],
+                'created_at' => $account['created_at'],
+                'locked' => $account['locked'],
+                'discoverable' => $account['discoverable'],
+                'fields' => $account['fields']
+            ];
+
+            $notifications[] = [
+                'id' => 'reblog_' . $row['status_id'],
+                'type' => 'reblog',
+                'created_at' => date('c', strtotime($row['status_created_at'])),
+                'account' => self::formatAccount($row),
+                'status' => self::formatStatus($origRow, $currUserId)
+            ];
+        }
+
         // Ordenar notificaciones por fecha descendente
         usort($notifications, function($a, $b) {
             return strcmp($b['created_at'], $a['created_at']);
@@ -1967,6 +2024,10 @@ HTML;
             foreach ($mediaIds as $mId) {
                 $mId = preg_replace('/[^a-zA-Z0-9]/', '', $mId);
                 $matches = glob($uploadsDir . "/media_" . $mId . ".*");
+                $matches = array_filter($matches ?: [], function($f) {
+                    return pathinfo($f, PATHINFO_EXTENSION) !== 'txt';
+                });
+                $matches = array_values($matches);
                 if (!empty($matches)) {
                     $filePath = $matches[0];
                     $filename = basename($filePath);
@@ -2013,12 +2074,21 @@ HTML;
 
         $language = !empty($body['language']) ? strtolower(trim($body['language'])) : (isset($_POST['language']) ? strtolower(trim($_POST['language'])) : null);
 
+        $quoteId = $body['quote_id'] ?? $_POST['quote_id'] ?? null;
+        $reblogOfId = null;
+        if ($quoteId) {
+            $quoteId = preg_replace('/[^a-zA-Z0-9]/', '', $quoteId);
+            $stmtQuote = $db->prepare("SELECT id FROM statuses WHERE id = ? LIMIT 1");
+            $stmtQuote->execute([$quoteId]);
+            $reblogOfId = $stmtQuote->fetchColumn() ?: null;
+        }
+
         // Insertar status
         $stmt = $db->prepare("
-            INSERT INTO statuses (account_id, uri, content, visibility, in_reply_to_id, sensitive, spoiler_text, media_attachments, language, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            INSERT INTO statuses (account_id, uri, content, visibility, in_reply_to_id, sensitive, spoiler_text, media_attachments, language, reblog_of_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
         ");
-        $stmt->execute([$account['id'], $uri, $content, $visibility, $inReplyToId, $sensitive, $spoilerText, !empty($mediaAttachments) ? json_encode($mediaAttachments) : null, $language]);
+        $stmt->execute([$account['id'], $uri, $content, $visibility, $inReplyToId, $sensitive, $spoilerText, !empty($mediaAttachments) ? json_encode($mediaAttachments) : null, $language, $reblogOfId]);
         $newId = $db->lastInsertId();
 
         \KutSocial\NotificationHelper::fetchAndSaveLinkCard((int)$newId, $content);
@@ -2562,11 +2632,36 @@ HTML;
                 'votes_count' => $totalVotes,
                 'options' => $formattedOptions,
                 'voted' => $voted,
-                'own_vote' => $ownVote,
-                'voters_count' => $totalVotes
-            ];
+                'own_vote' => $o        // Reblogs count
+        $stmtReb = $db->prepare("SELECT COUNT(*) FROM statuses WHERE reblog_of_id = ? AND content = ''");
+        $stmtReb->execute([$statusId]);
+        $reblogsCount = (int)$stmtReb->fetchColumn();
+
+        // Reblogged check
+        $reblogged = false;
+        if ($currentAccountId !== null) {
+            $stmtRebCheck = $db->prepare("SELECT 1 FROM statuses WHERE account_id = ? AND reblog_of_id = ? LIMIT 1");
+            $stmtRebCheck->execute([$currentAccountId, $statusId]);
+            $reblogged = (bool)$stmtRebCheck->fetchColumn();
         }
- 
+
+        // Cargar reblogged status
+        $reblog = null;
+        $reblogOfId = null;
+        if (array_key_exists('reblog_of_id', $row)) {
+            $reblogOfId = $row['reblog_of_id'];
+        } else {
+            $stmtRebOf = $db->prepare("SELECT reblog_of_id FROM statuses WHERE id = ? LIMIT 1");
+            $stmtRebOf->execute([$statusId]);
+            $reblogOfId = $stmtRebOf->fetchColumn() ?: null;
+        }
+        if ($reblogOfId) {
+            $origRow = self::fetchStatusRow($db, (int)$reblogOfId);
+            if ($origRow) {
+                $reblog = self::formatStatus($origRow, $currentAccountId);
+            }
+        }
+
         $formattedContent = ($row['domain'] !== null || str_contains($row['status_content'], '<p>') || str_contains($row['status_content'], '</a>')) 
             ? $row['status_content'] 
             : self::formatLocalContentToHtml($row['status_content'], $domain, $db, $proto);
@@ -2583,10 +2678,11 @@ HTML;
             'uri' => $row['status_uri'],
             'url' => $row['status_uri'],
             'replies_count' => $repCount,
-            'reblogs_count' => 0,
+            'reblogs_count' => $reblogsCount,
             'favourites_count' => $favCount,
             'favourited' => $favourited,
-            'reblogged' => false,
+            'reblogged' => $reblogged,
+            'reblog' => $reblog,
             'muted' => false,
             'bookmarked' => $bookmarked,
             'content' => $formattedContent,
@@ -3263,7 +3359,7 @@ HTML;
         $stmt = $db->prepare("
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
                    s.visibility as status_visibility, s.created_at as status_created_at, 
-                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments, s.reblog_of_id,
                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
                    a.avatar_description, a.header_description, a.note, a.created_at as account_created_at
             FROM statuses s
@@ -4913,5 +5009,103 @@ HTML;
         } else {
             header("Location: " . $url);
         }
+    }
+
+    public static function reblogStatus(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $id = (int)$params['id'];
+        $db = Database::connect();
+        
+        // Verificar que el status existe
+        $stmt = $db->prepare("SELECT id, visibility FROM statuses WHERE id = ? LIMIT 1");
+        $stmt->execute([$id]);
+        $orig = $stmt->fetch();
+        if (!$orig) {
+            Router::json(['error' => 'Status not found'], 404);
+            return;
+        }
+
+        // Verificar si ya ha sido reblogueado por el usuario
+        $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE account_id = ? AND reblog_of_id = ? AND content = '' LIMIT 1");
+        $stmtCheck->execute([$account['id'], $id]);
+        $existing = $stmtCheck->fetchColumn();
+        
+        $newId = $existing;
+        if (!$existing) {
+            $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+            $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $statusIdStr = bin2hex(random_bytes(8));
+            $uri = "$proto://$domain/users/{$account['username']}/statuses/$statusIdStr";
+
+            $stmtIns = $db->prepare("
+                INSERT INTO statuses (account_id, uri, content, visibility, reblog_of_id, created_at)
+                VALUES (?, ?, '', ?, ?, datetime('now'))
+            ");
+            $stmtIns->execute([$account['id'], $uri, $orig['visibility'], $id]);
+            $newId = $db->lastInsertId();
+        }
+
+        $row = self::fetchStatusRow($db, (int)$newId);
+        Router::json(self::formatStatus($row, (int)$account['id']));
+    }
+
+    public static function unreblogStatus(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $id = (int)$params['id'];
+        $db = Database::connect();
+
+        // Eliminar el reblog
+        $stmtDel = $db->prepare("DELETE FROM statuses WHERE account_id = ? AND reblog_of_id = ? AND content = ''");
+        $stmtDel->execute([$account['id'], $id]);
+
+        // Retornar el status original formateado
+        $row = self::fetchStatusRow($db, $id);
+        if (!$row) {
+            Router::json(['error' => 'Status not found'], 404);
+            return;
+        }
+        Router::json(self::formatStatus($row, (int)$account['id']));
+    }
+
+    public static function resolveStatusUrl(): void {
+        $url = $_GET['url'] ?? '';
+        if (empty($url)) {
+            Router::json(['error' => 'URL vacía'], 400);
+            return;
+        }
+
+        $db = Database::connect();
+        $statusId = \KutSocial\Controllers\ActivityPubController::fetchAndRegisterRemoteStatus($url);
+        if (!$statusId) {
+            Router::json(['error' => 'No se pudo resolver la publicación remota.'], 404);
+            return;
+        }
+
+        $row = self::fetchStatusRow($db, $statusId);
+        if (!$row) {
+            Router::json(['error' => 'No se pudo encontrar en base de datos.'], 404);
+            return;
+        }
+
+        $account = null;
+        $currUserId = null;
+        try {
+            $account = self::getAuthenticatedAccount();
+            if ($account) {
+                $currUserId = (int)$account['id'];
+            }
+        } catch (\Exception $e) {}
+
+        Router::json(self::formatStatus($row, $currUserId));
     }
 }
