@@ -93,6 +93,15 @@ class Queue {
             $upd->execute([$job['id']]);
 
             try {
+                if ($job['activity_type'] === 'ImportFollow') {
+                    $payloadArr = json_decode($job['payload'], true);
+                    self::processImportFollow((int)$payloadArr['account_id'], $payloadArr['address']);
+                    
+                    $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
+                    $okStmt->execute([$job['id']]);
+                    continue;
+                }
+
                 $payloadArr = json_decode($job['payload'], true);
                 $actorUrl = $payloadArr['actor'] ?? null;
                 
@@ -207,6 +216,64 @@ class Queue {
 
         if ($httpCode >= 400 || $resp === false) {
             throw new RuntimeException("Error HTTP $httpCode: $err. Respuesta: " . substr((string)$resp, 0, 200));
+        }
+    }
+
+    /**
+     * Resuelve e importa un seguimiento remoto en segundo plano.
+     */
+    private static function processImportFollow(int $accountId, string $address): void {
+        $db = Database::connect();
+        
+        // 1. Obtener la cuenta local
+        $stmtAcc = $db->prepare("SELECT id, username FROM accounts WHERE id = ? LIMIT 1");
+        $stmtAcc->execute([$accountId]);
+        $account = $stmtAcc->fetch();
+        if (!$account) return;
+
+        // 2. Resolver la cuenta a seguir
+        $resolvedAcc = null;
+        if (filter_var($address, FILTER_VALIDATE_URL)) {
+            $resolvedAcc = \KutSocial\Controllers\ActivityPubController::getOrRegisterRemoteActor($address);
+        } elseif (str_contains($address, '@')) {
+            $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
+        } else {
+            $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+            $stmtLoc->execute([$address]);
+            $resolvedAcc = $stmtLoc->fetch();
+        }
+
+        if (!$resolvedAcc) {
+            throw new Exception("No se pudo resolver el actor remoto: $address");
+        }
+
+        $targetId = $resolvedAcc['id'];
+        $isRemote = !empty($resolvedAcc['domain']);
+        $status = $isRemote ? 'pending' : (($resolvedAcc['locked'] ?? 0) ? 'pending' : 'accepted');
+        
+        $stmtCheck = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtCheck->execute([$accountId, $targetId]);
+        if (!$stmtCheck->fetchColumn()) {
+            $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, ?)");
+            $stmtIns->execute([$accountId, $targetId, $status]);
+            
+            if ($isRemote && !empty($resolvedAcc['inbox_url'])) {
+                $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+                $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $localActorUrl = "$proto://$domainName/users/{$account['username']}";
+                $remoteActorUrl = $resolvedAcc['url'] ?? "$proto://{$resolvedAcc['domain']}/users/{$resolvedAcc['username']}";
+                $followId = $localActorUrl . '/activities/follow-' . bin2hex(random_bytes(8));
+                
+                $followActivity = [
+                    '@context' => 'https://www.w3.org/ns/activitystreams',
+                    'id' => $followId,
+                    'type' => 'Follow',
+                    'actor' => $localActorUrl,
+                    'object' => $remoteActorUrl
+                ];
+                
+                \KutSocial\Queue::enqueue('Follow', $followActivity, $resolvedAcc['inbox_url']);
+            }
         }
     }
 }

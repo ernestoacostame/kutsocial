@@ -75,7 +75,7 @@
                     <tr>
                         <td style='padding: 12px 15px; border-bottom: 1px solid var(--border-color);'>v<?= htmlspecialchars($h['from_version'], ENT_QUOTES) ?> → <strong>v<?= htmlspecialchars($h['to_version'], ENT_QUOTES) ?></strong></td>
                         <td style='padding: 12px 15px; border-bottom: 1px solid var(--border-color);'><span class='badge' style='background: <?= $statusColor ?>22; color: <?= $statusColor ?>;'><?= $statusLabel ?></span><?= $rolledBackDate ?></td>
-                        <td style='padding: 12px 15px; border-bottom: 1px solid var(--border-color);'><= $dateStr ?></td>
+                        <td style='padding: 12px 15px; border-bottom: 1px solid var(--border-color);'><?= $dateStr ?></td>
                         <td style='padding: 12px 15px; border-bottom: 1px solid var(--border-color); font-family: monospace; font-size: 11px; color: var(--text-muted);'><?= $backupInfo ?></td>
                     </tr>
                 <?php endforeach; ?>

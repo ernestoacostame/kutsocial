@@ -1465,11 +1465,12 @@ HTML;
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 4,
-            CURLOPT_MAXFILESIZE => 102400, // Cargar máximo 100 KB para evitar abusos
+            CURLOPT_TIMEOUT => 8,
+            CURLOPT_MAXFILESIZE => 1048576, // 1 MB
             CURLOPT_USERAGENT => 'KutSocial-LinkVerifier/1.0',
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
-            CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
+            CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0,
+            CURLOPT_FOLLOWLOCATION => true // Seguir redireccionamientos (ej: de sin-www a www)
         ]);
         
         $html = curl_exec($ch);
@@ -1480,15 +1481,25 @@ HTML;
             return false;
         }
 
-        $escapedUrl1 = preg_quote($profileUrl1, '/');
-        $escapedUrl2 = preg_quote($profileUrl2, '/');
-        
-        // Coincidir con etiqueta <a> o <link> donde coincida cualquiera de las dos URLs y rel="me"
-        $pattern = '/<(a|link)\s+[^>]*(href=["\'](' . $escapedUrl1 . '|' . $escapedUrl2 . ')["\'][^>]*rel=["\'][^"\']*me[^"\']*["\']/i';
-        $pattern2 = '/<(a|link)\s+[^>]*rel=["\'][^"\']*me[^"\']*["\']\s+[^>]*href=["\'](' . $escapedUrl1 . '|' . $escapedUrl2 . ')["\'])/i';
+        // Encontrar todas las etiquetas <a> y <link>
+        if (!preg_match_all('/<(a|link)\s+([^>]+)>/i', $html, $matches, PREG_SET_ORDER)) {
+            return false;
+        }
 
-        if (preg_match($pattern, $html) || preg_match($pattern2, $html)) {
-            return true;
+        foreach ($matches as $match) {
+            $attrs = $match[2]; // Atributos de la etiqueta (ej: href="..." rel="me")
+            
+            // Comprobar rel="me"
+            if (!preg_match('/\brel=["\'][^"\']*?\bme\b[^"\']*?["\']/i', $attrs) && !preg_match('/\brel=me\b/i', $attrs)) {
+                continue;
+            }
+
+            // Comprobar href
+            $escaped1 = preg_quote($profileUrl1, '/');
+            $escaped2 = preg_quote($profileUrl2, '/');
+            if (preg_match('/href=["\'](' . $escaped1 . '|' . $escaped2 . ')["\']/i', $attrs)) {
+                return true;
+            }
         }
 
         return false;
@@ -4101,49 +4112,15 @@ HTML;
                 }
                 $address = trim($row[0]);
                 if (!empty($address)) {
-                    $resolvedAcc = null;
-                    if (filter_var($address, FILTER_VALIDATE_URL)) {
-                        $resolvedAcc = \KutSocial\Controllers\ActivityPubController::getOrRegisterRemoteActor($address);
-                    } elseif (str_contains($address, '@')) {
-                        $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
-                    } else {
-                        $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
-                        $stmtLoc->execute([$address]);
-                        $resolvedAcc = $stmtLoc->fetch();
-                    }
-
-                    if ($resolvedAcc) {
-                        $targetId = $resolvedAcc['id'];
-                        $isRemote = !empty($resolvedAcc['domain']);
-                        $status = $isRemote ? 'pending' : (($resolvedAcc['locked'] ?? 0) ? 'pending' : 'accepted');
-                        
-                        $stmtCheck = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-                        $stmtCheck->execute([$account['id'], $targetId]);
-                        if (!$stmtCheck->fetchColumn()) {
-                            $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, ?)");
-                            $stmtIns->execute([$account['id'], $targetId, $status]);
-                            
-                            if ($isRemote && !empty($resolvedAcc['inbox_url'])) {
-                                $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-                                $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                                $localActorUrl = "$proto://$domainName/users/{$account['username']}";
-                                $remoteActorUrl = $resolvedAcc['url'] ?? "$proto://{$resolvedAcc['domain']}/users/{$resolvedAcc['username']}";
-                                $followId = $localActorUrl . '/activities/follow-' . bin2hex(random_bytes(8));
-                                
-                                $followActivity = [
-                                    '@context' => 'https://www.w3.org/ns/activitystreams',
-                                    'id' => $followId,
-                                    'type' => 'Follow',
-                                    'actor' => $localActorUrl,
-                                    'object' => $remoteActorUrl
-                                ];
-                                \KutSocial\Queue::enqueue('Follow', $followActivity, $resolvedAcc['inbox_url']);
-                            }
-                            $importedCount++;
-                        }
-                    } else {
-                        $errorCount++;
-                    }
+                    // Encolar de forma no bloqueante para evitar timeouts del servidor al resolver remotamente cada usuario
+                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollow', ?, 'local', 'pending', datetime('now'))");
+                    $stmtJob->execute([
+                        json_encode([
+                            'account_id' => $account['id'],
+                            'address' => $address
+                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                    ]);
+                    $importedCount++;
                 }
             }
             if ($importedCount > 0) {
