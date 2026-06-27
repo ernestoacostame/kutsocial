@@ -28,77 +28,7 @@ class AdminController {
             header("Location: /admin/login");
             exit;
         }
-        // Verify CSRF for POST requests
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            self::verifyCsrfToken();
-        }
         return $user;
-    }
-
-    /**
-     * Generate a CSRF token and store it in the session.
-     */
-    public static function generateCsrfToken(): string {
-        if (empty($_SESSION['csrf_token'])) {
-            $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-        }
-        return $_SESSION['csrf_token'];
-    }
-
-    /**
-     * Verify the CSRF token from POST data or fail.
-     */
-    private static function verifyCsrfToken(): void {
-        $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
-        $sessionToken = $_SESSION['csrf_token'] ?? '';
-        if (empty($sessionToken) || !hash_equals($sessionToken, $token)) {
-            http_response_code(403);
-            exit('Solicitud inválida: token CSRF no válido. <a href="/admin/dashboard">Volver</a>');
-        }
-    }
-
-    /**
-     * Rate limiting helper: returns true if the request should be blocked.
-     * @param string $endpoint The endpoint identifier
-     * @param int $maxAttempts Maximum attempts allowed
-     * @param int $windowSeconds Time window in seconds
-     */
-    public static function isRateLimited(string $endpoint, int $maxAttempts = 5, int $windowSeconds = 300): bool {
-        $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-        try {
-            $db = Database::connect();
-            
-            // Clean old entries
-            $db->exec("DELETE FROM rate_limits WHERE datetime(last_attempt, '+{$windowSeconds} seconds') < datetime('now')");
-            
-            $stmt = $db->prepare("SELECT attempts, first_attempt FROM rate_limits WHERE ip_address = ? AND endpoint = ? LIMIT 1");
-            $stmt->execute([$ip, $endpoint]);
-            $row = $stmt->fetch();
-            
-            if ($row) {
-                $firstAttempt = strtotime($row['first_attempt']);
-                if (time() - $firstAttempt > $windowSeconds) {
-                    // Window expired, reset
-                    $del = $db->prepare("DELETE FROM rate_limits WHERE ip_address = ? AND endpoint = ?");
-                    $del->execute([$ip, $endpoint]);
-                    $ins = $db->prepare("INSERT INTO rate_limits (ip_address, endpoint) VALUES (?, ?)");
-                    $ins->execute([$ip, $endpoint]);
-                    return false;
-                }
-                if ((int)$row['attempts'] >= $maxAttempts) {
-                    return true;
-                }
-                $upd = $db->prepare("UPDATE rate_limits SET attempts = attempts + 1, last_attempt = datetime('now') WHERE ip_address = ? AND endpoint = ?");
-                $upd->execute([$ip, $endpoint]);
-            } else {
-                $ins = $db->prepare("INSERT INTO rate_limits (ip_address, endpoint) VALUES (?, ?)");
-                $ins->execute([$ip, $endpoint]);
-            }
-            return false;
-        } catch (\Exception $e) {
-            // If rate limiting fails, don't block the request
-            return false;
-        }
     }
 
     /**
@@ -222,9 +152,8 @@ class AdminController {
             </style>
         </head>
         <body>
-            <div class="login-card" style="text-align: center;">
-                <img src="/kutsocial_logo.svg" alt="Logo" style="width: 56px; height: 56px; margin: 0 auto 15px auto; display: block;">
-                <h2 style="margin-top: 0;">KutSocial Admin</h2>
+            <div class="login-card">
+                <h2>KutSocial Admin</h2>
                 
                 {$errorHtml}
 
@@ -267,13 +196,6 @@ class AdminController {
      * Handle admin login post.
      */
     public static function handleLogin(): void {
-        // Rate limiting: max 5 login attempts per 5 minutes
-        if (self::isRateLimited('admin_login', 5, 300)) {
-            $_SESSION['login_error'] = "Demasiados intentos de inicio de sesión. Intenta de nuevo en unos minutos.";
-            header("Location: /admin/login");
-            exit;
-        }
-
         $db = Database::connect();
 
         // Si es el paso de verificar el token 2FA
@@ -377,9 +299,7 @@ class AdminController {
         $smtpPort = (int)($admin['smtp_port'] ?? 587);
         if ($smtpPort <= 0) $smtpPort = 587;
         $smtpUser = htmlspecialchars($admin['smtp_user'] ?? '');
-        // Show masked password in the form — never expose the real password
-        $smtpPassRaw = $admin['smtp_pass'] ?? '';
-        $smtpPass = !empty($smtpPassRaw) ? '••••••••' : '';
+        $smtpPass = htmlspecialchars($admin['smtp_pass'] ?? '');
         $smtpFrom = htmlspecialchars($admin['smtp_from'] ?? '');
         $emailNotificationsChecked = !empty($admin['email_notifications']) ? 'checked' : '';
         $attributionDomains = htmlspecialchars($admin['attribution_domains'] ?? '');
@@ -511,7 +431,7 @@ class AdminController {
         }
 
         // Construir la página HTML del Dashboard
-        $html = <<<'HTML'
+        $html = <<<HTML
         <!DOCTYPE html>
         <html lang="es">
         <head>
@@ -519,7 +439,6 @@ class AdminController {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Panel de Administración - KutSocial</title>
             <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-            <meta name="csrf-token" content="{$csrfToken}">
             <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
             <style>
@@ -754,11 +673,8 @@ class AdminController {
             </style>
         </head>
         <body>
-            <nav class="navbar" style="display: flex; align-items: center; justify-content: space-between;">
-                <div class="nav-logo" style="display: flex; align-items: center; gap: 10px;">
-                    <img src="/kutsocial_logo.svg" alt="Logo" style="width: 28px; height: 28px;">
-                    <span>KutSocial Admin Panel</span>
-                </div>
+            <nav class="navbar">
+                <div class="nav-logo">KutSocial Admin Panel</div>
                 <div class="nav-user">
                     <span style="font-size: 14.5px; font-weight: 600;">@{$admin['username']}</span>
                     <a href="/" class="btn-link">Ver Web</a>
@@ -1015,17 +931,20 @@ class AdminController {
                                 <div style="background: rgba(255,255,255,0.05); border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 10px;">
                                     <div id="progress-bar" style="background: var(--primary); height: 100%; width: 0%; transition: width 0.4s ease;"></div>
                                 </div>
-                                                    <!-- Revertir actualización (Rollback) -->
+                                <small id="progress-sub" style="color: var(--text-muted);"></small>
+                            </div>
+                        </div>
+
+                        <!-- Revertir actualización (Rollback) -->
                         <div class="update-card" style="margin-bottom: 25px; {$hasRollbackClass}">
-                            <h4 style="margin: 0 0 10px 0;">Revertir / Eliminar Respaldos (Rollback)</h4>
-                            <p style="font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 15px;">Restaura una versión previamente guardada de KutSocial o elimina respaldos antiguos para liberar espacio en disco. Las bases de datos no se verán afectadas.</p>
+                            <h4 style="margin: 0 0 10px 0;">Revertir Actualización (Rollback)</h4>
+                            <p style="font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 15px;">Restaura una versión previamente guardada de KutSocial. Las bases de datos no se verán afectadas.</p>
                             
                             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                                 <select class="select" id="rollback-select" style="padding: 10px; font-size: 14px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: white; min-width: 250px;">
                                     {$rollbackOptions}
                                 </select>
                                 <button class="btn-submit" id="btn-rollback" onclick="kpUpdateRollback()" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid #fbbf24; padding: 10px 20px;">Revertir a esta versión</button>
-                                <button class="btn-danger" id="btn-delete-rollback" onclick="kpDeleteRollback()" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid #ef4444; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s;">Eliminar respaldo</button>
                             </div>
                             <div id="rollback-status" style="display: none; margin-top: 15px; padding: 12px; border-radius: 8px; font-size: 14px;"></div>
                         </div>
@@ -1150,15 +1069,6 @@ class AdminController {
                                 </div>
                             </div>
                             
-                            <!-- Opción 6: Limpiar Caché de Imágenes -->
-                            <div class="update-card" style="margin-bottom: 25px; display: flex; align-items: flex-start; gap: 15px;">
-                                <input type="checkbox" name="clean_media_cache" id="clean_media_cache" value="1" checked style="width: auto; margin-top: 5px; cursor: pointer;">
-                                <div>
-                                    <label for="clean_media_cache" style="font-weight: 600; display: block; cursor: pointer; font-size: 15px; margin-bottom: 4px;">🖼️ Limpiar Caché de Imágenes Externas</label>
-                                    <span class="help-text">Elimina todas las imágenes de avatares, encabezados y archivos adjuntos externos que se han guardado temporalmente en el caché del servidor (<code>data/cache/media/</code>) para acelerar la carga y proteger la privacidad.</span>
-                                </div>
-                            </div>
-                            
                             <button type="submit" class="btn-submit" style="width: 100%; font-size: 15px;">Ejecutar Tareas Seleccionadas</button>
                         </form>
                     </div>
@@ -1237,10 +1147,7 @@ class AdminController {
 
                     fetch('/admin/update/action', {
                         method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                        },
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: 'action=check'
                     })
                     .then(r => r.json())
@@ -1300,10 +1207,7 @@ class AdminController {
 
                     fetch('/admin/update/action', {
                         method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                        },
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: 'action=download&zip_url=' + encodeURIComponent(btoa(_updateData.zip_url))
                     })
                     .then(r => r.json())
@@ -1319,10 +1223,7 @@ class AdminController {
 
                         return fetch('/admin/update/action', {
                             method: 'POST',
-                            headers: { 
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                                'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                            },
+                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                             body: 'action=apply&zip_path=' + encodeURIComponent(dlData.path) + '&new_version=' + encodeURIComponent(_updateData.new_version)
                         });
                     })
@@ -1371,10 +1272,7 @@ class AdminController {
 
                     fetch('/admin/update/action', {
                         method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                        },
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                         body: 'action=rollback&backup_file=' + encodeURIComponent(backupFile)
                     })
                     .then(r => r.json())
@@ -1408,70 +1306,10 @@ class AdminController {
                         status.innerHTML = '❌ Error al revertir la actualización.';
                     });
                 }
-
-                function kpDeleteRollback() {
-                    const select = document.getElementById('rollback-select');
-                    const backupFile = select.value;
-                    if (!backupFile) return;
-
-                    if (!confirm('¿Estás seguro de que deseas eliminar permanentemente este archivo de respaldo?\\nEsta acción no se puede deshacer.')) {
-                        return;
-                    }
-
-                    const btn = document.getElementById('btn-delete-rollback');
-                    const status = document.getElementById('rollback-status');
-
-                    btn.disabled = true;
-                    status.style.display = 'block';
-                    status.style.color = 'var(--text-muted)';
-                    status.style.background = 'rgba(255,255,255,0.02)';
-                    status.style.border = '1px solid var(--border-color)';
-                    status.innerHTML = 'Eliminando archivo de respaldo...';
-
-                    fetch('/admin/update/action', {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/x-www-form-urlencoded',
-                            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                        },
-                        body: 'action=delete_backup&backup_file=' + encodeURIComponent(backupFile)
-                    })
-                    .then(r => r.json())
-                    .then(data => {
-                        btn.disabled = false;
-
-                        if (data.error) {
-                            status.style.color = '#f87171';
-                            status.style.background = 'rgba(239, 68, 68, 0.05)';
-                            status.style.border = '1px solid var(--error)';
-                            status.innerHTML = '❌ ' + data.error;
-                            return;
-                        }
-
-                        status.style.color = '#34d399';
-                        status.style.background = 'rgba(16, 185, 129, 0.05)';
-                        status.style.border = '1px solid var(--success)';
-                        status.innerHTML = '✅ Respaldo eliminado con éxito. Recargando panel...';
-
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 1500);
-                    })
-                    .catch(err => {
-                        btn.disabled = false;
-                        status.style.color = '#f87171';
-                        status.style.background = 'rgba(239, 68, 68, 0.05)';
-                        status.style.border = '1px solid var(--error)';
-                        status.innerHTML = '❌ Error al eliminar el archivo de respaldo.';
-                    });
-                }
             </script>
         </body>
         </html>
         HTML;
-
-        $csrfToken = self::generateCsrfToken();
-        $csrfInput = '<input type="hidden" name="csrf_token" value="' . htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') . '">';
 
         // Reemplazos de plantillas simples
         $html = str_replace('{$currentVersion}', $currentVersion, $html);
@@ -1488,9 +1326,6 @@ class AdminController {
         $html = str_replace('{$relaysRows}', $relaysRows, $html);
         $html = str_replace('{$localUsersCount}', (string)count($localUsers), $html);
         $html = str_replace('{$localUsersRows}', $localUsersRows, $html);
-        $html = str_replace('{$csrfToken}', $csrfToken, $html);
-        $html = str_replace('{$admin[\'username\']}', htmlspecialchars($admin['username']), $html);
-        $html = str_replace('{$_SERVER[\'HTTP_HOST\']}', htmlspecialchars($_SERVER['HTTP_HOST'] ?? 'localhost'), $html);
         
         $html = str_replace('{if_2fa_active}', $is2faActive ? '' : '<!--', $html);
         $html = str_replace('{else_2fa}', $is2faActive ? '<!--' : '-->', $html);
@@ -1505,13 +1340,6 @@ class AdminController {
         $html = str_replace('{if_relays_exist}', $hasRelays ? '' : '<!--', $html);
         $html = str_replace('{else_relays}', $hasRelays ? '<!--' : '-->', $html);
         $html = str_replace('{endif_relays}', $hasRelays ? '-->' : '', $html);
-
-        // Inject CSRF token into all POST forms
-        $html = preg_replace(
-            '/(<form\s[^>]*method="POST"[^>]*>)/i',
-            '$1' . "\n" . '            ' . $csrfInput,
-            $html
-        );
 
         Router::html($html);
     }
@@ -1540,16 +1368,6 @@ class AdminController {
             $smtpPort = (int)($_POST['smtp_port'] ?? 587);
             $smtpUser = trim($_POST['smtp_user'] ?? '');
             $smtpPass = $_POST['smtp_pass'] ?? '';
-            // Only re-encrypt if the password was actually changed (not the masked placeholder)
-            if ($smtpPass === '••••••••' || $smtpPass === '') {
-                // Keep existing password — fetch current value
-                $stmtCurr = $db->prepare("SELECT smtp_pass FROM accounts WHERE id = ? LIMIT 1");
-                $stmtCurr->execute([$_SESSION['admin_account_id']]);
-                $smtpPass = $stmtCurr->fetchColumn() ?: null;
-            } else {
-                // Encrypt new password before storage
-                $smtpPass = \KutSocial\CryptoHelper::encrypt($smtpPass);
-            }
             $smtpFrom = trim($_POST['smtp_from'] ?? '');
             $emailNotifications = isset($_POST['email_notifications']) ? 1 : 0;
             $attributionDomains = trim($_POST['attribution_domains'] ?? '');
@@ -1843,59 +1661,13 @@ class AdminController {
             case 'rollback':
                 set_time_limit(120);
                 $backupFile = $_POST['backup_file'] ?? $_GET['backup_file'] ?? null;
-                // Validate backup file path to prevent path traversal
-                if ($backupFile) {
-                    $realBackupPath = realpath($backupFile);
-                    $realUpdateDir = realpath($updater->getUpdateDir());
-                    if (!$realBackupPath || !$realUpdateDir || !str_starts_with($realBackupPath, $realUpdateDir)) {
-                        echo json_encode(['error' => 'Ruta del archivo de respaldo no válida.']);
-                        break;
-                    }
-                }
                 $result = $updater->rollback($backupFile);
                 echo json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
                 break;
 
-            case 'delete_backup':
-                $backupFile = $_POST['backup_file'] ?? $_GET['backup_file'] ?? null;
-                if (!$backupFile) {
-                    echo json_encode(['error' => 'No se especificó ningún archivo de respaldo.']);
-                    break;
-                }
-                
-                // Reconstruir ruta si solo es nombre
-                if (basename($backupFile) === $backupFile) {
-                    $backupFile = $updater->getUpdateDir() . '/' . $backupFile;
-                }
-                
-                $realBackupPath = realpath($backupFile);
-                $realUpdateDir = realpath($updater->getUpdateDir());
-                if (!$realBackupPath || !$realUpdateDir || !str_starts_with($realBackupPath, $realUpdateDir)) {
-                    echo json_encode(['error' => 'Ruta del archivo de respaldo no válida o fuera del directorio permitido.']);
-                    break;
-                }
-                
-                if (!preg_match('/^rollback-.*\.tar\.gz$/', basename($realBackupPath))) {
-                    echo json_encode(['error' => 'El archivo seleccionado no es un archivo de respaldo válido.']);
-                    break;
-                }
-                
-                if (@unlink($realBackupPath)) {
-                    try {
-                        $db = Database::connect();
-                        $stmtDel = $db->prepare("UPDATE updates SET status = 'deleted', backup_path = '' WHERE backup_path = ?");
-                        $stmtDel->execute([$realBackupPath]);
-                    } catch (Exception $e) {}
-                    
-                    echo json_encode(['success' => true]);
-                } else {
-                    echo json_encode(['error' => 'No se pudo eliminar el archivo de respaldo del disco. Verifique los permisos de escritura.']);
-                }
-                break;
-
             default:
                 http_response_code(400);
-                echo json_encode(['error' => 'Acción no válida.']);
+                echo json_encode(['error' => 'Acción no válida: ' . $action]);
                 break;
         }
         exit;
@@ -2091,7 +1863,6 @@ class AdminController {
         $removeStatuses = isset($_POST['remove_statuses']) && $_POST['remove_statuses'] == '1';
         $clearJobs = isset($_POST['clear_jobs']) && $_POST['clear_jobs'] == '1';
         $vacuumDb = isset($_POST['vacuum_db']) && $_POST['vacuum_db'] == '1';
-        $cleanMediaCache = isset($_POST['clean_media_cache']) && $_POST['clean_media_cache'] == '1';
         $statusesDays = isset($_POST['statuses_days']) ? intval($_POST['statuses_days']) : 4;
 
         if ($statusesDays < 1) {
@@ -2244,32 +2015,6 @@ class AdminController {
                 $messages[] = "Se eliminaron $deletedCount archivos multimedia huérfanos ($savedMB MB liberados).";
             } else {
                 $messages[] = "El directorio de subidas no existe, no se buscaron huérfanos.";
-            }
-        }
-
-        // 4b. Limpiar Caché de Imágenes Externas
-        if ($cleanMediaCache) {
-            $cacheDir = dirname(Database::getDbPath()) . '/cache/media';
-            if (is_dir($cacheDir)) {
-                $deletedCacheCount = 0;
-                $savedCacheBytes = 0;
-                $files = scandir($cacheDir);
-                foreach ($files as $file) {
-                    if ($file === '.' || $file === '..') {
-                        continue;
-                    }
-                    $filePath = $cacheDir . '/' . $file;
-                    if (is_file($filePath)) {
-                        $savedCacheBytes += filesize($filePath);
-                        if (@unlink($filePath)) {
-                            $deletedCacheCount++;
-                        }
-                    }
-                }
-                $savedCacheMB = round($savedCacheBytes / (1024 * 1024), 2);
-                $messages[] = "Se eliminaron $deletedCacheCount imágenes en caché ($savedCacheMB MB liberados).";
-            } else {
-                $messages[] = "No hay imágenes externas en caché para limpiar.";
             }
         }
 

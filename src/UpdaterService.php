@@ -70,7 +70,7 @@ class UpdaterService {
             ],
             CURLOPT_USERAGENT => 'KutSocial-Updater/' . (defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0'),
             CURLOPT_TIMEOUT => 15,
-            CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
+            CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false
         ]);
         $resp = curl_exec($ch);
@@ -91,7 +91,7 @@ class UpdaterService {
         }
 
         $remoteVersion = ltrim($release['tag_name'], 'vV');
-        $localVersion = \KutSocial\Database::getVersion();
+        $localVersion = defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0';
 
         if (version_compare($remoteVersion, $localVersion, '<=')) {
             $result = ['up_to_date' => true, 'version' => $localVersion];
@@ -174,7 +174,7 @@ class UpdaterService {
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
             CURLOPT_TIMEOUT => 120,
-            CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
+            CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false
         ]);
         curl_exec($ch);

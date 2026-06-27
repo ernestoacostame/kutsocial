@@ -191,18 +191,15 @@ class Router {
                     }
                 }
 
-                // Apply CORS headers only for public API routes, not admin
-                if (!str_starts_with($requestUri, '/admin')) {
-                    foreach ($this->corsHeaders as $header) {
-                        header($header);
-                    }
+                // Aplicar headers CORS
+                foreach ($this->corsHeaders as $header) {
+                    header($header);
                 }
 
                 try {
                     call_user_func($route['handler'], $params);
                 } catch (\Throwable $e) {
-                    error_log("KutSocial Error: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
-                    self::json(['error' => 'Error interno del servidor'], 500);
+                    self::json(['error' => $e->getMessage()], 500);
                 }
                 return;
             }

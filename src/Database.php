@@ -57,10 +57,6 @@ class Database {
         }
     }
 
-    public static function getMigrationCount(): int {
-        return count(self::getMigrations());
-    }
-
     public static function runMigrations(): void {
         $db = self::connect();
 
@@ -350,41 +346,6 @@ class Database {
                 "ALTER TABLE accounts ADD COLUMN smtp_from TEXT NULL",
                 "ALTER TABLE accounts ADD COLUMN email_notifications INTEGER DEFAULT 0",
                 "ALTER TABLE accounts ADD COLUMN attribution_domains TEXT NULL"
-            ],
-            13 => [
-                // Critical performance indices
-                "CREATE INDEX IF NOT EXISTS idx_statuses_account_id ON statuses(account_id)",
-                "CREATE INDEX IF NOT EXISTS idx_statuses_in_reply_to_id ON statuses(in_reply_to_id)",
-                "CREATE INDEX IF NOT EXISTS idx_statuses_visibility ON statuses(visibility)",
-                "CREATE INDEX IF NOT EXISTS idx_statuses_created_at ON statuses(created_at)",
-                "CREATE INDEX IF NOT EXISTS idx_follows_account_target ON follows(account_id, target_account_id)",
-                "CREATE INDEX IF NOT EXISTS idx_follows_target_status ON follows(target_account_id, status)",
-                "CREATE INDEX IF NOT EXISTS idx_favourites_status_id ON favourites(status_id)",
-                "CREATE INDEX IF NOT EXISTS idx_favourites_account_status ON favourites(account_id, status_id)",
-                "CREATE INDEX IF NOT EXISTS idx_bookmarks_account_status ON bookmarks(account_id, status_id)",
-                "CREATE INDEX IF NOT EXISTS idx_accounts_username_domain ON accounts(username, domain)",
-                "CREATE INDEX IF NOT EXISTS idx_accounts_domain ON accounts(domain)",
-                "CREATE INDEX IF NOT EXISTS idx_jobs_status_next ON jobs(status, next_attempt)",
-                "CREATE INDEX IF NOT EXISTS idx_polls_status_id ON polls(status_id)",
-                "CREATE INDEX IF NOT EXISTS idx_poll_votes_poll_id ON poll_votes(poll_id)",
-                "CREATE INDEX IF NOT EXISTS idx_dismissed_notifications_account ON dismissed_notifications(account_id)",
-                "CREATE INDEX IF NOT EXISTS idx_lists_account_id ON lists(account_id)",
-                "CREATE INDEX IF NOT EXISTS idx_list_accounts_list_id ON list_accounts(list_id)",
-                "CREATE INDEX IF NOT EXISTS idx_collections_account_id ON collections(account_id)",
-                "CREATE INDEX IF NOT EXISTS idx_collection_accounts_collection ON collection_accounts(collection_id)",
-                "CREATE INDEX IF NOT EXISTS idx_followed_hashtags_account ON followed_hashtags(account_id)"
-            ],
-            14 => [
-                // Rate limiting table for brute-force protection
-                "CREATE TABLE IF NOT EXISTS rate_limits (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ip_address TEXT NOT NULL,
-                    endpoint TEXT NOT NULL,
-                    attempts INTEGER NOT NULL DEFAULT 1,
-                    first_attempt TEXT NOT NULL DEFAULT (datetime('now')),
-                    last_attempt TEXT NOT NULL DEFAULT (datetime('now'))
-                )",
-                "CREATE INDEX IF NOT EXISTS idx_rate_limits_ip_endpoint ON rate_limits(ip_address, endpoint)"
             ]
         ];
     }

@@ -9,16 +9,6 @@ if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROT
     $_SERVER['HTTPS'] = 'on';
 }
 
-// Block public HTTP access — only allow CLI or localhost
-if (php_sapi_name() !== 'cli') {
-    $remoteIp = $_SERVER['REMOTE_ADDR'] ?? '';
-    $allowedIps = ['127.0.0.1', '::1', 'localhost'];
-    if (!in_array($remoteIp, $allowedIps, true)) {
-        http_response_code(403);
-        exit('Acceso denegado.');
-    }
-}
-
 // Cargar configuración si existe
 if (!file_exists(__DIR__ . '/config.php')) {
     exit("KutSocial no está instalado aún.\n");
