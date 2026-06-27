@@ -1458,7 +1458,9 @@ HTML;
     private static function verifyLinkRelation(string $url, string $username): bool {
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $profileUrl = "$proto://$domain/users/$username";
+        
+        $profileUrl1 = "$proto://$domain/users/$username";
+        $profileUrl2 = "$proto://$domain/@$username";
 
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -1478,12 +1480,14 @@ HTML;
             return false;
         }
 
-        // Buscar patrón <a ... href="mi-perfil-url" ... rel="...me..." ...> o rel="me" antes de href
-        $escapedUrl = preg_quote($profileUrl, '/');
-        $pattern1 = '/<a\s+[^>]*href=["\']' . $escapedUrl . '["\'][^>]*rel=["\'][^"\']*me[^"\']*["\']/i';
-        $pattern2 = '/<a\s+[^>]*rel=["\'][^"\']*me[^"\']*["\']\s+[^>]*href=["\']' . $escapedUrl . '["\']/i';
+        $escapedUrl1 = preg_quote($profileUrl1, '/');
+        $escapedUrl2 = preg_quote($profileUrl2, '/');
+        
+        // Coincidir con etiqueta <a> o <link> donde coincida cualquiera de las dos URLs y rel="me"
+        $pattern = '/<(a|link)\s+[^>]*(href=["\'](' . $escapedUrl1 . '|' . $escapedUrl2 . ')["\'][^>]*rel=["\'][^"\']*me[^"\']*["\']/i';
+        $pattern2 = '/<(a|link)\s+[^>]*rel=["\'][^"\']*me[^"\']*["\']\s+[^>]*href=["\'](' . $escapedUrl1 . '|' . $escapedUrl2 . ')["\'])/i';
 
-        if (preg_match($pattern1, $html) || preg_match($pattern2, $html)) {
+        if (preg_match($pattern, $html) || preg_match($pattern2, $html)) {
             return true;
         }
 

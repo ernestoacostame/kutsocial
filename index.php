@@ -111,6 +111,15 @@ $router->get('/users/:username/outbox', [ActivityPubController::class, 'getOutbo
 $router->get('/users/:username/followers', [ActivityPubController::class, 'getFollowers']);
 $router->get('/users/:username/following', [ActivityPubController::class, 'getFollowing']);
 $router->get('/users/:username/statuses/:id', [ActivityPubController::class, 'getStatus']);
+$router->get('/@:username', function($params) {
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    if (str_contains($accept, 'json')) {
+        \KutSocial\Controllers\ActivityPubController::getActor($params);
+    } else {
+        header("Location: /");
+        exit;
+    }
+});
 
 // --- Timelines, Posting & Streaming REST APIs ---
 $router->get('/api/v1/timelines/home', [MastodonApiController::class, 'getHomeTimeline']);
