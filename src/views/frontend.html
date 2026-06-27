@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KutSocial - Cliente Web</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <!-- Google Fonts Outfit -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1348,8 +1350,8 @@
             <div id="tab-notifications" style="display: none;" class="composer-card">
                 <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 20px;">
                     <h2 style="margin: 0; font-size: 18px;">🔔 Notificaciones</h2>
-                    <button id="btn-clear-notifications" onclick="clearAllNotifications()" style="display: flex; align-items: center; gap: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--error); padding: 6px 14px; border-radius: 18px; font-size: 13px; cursor: pointer; font-weight: 600; transition: all 0.2s; font-family: inherit;">
-                        <span class="material-icons-outlined" style="font-size: 16px;">brush</span> Limpiar todo
+                    <button id="btn-clear-notifications" onclick="clearAllNotifications()" style="display: flex; align-items: center; justify-content: center; width: 34px; height: 34px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--error); border-radius: 50%; cursor: pointer; transition: all 0.2s;" title="Limpiar todo">
+                        <span class="material-icons-outlined" style="font-size: 18px;">brush</span>
                     </button>
                 </div>
                 <div id="notifications-list" style="display: flex; flex-direction: column; gap: 15px; margin-top: 15px;">
@@ -1499,6 +1501,7 @@
                     <div class="profile-info-container" style="padding: 20px;">
                         <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: -10px; margin-bottom: 15px;">
                             <button id="profile-view-manage-lists-btn" class="btn-publish" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); font-size: 14px; padding: 6px 16px; border-radius: 20px; cursor: pointer; display: none; transition: all 0.2s;" onclick="openManageListsModal()">Organizar</button>
+                            <button id="profile-view-remove-follower-btn" class="btn-publish" style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--error); font-size: 14px; padding: 6px 16px; border-radius: 20px; cursor: pointer; display: none; transition: all 0.2s;">Eliminar seguidor</button>
                             <button id="profile-view-action-btn" class="btn-publish" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); font-size: 14px; padding: 6px 16px; border-radius: 20px; cursor: pointer; transition: all 0.2s;">Editar perfil</button>
                         </div>
 
@@ -1509,6 +1512,10 @@
                             </h2>
                             <div style="display: flex; align-items: center; gap: 4px; margin-top: 2px;">
                                 <span id="profile-view-handle" style="color: var(--text-muted); font-size: 14px;">@cargando</span>
+                                <span id="profile-view-follows-you-badge" style="display: none; background: rgba(255,255,255,0.06); color: var(--text-muted); font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600;">Te sigue</span>
+                                <span id="profile-view-mutual-badge" style="display: none; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: var(--secondary); font-size: 11px; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: 600; align-items: center; gap: 4px;">
+                                    <span class="material-icons-outlined" style="font-size: 12px; vertical-align: middle;">compare_arrows</span> Mutuo
+                                </span>
                                 <span style="color: var(--text-muted); cursor: pointer; font-size: 13px;" title="Información del perfil">ⓘ</span>
                             </div>
                         </div>
@@ -2674,7 +2681,7 @@
                                 <span style="font-size: 11.5px; color: var(--text-muted); margin-right: 8px;">
                                     ${new Date(notif.created_at).toLocaleString('es-ES')}
                                 </span>
-                                <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; transition: color 0.2s;" title="Eliminar notificación" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+                                <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
                             </div>
                         `;
                         
@@ -2731,7 +2738,7 @@
                                         ${new Date(notif.created_at).toLocaleString('es-ES')}
                                     </div>
                                 </div>
-                                <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; transition: color 0.2s;" title="Eliminar notificación" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+                                <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
                             </div>
                             ${statusPreviewHTML}
                         `;
@@ -2756,7 +2763,7 @@
                                     ${new Date(notif.created_at).toLocaleString('es-ES')}
                                 </div>
                             </div>
-                            <button onclick="dismissNotification('${notif.id}', this.parentElement)" style="background: none; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; padding: 4px; line-height: 1; transition: color 0.2s;" title="Eliminar notificación" onmouseover="this.style.color='var(--error)'" onmouseout="this.style.color='var(--text-muted)'">✕</button>
+                            <button onclick="dismissNotification('${notif.id}', this.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
                         `;
                         list.appendChild(div);
                     }
@@ -3088,6 +3095,9 @@
             document.getElementById('profile-view-fields').innerHTML = '';
             document.getElementById('profile-view-role-container').style.display = 'none';
             document.getElementById('profile-view-badge').innerText = '';
+            document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+            document.getElementById('profile-view-mutual-badge').style.display = 'none';
+            document.getElementById('profile-view-remove-follower-btn').style.display = 'none';
             document.getElementById('profile-feed').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Cargando toots...</div>';
 
             try {
@@ -3139,14 +3149,38 @@
                     if (relRes.ok) {
                         const rels = await relRes.json();
                         const rel = rels[0];
-                        if (rel && rel.following) {
-                            actionBtn.innerText = 'Dejar de seguir';
-                            actionBtn.style.background = 'rgba(255,255,255,0.06)';
-                            actionBtn.onclick = () => handleUnfollow(account.id, actionBtn);
-                        } else {
-                            actionBtn.innerText = 'Seguir';
-                            actionBtn.style.background = 'var(--primary)';
-                            actionBtn.onclick = () => handleFollow(account.id, actionBtn);
+                        if (rel) {
+                            const followsYou = !!rel.followed_by;
+                            const following = !!rel.following;
+                            
+                            if (followsYou && following) {
+                                document.getElementById('profile-view-mutual-badge').style.display = 'inline-flex';
+                                document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+                            } else if (followsYou) {
+                                document.getElementById('profile-view-follows-you-badge').style.display = 'inline-block';
+                                document.getElementById('profile-view-mutual-badge').style.display = 'none';
+                            } else {
+                                document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+                                document.getElementById('profile-view-mutual-badge').style.display = 'none';
+                            }
+
+                            const removeFollowerBtn = document.getElementById('profile-view-remove-follower-btn');
+                            if (followsYou) {
+                                removeFollowerBtn.style.display = 'inline-block';
+                                removeFollowerBtn.onclick = () => handleRemoveFollower(account.id, removeFollowerBtn);
+                            } else {
+                                removeFollowerBtn.style.display = 'none';
+                            }
+
+                            if (following) {
+                                actionBtn.innerText = 'Dejar de seguir';
+                                actionBtn.style.background = 'rgba(255,255,255,0.06)';
+                                actionBtn.onclick = () => handleUnfollow(account.id, actionBtn);
+                            } else {
+                                actionBtn.innerText = 'Seguir';
+                                actionBtn.style.background = 'var(--primary)';
+                                actionBtn.onclick = () => handleFollow(account.id, actionBtn);
+                            }
                         }
                     }
                 }
@@ -3240,6 +3274,31 @@
                 btn.innerText = 'Dejar de seguir';
             }
         }
+        async function handleRemoveFollower(accountId, btn) {
+            if (!confirm('¿Estás seguro de que deseas eliminar a este usuario de tus seguidores?')) return;
+            btn.disabled = true;
+            btn.innerText = 'Eliminando...';
+            try {
+                const res = await fetch(`/api/v1/accounts/${accountId}/remove_from_followers`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    btn.style.display = 'none';
+                    document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+                    document.getElementById('profile-view-mutual-badge').style.display = 'none';
+                    viewProfile(accountId);
+                } else {
+                    alert('Error al eliminar seguidor.');
+                    btn.disabled = false;
+                    btn.innerText = 'Eliminar seguidor';
+                }
+            } catch (err) {
+                alert('Error al conectar con el servidor.');
+                btn.disabled = false;
+                btn.innerText = 'Eliminar seguidor';
+            }
+        }
 
         async function loadProfileStatuses(accountId) {
             try {
@@ -3266,11 +3325,7 @@
             let filteredToots = activeProfileFeedToots;
             if (activeProfileSubtab === 'media') {
                 filteredToots = activeProfileFeedToots.filter(toot => {
-                    const content = toot.content.toLowerCase();
-                    return content.includes('<img') || 
-                           content.includes('<audio') || 
-                           content.includes('<video') ||
-                           /\.(jpg|jpeg|gif|png|webp|mp3|ogg|mp4|wav)/.test(content);
+                    return toot.media_attachments && toot.media_attachments.length > 0;
                 });
             }
 

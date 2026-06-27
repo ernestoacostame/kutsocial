@@ -438,6 +438,7 @@ class AdminController {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Panel de Administración - KutSocial</title>
+            <link rel="icon" type="image/svg+xml" href="/favicon.svg">
             <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
             <style>

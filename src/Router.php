@@ -130,8 +130,24 @@ class Router {
                 }
 
                 if (str_contains($name, '[')) {
-                    parse_str($name . '=' . urlencode($body), $nested);
-                    $_POST = array_merge_recursive($_POST, $nested);
+                    $parts = explode('[', $name);
+                    $keys = [];
+                    $keys[] = $parts[0];
+                    for ($i = 1; $i < count($parts); $i++) {
+                        $keys[] = rtrim($parts[$i], ']');
+                    }
+                    
+                    $temp = &$_POST;
+                    foreach ($keys as $idx => $key) {
+                        if ($idx === count($keys) - 1) {
+                            $temp[$key] = $body;
+                        } else {
+                            if (!isset($temp[$key]) || !is_array($temp[$key])) {
+                                $temp[$key] = [];
+                            }
+                            $temp = &$temp[$key];
+                        }
+                    }
                 } else {
                     $_POST[$name] = $body;
                 }

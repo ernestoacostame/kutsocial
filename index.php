@@ -72,6 +72,7 @@ $router->post('/api/v1/accounts/:id/follow', [MastodonApiController::class, 'fol
 $router->post('/api/v1/accounts/:id/unfollow', [MastodonApiController::class, 'unfollowAccount']);
 $router->get('/api/v1/accounts/:id/followers', [MastodonApiController::class, 'getFollowers']);
 $router->get('/api/v1/accounts/:id/following', [MastodonApiController::class, 'getFollowing']);
+$router->post('/api/v1/accounts/:id/remove_from_followers', [MastodonApiController::class, 'removeFromFollowers']);
 
 // Solicitudes de seguimiento (Follow Requests)
 $router->get('/api/v1/follow_requests', [MastodonApiController::class, 'getFollowRequests']);

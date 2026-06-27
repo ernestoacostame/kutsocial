@@ -2775,6 +2775,42 @@ HTML;
         ]);
     }
 
+    public static function removeFromFollowers(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $followerId = (int)$params['id'];
+        $db = Database::connect();
+
+        $stmt = $db->prepare("DELETE FROM follows WHERE account_id = ? AND target_account_id = ?");
+        $stmt->execute([$followerId, $account['id']]);
+
+        // Get updated relationship
+        $stmtF = $db->prepare("SELECT status FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtF->execute([$account['id'], $followerId]);
+        $followStatus = $stmtF->fetchColumn();
+
+        Router::json([
+            'id' => (string)$followerId,
+            'following' => ($followStatus === 'accepted'),
+            'showing_reblogs' => true,
+            'notifying' => false,
+            'languages' => null,
+            'followed_by' => false,
+            'blocking' => false,
+            'blocked_by' => false,
+            'muting' => false,
+            'muting_notifications' => false,
+            'requested' => ($followStatus === 'pending'),
+            'domain_blocking' => false,
+            'endorsement' => false,
+            'note' => ''
+        ]);
+    }
+
     public static function getBookmarks(): void {
         $account = self::getAuthenticatedAccount();
         if (!$account) {
