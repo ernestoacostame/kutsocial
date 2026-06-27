@@ -1853,7 +1853,7 @@
                 if (data.access_token) {
                     token = data.access_token;
                     localStorage.setItem('kutsocial_token', token);
-                    initApp();
+                    window.location.reload();
                 } else {
                     errDiv.innerText = data.error_description || data.error || 'Fallo de acceso';
                     errDiv.style.display = 'block';
