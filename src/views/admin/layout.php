@@ -7,7 +7,7 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
-    <link rel="stylesheet" href="/assets/admin.css">
+    <link rel="stylesheet" href="/assets/admin.css?v=<?= KUTSOCIAL_VERSION ?>">
 </head>
 <body class="admin-dashboard-body">
     <nav class="navbar">

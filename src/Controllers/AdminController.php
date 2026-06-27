@@ -48,6 +48,8 @@ class AdminController {
         $show2fa = isset($_SESSION['temp_admin_id']) ? 'block' : 'none';
         $showNormal = isset($_SESSION['temp_admin_id']) ? 'none' : 'block';
 
+        $version = KUTSOCIAL_VERSION;
+
         $html = <<<HTML
         <!DOCTYPE html>
         <html lang="es">
@@ -56,7 +58,7 @@ class AdminController {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Iniciar Sesión - KutSocial Admin</title>
             <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-            <link rel="stylesheet" href="/assets/admin.css">
+            <link rel="stylesheet" href="/assets/admin.css?v={$version}">
         </head>
         <body class="admin-login-body">
             <div class="login-card">
