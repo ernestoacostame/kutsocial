@@ -70,8 +70,8 @@ class UpdaterService {
             ],
             CURLOPT_USERAGENT => 'KutSocial-Updater/' . \KutSocial\Database::getVersion(),
             CURLOPT_TIMEOUT => 15,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false
+            CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+            CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
         ]);
         $resp = curl_exec($ch);
         $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -174,8 +174,8 @@ class UpdaterService {
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
             CURLOPT_TIMEOUT => 120,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false
+            CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+            CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
         ]);
         curl_exec($ch);
         $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);

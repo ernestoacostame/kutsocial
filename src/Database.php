@@ -359,4 +359,8 @@ class Database {
             ]
         ];
     }
+
+    public static function verifySsl(): bool {
+        return defined('KUTSOCIAL_VERIFY_SSL') ? (bool)KUTSOCIAL_VERIFY_SSL : true;
+    }
 }

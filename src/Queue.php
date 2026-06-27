@@ -177,8 +177,8 @@ class Queue {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 15,
             CURLOPT_FAILONERROR => true,
-            CURLOPT_SSL_VERIFYPEER => false, // Opcional, pero previene problemas locales de certificados en entornos de desarrollo
-            CURLOPT_SSL_VERIFYHOST => false
+            CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+            CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
         ]);
 
         $resp = curl_exec($ch);

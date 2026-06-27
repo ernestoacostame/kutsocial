@@ -1409,8 +1409,8 @@ HTML;
             CURLOPT_TIMEOUT => 4,
             CURLOPT_MAXFILESIZE => 102400, // Cargar máximo 100 KB para evitar abusos
             CURLOPT_USERAGENT => 'KutSocial-LinkVerifier/1.0',
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false
+            CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+            CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
         ]);
         
         $html = curl_exec($ch);
@@ -1530,8 +1530,8 @@ HTML;
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
                 CURLOPT_TIMEOUT => 5,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false
+                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
             $resp = curl_exec($ch);
             curl_close($ch);
@@ -1551,8 +1551,8 @@ HTML;
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
                 CURLOPT_TIMEOUT => 5,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false
+                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
             $outboxResp = curl_exec($ch);
             curl_close($ch);
@@ -1575,8 +1575,8 @@ HTML;
                             "User-Agent: KutSocial/1.0; (+https://$domain)"
                         ],
                         CURLOPT_TIMEOUT => 5,
-                        CURLOPT_SSL_VERIFYPEER => false,
-                        CURLOPT_SSL_VERIFYHOST => false
+                        CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+                        CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
                     ]);
                     $pageResp = curl_exec($ch);
                     curl_close($ch);

@@ -612,8 +612,8 @@ class ActivityPubController {
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
                 CURLOPT_TIMEOUT => 10,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false
+                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
             $resp = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -819,8 +819,8 @@ class ActivityPubController {
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
                 CURLOPT_TIMEOUT => 5,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false
+                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
             $resp = curl_exec($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -871,8 +871,8 @@ class ActivityPubController {
                     "User-Agent: KutSocial/1.0; (+https://$localDomain)"
                 ],
                 CURLOPT_TIMEOUT => 5,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false
+                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
             $resp = curl_exec($ch);
             curl_close($ch);
@@ -971,8 +971,8 @@ class ActivityPubController {
                     "User-Agent: KutSocial/1.0; (+https://$localDomain)"
                 ],
                 CURLOPT_TIMEOUT => 4,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false
+                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
             $resp = curl_exec($ch);
             curl_close($ch);

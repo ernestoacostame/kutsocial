@@ -8,6 +8,14 @@ if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROT
     $_SERVER['HTTPS'] = 'on';
 }
 
+// Cabeceras de Seguridad Globales (Mitigación de MitM, Secuestro y Clickjacking)
+header("X-Content-Type-Options: nosniff");
+header("X-Frame-Options: SAMEORIGIN");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+    header("Strict-Transport-Security: max-age=63072000; includeSubDomains; preload");
+}
+
 // 1. Validar instalación
 if (!file_exists(__DIR__ . '/config.php')) {
     // Si no está instalado y no está accediendo al instalador, redirigir
