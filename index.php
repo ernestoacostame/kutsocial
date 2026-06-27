@@ -51,9 +51,9 @@ use KutSocial\Controllers\AdminController;
 try {
     Database::setDbPath(KUTSOCIAL_DB_PATH);
     Database::runMigrations();
-    @unlink(__DIR__ . '/assets/db_error.txt');
+    @unlink(dirname(KUTSOCIAL_DB_PATH) . '/db_error.txt');
 } catch (Exception $e) {
-    file_put_contents(__DIR__ . '/assets/db_error.txt', $e->getMessage() . "\n" . $e->getTraceAsString());
+    @file_put_contents(dirname(KUTSOCIAL_DB_PATH) . '/db_error.txt', $e->getMessage() . "\n" . $e->getTraceAsString());
     http_response_code(500);
     exit("Fallo crítico de base de datos: " . $e->getMessage());
 }
@@ -284,9 +284,9 @@ $router->post('/admin/update', [AdminController::class, 'handleUpdate']);
 // 5. Despachar rutas
 try {
     $router->dispatch();
-    @unlink(__DIR__ . '/assets/route_error.txt');
+    @unlink(dirname(KUTSOCIAL_DB_PATH) . '/route_error.txt');
 } catch (\Throwable $e) {
-    file_put_contents(__DIR__ . '/assets/route_error.txt', $e->getMessage() . "\n" . $e->getTraceAsString());
+    @file_put_contents(dirname(KUTSOCIAL_DB_PATH) . '/route_error.txt', $e->getMessage() . "\n" . $e->getTraceAsString());
     http_response_code(500);
     exit("Fallo de enrutamiento: " . $e->getMessage());
 }

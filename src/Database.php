@@ -84,7 +84,24 @@ class Database {
                     $db->rollBack();
                     throw new Exception("Error aplicando migración versión $version: " . $e->getMessage());
                 }
+        }
+
+        // Asegurar que la columna reblog_of_id exista en la tabla statuses (por si la versión 14 falló parcialmente)
+        try {
+            $cols = $db->query("PRAGMA table_info(statuses)")->fetchAll(\PDO::FETCH_ASSOC);
+            $hasReblogOfId = false;
+            foreach ($cols as $col) {
+                if (strcasecmp($col['name'], 'reblog_of_id') === 0) {
+                    $hasReblogOfId = true;
+                    break;
+                }
             }
+            if (!$hasReblogOfId) {
+                $db->exec("ALTER TABLE statuses ADD COLUMN reblog_of_id INTEGER");
+                $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_id ON statuses(reblog_of_id)");
+            }
+        } catch (\Throwable $e) {
+            // Ignorar fallos de alteración directa
         }
     }
 

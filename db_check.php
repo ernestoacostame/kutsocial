@@ -11,9 +11,33 @@ use KutSocial\Database;
 header('Content-Type: text/plain; charset=utf-8');
 
 try {
+    echo "=== LOADING CONTROLLERS AND DB FOR SYNTAX CHECK ===\n";
+    require_once __DIR__ . '/src/Database.php';
+    require_once __DIR__ . '/src/Controllers/MastodonApiController.php';
+    require_once __DIR__ . '/src/Controllers/ActivityPubController.php';
+    echo "ALL CLASSES LOADED SUCCESSFULLY\n\n";
+
     Database::setDbPath(KUTSOCIAL_DB_PATH);
     $db = Database::connect();
     
+    echo "=== DB MIGRATIONS ===\n";
+    try {
+        $applied = $db->query("SELECT version FROM schema_migrations ORDER BY version ASC")->fetchAll(PDO::FETCH_COLUMN);
+        echo "Applied migrations: " . implode(", ", $applied) . "\n";
+    } catch (\Throwable $e) {
+        echo "Error querying schema_migrations: " . $e->getMessage() . "\n";
+    }
+
+    echo "=== STATUSES TABLE COLUMNS ===\n";
+    try {
+        $cols = $db->query("PRAGMA table_info(statuses)")->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($cols as $col) {
+            echo "Column: " . $col['name'] . " (" . $col['type'] . ") - NotNull: " . $col['notnull'] . " - Default: " . $col['dflt_value'] . "\n";
+        }
+    } catch (\Throwable $e) {
+        echo "Error querying statuses schema: " . $e->getMessage() . "\n";
+    }
+
     echo "=== RUNNING TIMELINE SIMULATION ===\n";
     try {
         $limit = 15;
@@ -34,8 +58,8 @@ try {
         $rows = $stmt->fetchAll();
         echo "Fetched " . count($rows) . " rows.\n";
         foreach ($rows as $row) {
-            $formatted = \KutSocial\Controllers\MastodonApiController::formatStatus($row, null);
-            echo "Formatted OK: " . $formatted['id'] . "\n";
+            // No llamar a formatStatus desde aquí por ser private, solo verificar de forma segura
+            echo "Fetched Status ID: " . $row['status_id'] . "\n";
         }
         echo "TIMELINE SIMULATION SUCCESS\n";
     } catch (\Throwable $e) {
@@ -175,9 +199,36 @@ try {
         }
     }
 
-    // 3. Probar petición local de Búsqueda
-    echo "\n=== LOCAL SEARCH ROUTING TEST ===\n";
+    // 3. Probar petición local de Timeline Público
+    echo "\n=== LOCAL PUBLIC TIMELINE ROUTING TEST ===\n";
     $host = $_SERVER['HTTP_HOST'] ?? 'kutsocial.ernestoacosta.org';
+    $timelineUrl = "http://127.0.0.1/api/v1/timelines/public?limit=15";
+    echo "Haciendo GET a: $timelineUrl (con Host: $host)\n";
+    $ch = curl_init($timelineUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_HTTPHEADER => [
+            "Host: $host",
+            "X-Forwarded-Proto: https"
+        ],
+        CURLOPT_TIMEOUT => 5,
+        CURLOPT_SSL_VERIFYPEER => false,
+        CURLOPT_SSL_VERIFYHOST => false
+    ]);
+    $resp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+    
+    echo "HTTP Status Code: $httpCode\n";
+    if ($curlErr) {
+        echo "Curl Error: $curlErr\n";
+    } else {
+        echo "Response Body: " . $resp . "\n";
+    }
+
+    // 4. Probar petición local de Búsqueda
+    echo "\n=== LOCAL SEARCH ROUTING TEST ===\n";
     $searchUrl = "http://127.0.0.1/api/v2/search?q=elav";
     echo "Haciendo GET a: $searchUrl (con Host: $host)\n";
     $ch = curl_init($searchUrl);
@@ -208,6 +259,22 @@ try {
         echo file_get_contents($logFile);
     } else {
         echo "El archivo de log no existe en: $logFile\n";
+    }
+
+    $dbErrFile = dirname(KUTSOCIAL_DB_PATH) . '/db_error.txt';
+    echo "\n=== DB ERROR LOG (db_error.txt) ===\n";
+    if (file_exists($dbErrFile)) {
+        echo file_get_contents($dbErrFile);
+    } else {
+        echo "No hay errores de base de datos registrados.\n";
+    }
+
+    $routeErrFile = dirname(KUTSOCIAL_DB_PATH) . '/route_error.txt';
+    echo "\n=== ROUTE ERROR LOG (route_error.txt) ===\n";
+    if (file_exists($routeErrFile)) {
+        echo file_get_contents($routeErrFile);
+    } else {
+        echo "No hay errores de enrutamiento registrados.\n";
     }
 } catch (Exception $e) {
     echo "Error: " . $e->getMessage() . "\n";
