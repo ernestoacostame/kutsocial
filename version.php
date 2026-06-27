@@ -1,2 +1,2 @@
 <?php
-define('KUTSOCIAL_VERSION', '1.0.29');
+define('KUTSOCIAL_VERSION', '1.0.30');
