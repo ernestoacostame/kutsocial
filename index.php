@@ -72,6 +72,7 @@ try {
 $router = new Router();
 
 // --- Rutas de Mastodon API ---
+$router->get('/media-proxy', [MastodonApiController::class, 'serveMediaProxy']);
 $router->get('/api/v1/instance', [MastodonApiController::class, 'getInstance']);
 $router->get('/api/v2/instance', [MastodonApiController::class, 'getInstanceV2']);
 $router->get('/api/v1/custom_emojis', [MastodonApiController::class, 'getCustomEmojis']);

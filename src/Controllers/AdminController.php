@@ -1149,6 +1149,15 @@ class AdminController {
                                 </div>
                             </div>
                             
+                            <!-- Opción 6: Limpiar Caché de Imágenes -->
+                            <div class="update-card" style="margin-bottom: 25px; display: flex; align-items: flex-start; gap: 15px;">
+                                <input type="checkbox" name="clean_media_cache" id="clean_media_cache" value="1" checked style="width: auto; margin-top: 5px; cursor: pointer;">
+                                <div>
+                                    <label for="clean_media_cache" style="font-weight: 600; display: block; cursor: pointer; font-size: 15px; margin-bottom: 4px;">🖼️ Limpiar Caché de Imágenes Externas</label>
+                                    <span class="help-text">Elimina todas las imágenes de avatares, encabezados y archivos adjuntos externos que se han guardado temporalmente en el caché del servidor (<code>data/cache/media/</code>) para acelerar la carga y proteger la privacidad.</span>
+                                </div>
+                            </div>
+                            
                             <button type="submit" class="btn-submit" style="width: 100%; font-size: 15px;">Ejecutar Tareas Seleccionadas</button>
                         </form>
                     </div>
@@ -1987,6 +1996,7 @@ class AdminController {
         $removeStatuses = isset($_POST['remove_statuses']) && $_POST['remove_statuses'] == '1';
         $clearJobs = isset($_POST['clear_jobs']) && $_POST['clear_jobs'] == '1';
         $vacuumDb = isset($_POST['vacuum_db']) && $_POST['vacuum_db'] == '1';
+        $cleanMediaCache = isset($_POST['clean_media_cache']) && $_POST['clean_media_cache'] == '1';
         $statusesDays = isset($_POST['statuses_days']) ? intval($_POST['statuses_days']) : 4;
 
         if ($statusesDays < 1) {
@@ -2139,6 +2149,32 @@ class AdminController {
                 $messages[] = "Se eliminaron $deletedCount archivos multimedia huérfanos ($savedMB MB liberados).";
             } else {
                 $messages[] = "El directorio de subidas no existe, no se buscaron huérfanos.";
+            }
+        }
+
+        // 4b. Limpiar Caché de Imágenes Externas
+        if ($cleanMediaCache) {
+            $cacheDir = dirname(Database::getDbPath()) . '/cache/media';
+            if (is_dir($cacheDir)) {
+                $deletedCacheCount = 0;
+                $savedCacheBytes = 0;
+                $files = scandir($cacheDir);
+                foreach ($files as $file) {
+                    if ($file === '.' || $file === '..') {
+                        continue;
+                    }
+                    $filePath = $cacheDir . '/' . $file;
+                    if (is_file($filePath)) {
+                        $savedCacheBytes += filesize($filePath);
+                        if (@unlink($filePath)) {
+                            $deletedCacheCount++;
+                        }
+                    }
+                }
+                $savedCacheMB = round($savedCacheBytes / (1024 * 1024), 2);
+                $messages[] = "Se eliminaron $deletedCacheCount imágenes en caché ($savedCacheMB MB liberados).";
+            } else {
+                $messages[] = "No hay imágenes externas en caché para limpiar.";
             }
         }
 

@@ -1181,6 +1181,9 @@ HTML;
             $headerUrl = $proto . '://' . $domain . $headerUrl;
         }
 
+        $avatarUrl = self::getProxyUrl($avatarUrl);
+        $headerUrl = self::getProxyUrl($headerUrl);
+
         // Devolver la bio en el formato adecuado
         $bio = $account['note'] ?: '';
         if (!$plainTextBio) {
@@ -2657,6 +2660,16 @@ HTML;
             $attachments = json_decode($row['media_attachments'], true);
             if (!is_array($attachments)) {
                 $attachments = [];
+            } else {
+                foreach ($attachments as &$att) {
+                    if (isset($att['url'])) {
+                        $att['url'] = self::getProxyUrl($att['url']);
+                    }
+                    if (isset($att['preview_url'])) {
+                        $att['preview_url'] = self::getProxyUrl($att['preview_url']);
+                    }
+                }
+                unset($att);
             }
         }
  
@@ -2770,17 +2783,22 @@ HTML;
             'tags' => [],
             'emojis' => [],
             'card' => (function() use ($row, $db) {
+                $cardData = null;
                 if (array_key_exists('card', $row)) {
-                    return !empty($row['card']) ? json_decode($row['card'], true) : null;
+                    $cardData = !empty($row['card']) ? json_decode($row['card'], true) : null;
+                } else {
+                    $statusId = $row['status_id'] ?? $row['id'] ?? null;
+                    if ($statusId) {
+                        $stmt = $db->prepare("SELECT card FROM statuses WHERE id = ? LIMIT 1");
+                        $stmt->execute([$statusId]);
+                        $cardStr = $stmt->fetchColumn();
+                        $cardData = !empty($cardStr) ? json_decode($cardStr, true) : null;
+                    }
                 }
-                $statusId = $row['status_id'] ?? $row['id'] ?? null;
-                if ($statusId) {
-                    $stmt = $db->prepare("SELECT card FROM statuses WHERE id = ? LIMIT 1");
-                    $stmt->execute([$statusId]);
-                    $cardStr = $stmt->fetchColumn();
-                    return !empty($cardStr) ? json_decode($cardStr, true) : null;
+                if ($cardData && isset($cardData['image'])) {
+                    $cardData['image'] = self::getProxyUrl($cardData['image']);
                 }
-                return null;
+                return $cardData;
             })(),
             'poll' => $poll,
             'application' => $application
@@ -4900,5 +4918,96 @@ HTML;
         }
 
         Router::json($statuses);
+    }
+
+    /**
+     * Helper to generate signed proxy URLs for external media to enhance privacy and allow caching.
+     */
+    public static function getProxyUrl(?string $url): ?string {
+        if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+            return $url;
+        }
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = defined('KUTSOCIAL_DOMAIN') ? KUTSOCIAL_DOMAIN : ($_SERVER['HTTP_HOST'] ?? 'localhost');
+        // Do not proxy if URL is local or already proxied
+        if (str_contains($url, $domain) || str_starts_with($url, '/')) {
+            return $url;
+        }
+        $secret = self::getSigningSecret();
+        $token = hash_hmac('sha256', $url, $secret);
+        return "$proto://$domain/media-proxy?url=" . urlencode($url) . "&token=" . $token;
+    }
+
+    /**
+     * Endpoint GET /media-proxy
+     * Serves proxied images/media with caching headers.
+     */
+    public static function serveMediaProxy(): void {
+        $url = $_GET['url'] ?? '';
+        $token = $_GET['token'] ?? '';
+
+        if (empty($url) || empty($token)) {
+            Router::json(['error' => 'Missing parameters'], 400);
+            return;
+        }
+
+        $secret = self::getSigningSecret();
+        $expectedToken = hash_hmac('sha256', $url, $secret);
+
+        if (!hash_equals($expectedToken, $token)) {
+            Router::json(['error' => 'Invalid token'], 403);
+            return;
+        }
+
+        $cacheDir = dirname(Database::getDbPath()) . '/cache/media';
+        if (!is_dir($cacheDir)) {
+            @mkdir($cacheDir, 0755, true);
+        }
+
+        $cacheFile = $cacheDir . '/' . md5($url);
+
+        if (!file_exists($cacheFile)) {
+            // Download remote media securely with timeouts
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 3,
+                CURLOPT_TIMEOUT => 12,
+                CURLOPT_CONNECTTIMEOUT => 5,
+                CURLOPT_SSL_VERIFYPEER => defined('KUTSOCIAL_SSL_VERIFY') ? KUTSOCIAL_SSL_VERIFY : false,
+                CURLOPT_SSL_VERIFYHOST => false,
+                CURLOPT_USERAGENT => 'KutSocial-MediaProxy/1.0'
+            ]);
+            $data = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($httpCode === 200 && !empty($data)) {
+                @file_put_contents($cacheFile, $data);
+            } else {
+                // Fallback: redirect browser to the original remote URL
+                header("Location: " . $url, true, 302);
+                exit;
+            }
+        }
+
+        // Serve cached file
+        if (file_exists($cacheFile) && filesize($cacheFile) > 0) {
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mime = finfo_file($finfo, $cacheFile) ?: 'image/jpeg';
+            finfo_close($finfo);
+
+            // Allow the browser to cache this resource permanently (1 year)
+            header("Content-Type: " . $mime);
+            header("Cache-Control: public, max-age=31536000, immutable");
+            header("Content-Length: " . filesize($cacheFile));
+            @readfile($cacheFile);
+            exit;
+        }
+
+        header("Location: " . $url, true, 302);
+        exit;
     }
 }
