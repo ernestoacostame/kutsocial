@@ -298,6 +298,8 @@ $router->get('/lists', $renderFrontend);
 $router->get('/collections', $renderFrontend);
 $router->get('/followed-hashtags', $renderFrontend);
 $router->get('/profile', $renderFrontend);
+$router->get('/search-results', $renderFrontend);
+
 
 // --- Panel de Administración Centralizado ---
 $router->get('/admin/login', [AdminController::class, 'showLogin']);
