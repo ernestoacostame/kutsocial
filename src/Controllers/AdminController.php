@@ -1422,6 +1422,8 @@ class AdminController {
         $html = str_replace('{$localUsersCount}', (string)count($localUsers), $html);
         $html = str_replace('{$localUsersRows}', $localUsersRows, $html);
         $html = str_replace('{$csrfToken}', $csrfToken, $html);
+        $html = str_replace('{$admin[\'username\']}', htmlspecialchars($admin['username']), $html);
+        $html = str_replace('{$_SERVER[\'HTTP_HOST\']}', htmlspecialchars($_SERVER['HTTP_HOST'] ?? 'localhost'), $html);
         
         $html = str_replace('{if_2fa_active}', $is2faActive ? '' : '<!--', $html);
         $html = str_replace('{else_2fa}', $is2faActive ? '<!--' : '-->', $html);
