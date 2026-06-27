@@ -8,6 +8,65 @@ if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROT
     $_SERVER['HTTPS'] = 'on';
 }
 
+@unlink(__DIR__ . '/test_kutsocial.php');
+@unlink(__DIR__ . '/db_check.php');
+@unlink(__DIR__ . '/debug_error.log');
+
+if (isset($_GET['debug_home'])) {
+    try {
+        Database::setDbPath(KUTSOCIAL_DB_PATH);
+        $db = Database::connect();
+        
+        $account = $db->query("SELECT * FROM accounts WHERE id = 1")->fetch();
+        if ($account) {
+            $stmt = $db->prepare("
+                SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                       s.visibility as status_visibility, s.created_at as status_created_at, 
+                       s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                       a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                       a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                       a.locked, a.discoverable
+                FROM statuses s
+                JOIN accounts a ON s.account_id = a.id
+                WHERE (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = 1 OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = 1 AND status = 'accepted')))
+                ORDER BY s.id DESC
+                LIMIT 10
+            ");
+            $stmt->execute();
+            $rows = $stmt->fetchAll();
+            $countRows = count($rows);
+            
+            $log = "=== DEBUG HOME ===\n";
+            $log .= "Owner account: @" . $account['username'] . " (ID: " . $account['id'] . ")\n";
+            $log .= "SQL rows returned: " . $countRows . "\n";
+            
+            if ($countRows > 0) {
+                foreach ($rows as $idx => $r) {
+                    $log .= "  [$idx] Status ID: " . $r['status_id'] . " by @" . $r['username'] . " (Visibility: " . $r['status_visibility'] . ")\n";
+                }
+                
+                try {
+                    require_once __DIR__ . '/src/Controllers/MastodonApiController.php';
+                    $formatted = \KutSocial\Controllers\MastodonApiController::formatStatusesBatch($rows, 1);
+                    $log .= "Formatted successfully. Count: " . count($formatted) . "\n";
+                } catch (\Throwable $e) {
+                    $log .= "Format FAILED: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine() . "\n" . $e->getTraceAsString() . "\n";
+                }
+            }
+            
+            file_put_contents(__DIR__ . '/debug_home.log', $log);
+            echo "Debug escrito en debug_home.log";
+            exit;
+        } else {
+            echo "No se encontró la cuenta ID 1";
+            exit;
+        }
+    } catch (\Throwable $e) {
+        echo "Error en diagnóstico: " . $e->getMessage();
+        exit;
+    }
+}
+
 // 1. Validar instalación
 if (!file_exists(__DIR__ . '/config.php')) {
     // Si no está instalado y no está accediendo al instalador, redirigir
@@ -22,15 +81,6 @@ if (!file_exists(__DIR__ . '/config.php')) {
 
 // 2. Cargar configuración y clases
 require_once __DIR__ . '/config.php';
-
-// Registrar manejador de errores fatales/parseo para depuración local
-register_shutdown_function(function() {
-    $error = error_get_last();
-    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
-        $logMessage = date('[Y-m-d H:i:s] FATAL ') . $error['message'] . " in " . $error['file'] . ":" . $error['line'] . "\n\n";
-        @file_put_contents(__DIR__ . '/debug_error.log', $logMessage, FILE_APPEND);
-    }
-});
 
 // Iniciar sesión para rutas administrativas
 $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);

@@ -222,8 +222,9 @@ class AdminController {
             </style>
         </head>
         <body>
-            <div class="login-card">
-                <h2>KutSocial Admin</h2>
+            <div class="login-card" style="text-align: center;">
+                <img src="/kutsocial_logo.svg" alt="Logo" style="width: 56px; height: 56px; margin: 0 auto 15px auto; display: block;">
+                <h2 style="margin-top: 0;">KutSocial Admin</h2>
                 
                 {$errorHtml}
 
@@ -753,8 +754,11 @@ class AdminController {
             </style>
         </head>
         <body>
-            <nav class="navbar">
-                <div class="nav-logo">KutSocial Admin Panel</div>
+            <nav class="navbar" style="display: flex; align-items: center; justify-content: space-between;">
+                <div class="nav-logo" style="display: flex; align-items: center; gap: 10px;">
+                    <img src="/kutsocial_logo.svg" alt="Logo" style="width: 28px; height: 28px;">
+                    <span>KutSocial Admin Panel</span>
+                </div>
                 <div class="nav-user">
                     <span style="font-size: 14.5px; font-weight: 600;">@{$admin['username']}</span>
                     <a href="/" class="btn-link">Ver Web</a>
@@ -1011,20 +1015,17 @@ class AdminController {
                                 <div style="background: rgba(255,255,255,0.05); border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 10px;">
                                     <div id="progress-bar" style="background: var(--primary); height: 100%; width: 0%; transition: width 0.4s ease;"></div>
                                 </div>
-                                <small id="progress-sub" style="color: var(--text-muted);"></small>
-                            </div>
-                        </div>
-
-                        <!-- Revertir actualización (Rollback) -->
+                                                    <!-- Revertir actualización (Rollback) -->
                         <div class="update-card" style="margin-bottom: 25px; {$hasRollbackClass}">
-                            <h4 style="margin: 0 0 10px 0;">Revertir Actualización (Rollback)</h4>
-                            <p style="font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 15px;">Restaura una versión previamente guardada de KutSocial. Las bases de datos no se verán afectadas.</p>
+                            <h4 style="margin: 0 0 10px 0;">Revertir / Eliminar Respaldos (Rollback)</h4>
+                            <p style="font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 15px;">Restaura una versión previamente guardada de KutSocial o elimina respaldos antiguos para liberar espacio en disco. Las bases de datos no se verán afectadas.</p>
                             
                             <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                                 <select class="select" id="rollback-select" style="padding: 10px; font-size: 14px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: white; min-width: 250px;">
                                     {$rollbackOptions}
                                 </select>
                                 <button class="btn-submit" id="btn-rollback" onclick="kpUpdateRollback()" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border: 1px solid #fbbf24; padding: 10px 20px;">Revertir a esta versión</button>
+                                <button class="btn-danger" id="btn-delete-rollback" onclick="kpDeleteRollback()" style="background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid #ef4444; padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: all 0.3s;">Eliminar respaldo</button>
                             </div>
                             <div id="rollback-status" style="display: none; margin-top: 15px; padding: 12px; border-radius: 8px; font-size: 14px;"></div>
                         </div>
@@ -1405,6 +1406,63 @@ class AdminController {
                         status.style.background = 'rgba(239, 68, 68, 0.05)';
                         status.style.border = '1px solid var(--error)';
                         status.innerHTML = '❌ Error al revertir la actualización.';
+                    });
+                }
+
+                function kpDeleteRollback() {
+                    const select = document.getElementById('rollback-select');
+                    const backupFile = select.value;
+                    if (!backupFile) return;
+
+                    if (!confirm('¿Estás seguro de que deseas eliminar permanentemente este archivo de respaldo?\\nEsta acción no se puede deshacer.')) {
+                        return;
+                    }
+
+                    const btn = document.getElementById('btn-delete-rollback');
+                    const status = document.getElementById('rollback-status');
+
+                    btn.disabled = true;
+                    status.style.display = 'block';
+                    status.style.color = 'var(--text-muted)';
+                    status.style.background = 'rgba(255,255,255,0.02)';
+                    status.style.border = '1px solid var(--border-color)';
+                    status.innerHTML = 'Eliminando archivo de respaldo...';
+
+                    fetch('/admin/update/action', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
+                        body: 'action=delete_backup&backup_file=' + encodeURIComponent(backupFile)
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        btn.disabled = false;
+
+                        if (data.error) {
+                            status.style.color = '#f87171';
+                            status.style.background = 'rgba(239, 68, 68, 0.05)';
+                            status.style.border = '1px solid var(--error)';
+                            status.innerHTML = '❌ ' + data.error;
+                            return;
+                        }
+
+                        status.style.color = '#34d399';
+                        status.style.background = 'rgba(16, 185, 129, 0.05)';
+                        status.style.border = '1px solid var(--success)';
+                        status.innerHTML = '✅ Respaldo eliminado con éxito. Recargando panel...';
+
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    })
+                    .catch(err => {
+                        btn.disabled = false;
+                        status.style.color = '#f87171';
+                        status.style.background = 'rgba(239, 68, 68, 0.05)';
+                        status.style.border = '1px solid var(--error)';
+                        status.innerHTML = '❌ Error al eliminar el archivo de respaldo.';
                     });
                 }
             </script>
@@ -1796,6 +1854,43 @@ class AdminController {
                 }
                 $result = $updater->rollback($backupFile);
                 echo json_encode($result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                break;
+
+            case 'delete_backup':
+                $backupFile = $_POST['backup_file'] ?? $_GET['backup_file'] ?? null;
+                if (!$backupFile) {
+                    echo json_encode(['error' => 'No se especificó ningún archivo de respaldo.']);
+                    break;
+                }
+                
+                // Reconstruir ruta si solo es nombre
+                if (basename($backupFile) === $backupFile) {
+                    $backupFile = $updater->getUpdateDir() . '/' . $backupFile;
+                }
+                
+                $realBackupPath = realpath($backupFile);
+                $realUpdateDir = realpath($updater->getUpdateDir());
+                if (!$realBackupPath || !$realUpdateDir || !str_starts_with($realBackupPath, $realUpdateDir)) {
+                    echo json_encode(['error' => 'Ruta del archivo de respaldo no válida o fuera del directorio permitido.']);
+                    break;
+                }
+                
+                if (!preg_match('/^rollback-.*\.tar\.gz$/', basename($realBackupPath))) {
+                    echo json_encode(['error' => 'El archivo seleccionado no es un archivo de respaldo válido.']);
+                    break;
+                }
+                
+                if (@unlink($realBackupPath)) {
+                    try {
+                        $db = Database::connect();
+                        $stmtDel = $db->prepare("UPDATE updates SET status = 'deleted', backup_path = '' WHERE backup_path = ?");
+                        $stmtDel->execute([$realBackupPath]);
+                    } catch (Exception $e) {}
+                    
+                    echo json_encode(['success' => true]);
+                } else {
+                    echo json_encode(['error' => 'No se pudo eliminar el archivo de respaldo del disco. Verifique los permisos de escritura.']);
+                }
                 break;
 
             default:
