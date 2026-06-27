@@ -2218,11 +2218,19 @@
                         `;
                     } else {
                         const altText = media.description ? escapeHTML(media.description) : '';
-                        const altBadge = altText ? `<span class="media-alt-badge" title="${altText}" onclick="alert('${altText.replace(/'/g, "\\'")}')" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; cursor: pointer; user-select: none; z-index: 10;">ALT</span>` : '';
+                        const altCaption = altText ? `
+                            <div class="media-alt-caption" style="font-size: 12.5px; color: var(--text-muted); padding: 8px 12px; background: rgba(255,255,255,0.02); border-top: 1px solid var(--border-color); width: 100%; box-sizing: border-box; text-align: left; line-height: 1.4;">
+                                <strong style="color: #fbbf24; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px;">Alt</strong> ${altText}
+                            </div>
+                        ` : '';
+                        
                         mediaHTML += `
-                            <div class="toot-media-item" style="position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; max-height: 250px; display: flex;">
-                                <img src="${url}" alt="${altText}" title="${altText}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer; border-radius: 8px;" onclick="window.open('${url}', '_blank')">
-                                ${altBadge}
+                            <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; display: flex; flex-direction: column;">
+                                <div style="display: flex; position: relative; max-height: 250px; justify-content: center; width: 100%;">
+                                    <img src="${url}" alt="${altText}" title="${altText}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer;" onclick="window.open('${url}', '_blank')">
+                                    ${altText ? `<span class="media-alt-badge" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; cursor: pointer; user-select: none;">ALT</span>` : ''}
+                                </div>
+                                ${altCaption}
                             </div>
                         `;
                     }
