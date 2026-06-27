@@ -1137,6 +1137,13 @@
             border-color: var(--primary);
             background: rgba(255, 255, 255, 0.04);
         }
+        /* Prevención de FOUC/parpadeo de pantalla de login */
+        .is-authenticated #login-container {
+            display: none !important;
+        }
+        .is-authenticated #app-container {
+            display: flex !important;
+        }
     </style>
 </head>
 <body>
@@ -1787,6 +1794,9 @@
 
     <script>
         let token = localStorage.getItem('kutsocial_token');
+        if (token || (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked)) {
+            document.documentElement.classList.add('is-authenticated');
+        }
         let currentTimeline = 'public';
         let lastId = 0;
         let oldestId = null;
@@ -2200,37 +2210,62 @@
             // Renderizar Multimedia subida si existe
             let mediaHTML = '';
             if (toot.media_attachments && toot.media_attachments.length > 0) {
-                mediaHTML = `<div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; width: 100%;">`;
+                mediaHTML = `<div style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px; width: 100%;">`;
                 toot.media_attachments.forEach(media => {
                     const type = (media.type || '').toLowerCase();
                     const url = media.url || '';
-                    if (type === 'video' || type === 'gifv' || url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.endsWith('.m4v')) {
-                        mediaHTML += `
-                            <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; display: flex; width: 100%;">
-                                <video src="${url}" poster="${media.preview_url || ''}" controls loop playsinline style="width: 100%; max-height: 350px; background: #000; border-radius: 8px;"></video>
-                            </div>
-                        `;
-                    } else if (type === 'audio' || url.endsWith('.mp3') || url.endsWith('.ogg') || url.endsWith('.wav') || url.endsWith('.m4a') || url.endsWith('.aac')) {
+                    const altText = media.description ? escapeHTML(media.description) : '';
+                    
+                    if (type === 'audio' || url.endsWith('.mp3') || url.endsWith('.ogg') || url.endsWith('.wav') || url.endsWith('.m4a') || url.endsWith('.aac')) {
                         mediaHTML += `
                             <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); width: 100%; padding: 8px; display: flex; flex-direction: column; background: rgba(0,0,0,0.2);">
                                 <audio src="${url}" controls style="width: 100%;"></audio>
                             </div>
                         `;
                     } else {
-                        const altText = media.description ? escapeHTML(media.description) : '';
-                        const altCaption = altText ? `
-                            <div class="media-alt-caption" style="font-size: 12.5px; color: var(--text-muted); padding: 8px 12px; background: rgba(255,255,255,0.02); border-top: 1px solid var(--border-color); width: 100%; box-sizing: border-box; text-align: left; line-height: 1.4;">
-                                <strong style="color: #fbbf24; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-right: 6px;">Alt</strong> ${altText}
-                            </div>
-                        ` : '';
-                        
+                        // Para Imagen, Video, Gifv
+                        const isVideo = type === 'video' || type === 'gifv' || url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.endsWith('.m4v');
+                        const mediaTag = isVideo 
+                            ? `<video src="${url}" poster="${media.preview_url || ''}" controls loop playsinline style="width: 100%; max-height: 380px; background: #000; display: block; margin: 0 auto; border-radius: 4px;"></video>`
+                            : `<img src="${url}" alt="${altText}" title="${altText}" style="max-width: 100%; max-height: 450px; object-fit: contain; cursor: pointer; display: block; margin: 0 auto; border-radius: 4px;" onclick="window.open('${url}', '_blank')">`;
+
                         mediaHTML += `
-                            <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; display: flex; flex-direction: column;">
-                                <div style="display: flex; position: relative; max-height: 250px; justify-content: center; width: 100%;">
-                                    <img src="${url}" alt="${altText}" title="${altText}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer;" onclick="window.open('${url}', '_blank')">
-                                    ${altText ? `<span class="media-alt-badge" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; cursor: pointer; user-select: none;">ALT</span>` : ''}
+                            <div class="toot-media-card" data-sensitive="${toot.sensitive ? 'true' : 'false'}" style="position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; display: flex; flex-direction: column;">
+                                
+                                <!-- Botón superior derecho de ocultar/mostrar -->
+                                <button class="media-toggle-btn" onclick="toggleMediaVisibility(this)" style="position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.65); color: #fff; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
+                                    ${toot.sensitive ? 'Show' : 'Hide'}
+                                </button>
+
+                                <!-- Contenedor del elemento multimedia -->
+                                <div class="media-wrapper" style="display: ${toot.sensitive ? 'none' : 'block'}; position: relative; width: 100%;">
+                                    <div style="display: flex; justify-content: center; width: 100%; position: relative;">
+                                        ${mediaTag}
+                                        
+                                        <!-- Botón ALT en la esquina inferior derecha -->
+                                        ${altText ? `
+                                        <button class="media-alt-btn" onclick="toggleAltTextPopup(this, event)" style="position: absolute; bottom: 12px; right: 12px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 3px 8px; border-radius: 4px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
+                                            ALT
+                                        </button>
+                                        
+                                        <!-- Popup flotante de Alt text en la parte inferior derecha -->
+                                        <div class="media-alt-popup" style="display: none; position: absolute; bottom: 12px; right: 12px; width: 280px; max-width: 90%; background: #1e1f22; border: 1px solid #2f3037; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 30; text-align: left; padding: 12px; color: #fff; font-family: sans-serif;">
+                                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #2f3037; padding-bottom: 6px;">
+                                                <span style="font-size: 12px; font-weight: bold; color: var(--text-color);">Alt text</span>
+                                                <button onclick="closeAltTextPopup(this, event)" style="background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1;">✕</button>
+                                            </div>
+                                            <div style="font-size: 12.5px; line-height: 1.4; color: #e3e4e8; word-break: break-word;">${altText}</div>
+                                        </div>
+                                        ` : ''}
+                                    </div>
                                 </div>
-                                ${altCaption}
+
+                                <!-- Contenedor de Advertencia / Contenido Sensible -->
+                                <div class="media-placeholder" style="display: ${toot.sensitive ? 'flex' : 'none'}; height: 220px; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;" onclick="revealMediaFromPlaceholder(this)">
+                                    <span style="font-size: 32px; margin-bottom: 8px;">⚠️</span>
+                                    <span style="font-size: 14px; font-weight: 600; color: var(--text-color);">${toot.spoiler_text || 'Contenido Sensible'}</span>
+                                    <span style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Haz clic para mostrar el contenido multimedia</span>
+                                </div>
                             </div>
                         `;
                     }
@@ -3886,6 +3921,52 @@
                 container.style.display = 'none';
                 btn.innerText = 'Mostrar más';
             }
+        }
+
+        // Funciones para alternar la visibilidad de imágenes/videos (Sensibilidad/NSFW) y popups ALT
+        function toggleMediaVisibility(btn) {
+            const card = btn.closest('.toot-media-card');
+            const wrapper = card.querySelector('.media-wrapper');
+            const placeholder = card.querySelector('.media-placeholder');
+            
+            if (wrapper.style.display === 'none') {
+                wrapper.style.display = 'block';
+                placeholder.style.display = 'none';
+                btn.innerText = 'Hide';
+            } else {
+                wrapper.style.display = 'none';
+                placeholder.style.display = 'flex';
+                btn.innerText = 'Show';
+                const altPopup = card.querySelector('.media-alt-popup');
+                if (altPopup) altPopup.style.display = 'none';
+            }
+        }
+
+        function revealMediaFromPlaceholder(placeholder) {
+            const card = placeholder.closest('.toot-media-card');
+            const btn = card.querySelector('.media-toggle-btn');
+            const wrapper = card.querySelector('.media-wrapper');
+            
+            wrapper.style.display = 'block';
+            placeholder.style.display = 'none';
+            btn.innerText = 'Hide';
+        }
+
+        function toggleAltTextPopup(btn, event) {
+            event.stopPropagation();
+            const wrapper = btn.closest('.media-wrapper');
+            const popup = wrapper.querySelector('.media-alt-popup');
+            if (popup.style.display === 'none' || !popup.style.display) {
+                popup.style.display = 'block';
+            } else {
+                popup.style.display = 'none';
+            }
+        }
+
+        function closeAltTextPopup(btn, event) {
+            event.stopPropagation();
+            const popup = btn.closest('.media-alt-popup');
+            popup.style.display = 'none';
         }
 
         async function performSearch(query) {
