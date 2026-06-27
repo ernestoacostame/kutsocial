@@ -2660,10 +2660,11 @@
                 });
                 if (res.ok) {
                     const updatedToot = await res.json();
+                    const targetToot = updatedToot.reblog ? updatedToot.reblog : updatedToot;
                     
                     const card = btn.closest('.toot-card');
                     if (card) {
-                        card._toot = updatedToot;
+                        card._toot = targetToot;
                     }
 
                     const reblogBtns = document.querySelectorAll(`button.btn-reblog[data-reblog-toot-id="${tootId}"]`);
@@ -2671,14 +2672,14 @@
                         const icon = rebBtn.querySelector('.material-icons') || rebBtn.querySelector('.material-icons-outlined');
                         const countSpan = rebBtn.querySelector('.reblog-count');
                         
-                        if (updatedToot.reblogged) {
+                        if (targetToot.reblogged) {
                             rebBtn.classList.add('active-reblog');
                             if (icon) {
                                 icon.className = 'material-icons';
                                 icon.style.color = '#10b981';
                             }
                             if (countSpan) {
-                                countSpan.innerText = updatedToot.reblogs_count;
+                                countSpan.innerText = targetToot.reblogs_count;
                                 countSpan.style.color = '#10b981';
                                 countSpan.style.fontWeight = 'bold';
                             }
@@ -2689,7 +2690,7 @@
                                 icon.style.color = '';
                             }
                             if (countSpan) {
-                                countSpan.innerText = updatedToot.reblogs_count;
+                                countSpan.innerText = targetToot.reblogs_count;
                                 countSpan.style.color = '';
                                 countSpan.style.fontWeight = '';
                             }

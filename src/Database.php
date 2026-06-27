@@ -84,6 +84,7 @@ class Database {
                     $db->rollBack();
                     throw new Exception("Error aplicando migración versión $version: " . $e->getMessage());
                 }
+            }
         }
 
         // Asegurar que la columna reblog_of_id exista en la tabla statuses (por si la versión 14 falló parcialmente)
