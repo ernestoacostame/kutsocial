@@ -49,7 +49,7 @@ class AdminController {
      * Verify the CSRF token from POST data or fail.
      */
     private static function verifyCsrfToken(): void {
-        $token = $_POST['csrf_token'] ?? '';
+        $token = $_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
         $sessionToken = $_SESSION['csrf_token'] ?? '';
         if (empty($sessionToken) || !hash_equals($sessionToken, $token)) {
             http_response_code(403);
@@ -518,6 +518,7 @@ class AdminController {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Panel de Administración - KutSocial</title>
             <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+            <meta name="csrf-token" content="{$csrfToken}">
             <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
             <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
             <style>
@@ -1226,7 +1227,10 @@ class AdminController {
 
                     fetch('/admin/update/action', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        headers: { 
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
                         body: 'action=check'
                     })
                     .then(r => r.json())
@@ -1286,7 +1290,10 @@ class AdminController {
 
                     fetch('/admin/update/action', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        headers: { 
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
                         body: 'action=download&zip_url=' + encodeURIComponent(btoa(_updateData.zip_url))
                     })
                     .then(r => r.json())
@@ -1302,7 +1309,10 @@ class AdminController {
 
                         return fetch('/admin/update/action', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                            headers: { 
+                                'Content-Type': 'application/x-www-form-urlencoded',
+                                'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                            },
                             body: 'action=apply&zip_path=' + encodeURIComponent(dlData.path) + '&new_version=' + encodeURIComponent(_updateData.new_version)
                         });
                     })
@@ -1351,7 +1361,10 @@ class AdminController {
 
                     fetch('/admin/update/action', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        headers: { 
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                        },
                         body: 'action=rollback&backup_file=' + encodeURIComponent(backupFile)
                     })
                     .then(r => r.json())
@@ -1405,6 +1418,7 @@ class AdminController {
         $html = str_replace('{$relaysRows}', $relaysRows, $html);
         $html = str_replace('{$localUsersCount}', (string)count($localUsers), $html);
         $html = str_replace('{$localUsersRows}', $localUsersRows, $html);
+        $html = str_replace('{$csrfToken}', $csrfToken, $html);
         
         $html = str_replace('{if_2fa_active}', $is2faActive ? '' : '<!--', $html);
         $html = str_replace('{else_2fa}', $is2faActive ? '<!--' : '-->', $html);

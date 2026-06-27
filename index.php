@@ -23,6 +23,15 @@ if (!file_exists(__DIR__ . '/config.php')) {
 // 2. Cargar configuración y clases
 require_once __DIR__ . '/config.php';
 
+// Registrar manejador de errores fatales/parseo para depuración local
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
+        $logMessage = date('[Y-m-d H:i:s] FATAL ') . $error['message'] . " in " . $error['file'] . ":" . $error['line'] . "\n\n";
+        @file_put_contents(__DIR__ . '/debug_error.log', $logMessage, FILE_APPEND);
+    }
+});
+
 // Iniciar sesión para rutas administrativas
 $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 if (str_starts_with($requestUri, '/admin')) {
