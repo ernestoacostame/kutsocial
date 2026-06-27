@@ -1851,6 +1851,10 @@
 
     <script>
         let token = localStorage.getItem('kutsocial_token');
+        if (!token && window.KUTSOCIAL_AUTO_TOKEN) {
+            token = window.KUTSOCIAL_AUTO_TOKEN;
+            localStorage.setItem('kutsocial_token', token);
+        }
         if (token || (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked)) {
             document.documentElement.classList.add('is-authenticated');
         }
@@ -1942,7 +1946,7 @@
 
         function logout() {
             localStorage.removeItem('kutsocial_token');
-            window.location.reload();
+            window.location.href = '/admin/logout?redirect=/';
         }
 
         // Funciones para vista pública (visitante)

@@ -32,13 +32,12 @@ if (!file_exists(__DIR__ . '/config.php')) {
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/version.php';
 
-// Iniciar sesión para rutas administrativas
+// Iniciar sesión para la página principal y rutas administrativas
 $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-if (str_starts_with($requestUri, '/admin')) {
+if ($requestUri === '/' || $requestUri === '/index.php' || str_starts_with($requestUri, '/admin')) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
-    
 }
 
 use KutSocial\Router;
@@ -226,6 +225,26 @@ $router->get('/', function() {
         $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_VERSION = '{$version}';</script>", $html);
         try {
             $db = \KutSocial\Database::connect();
+            
+            // Si el administrador está logueado en la sesión de backend, generamos un token automático para el frontend
+            if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION['admin_account_id'])) {
+                $adminId = (int)$_SESSION['admin_account_id'];
+                $stmtAdmin = $db->prepare("SELECT id FROM accounts WHERE id = ? LIMIT 1");
+                $stmtAdmin->execute([$adminId]);
+                if ($stmtAdmin->fetch()) {
+                    $secretStmt = $db->query("SELECT value FROM options WHERE key = 'jwt_secret' LIMIT 1");
+                    $secret = $secretStmt->fetchColumn();
+                    if (!$secret) {
+                        $secret = bin2hex(random_bytes(32));
+                        $ins = $db->prepare("INSERT INTO options (key, value) VALUES ('jwt_secret', ?)");
+                        $ins->execute([$secret]);
+                    }
+                    $hash = hash_hmac('sha256', $adminId, $secret);
+                    $autoToken = "token_" . $adminId . "_" . $hash;
+                    $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_AUTO_TOKEN = '{$autoToken}';</script>", $html);
+                }
+            }
+
             $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE domain IS NULL AND role = 'owner' LIMIT 1");
             $owner = $stmt->fetch();
             if ($owner) {

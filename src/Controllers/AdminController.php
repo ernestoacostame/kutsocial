@@ -164,7 +164,8 @@ class AdminController {
     public static function handleLogout(): void {
         unset($_SESSION['admin_account_id']);
         unset($_SESSION['temp_admin_id']);
-        header("Location: /admin/login");
+        $redirect = $_GET['redirect'] ?? '/admin/login';
+        header("Location: " . $redirect);
         exit;
     }
 
