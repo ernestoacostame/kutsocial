@@ -192,6 +192,7 @@ $router->get('/admin/login', [AdminController::class, 'showLogin']);
 $router->post('/admin/login', [AdminController::class, 'handleLogin']);
 $router->get('/admin/logout', [AdminController::class, 'handleLogout']);
 $router->get('/admin/dashboard', [AdminController::class, 'showDashboard']);
+$router->get('/admin/dashboard/:section', [AdminController::class, 'showDashboard']);
 $router->post('/admin/settings', [AdminController::class, 'handleSettings']);
 $router->post('/admin/security/password', [AdminController::class, 'handlePassword']);
 $router->post('/admin/security/2fa/setup', [AdminController::class, 'setup2FA']);
