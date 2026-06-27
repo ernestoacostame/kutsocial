@@ -30,22 +30,41 @@ class Queue {
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $url = "$proto://$domain/cron.php?async=1";
 
+        $executed = false;
         // Ejecutar en segundo plano local por shell si es Unix (evita problemas de NAT Loopback local)
         $cronPath = realpath(__DIR__ . '/../cron.php');
         if ($cronPath && DIRECTORY_SEPARATOR === '/') {
-            exec("php " . escapeshellarg($cronPath) . " > /dev/null 2>&1 &");
+            if (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions') ?: '')))) {
+                @exec("php " . escapeshellarg($cronPath) . " > /dev/null 2>&1 &");
+                $executed = true;
+            }
         }
 
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT_MS => 100, // Timeout extremadamente bajo para no bloquear
-            CURLOPT_NOSIGNAL => 1,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_SSL_VERIFYHOST => false
-        ]);
-        curl_exec($ch);
-        curl_close($ch);
+        if (!$executed && function_exists('curl_init')) {
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT_MS => 150, // Timeout ligeramente mayor para dar margen
+                CURLOPT_NOSIGNAL => 1,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false
+            ]);
+            @curl_exec($ch);
+            @curl_close($ch);
+        }
+
+        // Registrar procesamiento al terminar el script de manera no bloqueante (si es posible con PHP-FPM)
+        register_shutdown_function(function() {
+            if (function_exists('fastcgi_finish_request')) {
+                @fastcgi_finish_request();
+            }
+            try {
+                // Procesar hasta 3 tareas de la cola de forma sincrónica/secuencial al final de la petición
+                self::process(3);
+            } catch (\Exception $e) {
+                // Silenciar errores
+            }
+        });
     }
 
     /**
