@@ -2531,7 +2531,7 @@
                             <button class="toot-action-btn ${favClass}" onclick="toggleFavourite('${toot.id}', this)" title="Favorito">
                                 <span class="${toot.favourited ? 'material-icons' : 'material-icons-outlined'}">${toot.favourited ? 'star' : 'star_border'}</span> <span class="fav-count">${toot.favourites_count || 0}</span>
                             </button>
-                            <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="Compartir / Citar">
+                            <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" data-reblog-toot-id="${toot.id}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="Compartir / Citar">
                                 <span class="${toot.reblogged ? 'material-icons' : 'material-icons-outlined'}" style="${toot.reblogged ? 'color: #10b981;' : ''}">repeat</span> <span class="reblog-count" style="${toot.reblogged ? 'color: #10b981; font-weight: bold;' : ''}">${toot.reblogs_count || 0}</span>
                             </button>
                             <button class="toot-action-btn ${bookmarkClass}" onclick="toggleBookmark('${toot.id}', this)" title="Guardar">
@@ -2666,7 +2666,7 @@
                         card._toot = updatedToot;
                     }
 
-                    const reblogBtns = document.querySelectorAll(`button[onclick^="handleReblogButtonClick('${tootId}'"]`);
+                    const reblogBtns = document.querySelectorAll(`button.btn-reblog[data-reblog-toot-id="${tootId}"]`);
                     reblogBtns.forEach(rebBtn => {
                         const icon = rebBtn.querySelector('.material-icons') || rebBtn.querySelector('.material-icons-outlined');
                         const countSpan = rebBtn.querySelector('.reblog-count');

@@ -2632,7 +2632,12 @@ HTML;
                 'votes_count' => $totalVotes,
                 'options' => $formattedOptions,
                 'voted' => $voted,
-                'own_vote' => $o        // Reblogs count
+                'own_vote' => $ownVote,
+                'voters_count' => $totalVotes
+            ];
+        }
+
+        // Reblogs count
         $stmtReb = $db->prepare("SELECT COUNT(*) FROM statuses WHERE reblog_of_id = ? AND content = ''");
         $stmtReb->execute([$statusId]);
         $reblogsCount = (int)$stmtReb->fetchColumn();
