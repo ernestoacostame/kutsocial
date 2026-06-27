@@ -1244,6 +1244,12 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a href="#" id="nav-notifications" class="nav-link" onclick="showTab('notifications')">
+                            <span class="material-icons-outlined">notifications</span> Notificaciones
+                            <span id="nav-notifications-count" class="notification-badge" style="display: none; background: var(--error, #ef4444); color: white; border-radius: 10px; padding: 2px 6px; font-size: 11px; font-weight: bold; margin-left: auto;">0</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="#" id="nav-bookmarks" class="nav-link" onclick="switchTimeline('bookmarks')">
                             <span class="material-icons-outlined">bookmark_border</span> Marcadores
                         </a>
@@ -1261,11 +1267,6 @@
                     <li class="nav-item">
                         <a href="#" id="nav-hashtags" class="nav-link" onclick="showTab('followed-hashtags')">
                             <span class="material-icons-outlined">tag</span> Hashtags Seguidos
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a href="#" id="nav-notifications" class="nav-link" onclick="showTab('notifications')">
-                            <span class="material-icons-outlined">notifications</span> Notificaciones
                         </a>
                     </li>
                     <li class="nav-item">
@@ -2042,6 +2043,46 @@
             '❤️‍🔥', '❤️‍🩹', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝'
         ];
 
+        async function updateNotificationBadge() {
+            if (!token) return;
+            try {
+                let frCount = 0;
+                try {
+                    const frRes = await fetch('/api/v1/follow_requests', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (frRes.ok) {
+                        const frData = await frRes.json();
+                        frCount = Array.isArray(frData) ? frData.length : 0;
+                    }
+                } catch (e) {}
+
+                let notifCount = 0;
+                try {
+                    const res = await fetch('/api/v1/notifications', {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        notifCount = Array.isArray(data) ? data.length : 0;
+                    }
+                } catch (e) {}
+
+                const total = frCount + notifCount;
+                const badge = document.getElementById('nav-notifications-count');
+                if (badge) {
+                    if (total > 0) {
+                        badge.innerText = total;
+                        badge.style.display = 'inline-block';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+            } catch (e) {
+                console.error("Error updating notification badge", e);
+            }
+        }
+
         // Inicializar Aplicación Autenticada
         async function initApp() {
             document.getElementById('login-container').style.display = 'none';
@@ -2082,6 +2123,10 @@
 
             // 3. Cargar timeline inicial
             loadTimeline();
+
+            // Cargar e iniciar badge de notificaciones
+            updateNotificationBadge();
+            setInterval(updateNotificationBadge, 30000);
         }
 
         async function loadInstanceStats() {
@@ -3102,6 +3147,9 @@
         async function loadNotifications() {
             const list = document.getElementById('notifications-list');
             list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando notificaciones...</div>';
+            
+            // Actualizar el contador de notificaciones de inmediato al cargar la pestaña
+            updateNotificationBadge();
             
             try {
                 // 1. Obtener solicitudes de seguimiento pendientes

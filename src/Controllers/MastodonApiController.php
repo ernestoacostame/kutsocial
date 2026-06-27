@@ -5114,4 +5114,14 @@ HTML;
 
         Router::json(self::formatStatus($row, $currUserId));
     }
+
+    /**
+     * Endpoint GET /api/v1/instance/peers
+     */
+    public static function getPeers(): void {
+        $db = Database::connect();
+        $stmt = $db->query("SELECT DISTINCT domain FROM accounts WHERE domain IS NOT NULL");
+        $peers = $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
+        Router::json($peers);
+    }
 }

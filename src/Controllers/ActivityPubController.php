@@ -1241,6 +1241,173 @@ class ActivityPubController {
     }
 
     /**
+     * Endpoint de Seguidores: /users/{username}/followers
+     */
+    public static function getFollowers(array $params): void {
+        $username = $params['username'] ?? '';
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmt->execute([$username]);
+        $account = $stmt->fetch();
+
+        if (!$account) {
+            Router::json(['error' => 'Actor no encontrado'], 404);
+            return;
+        }
+
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $followersUrl = "$proto://$domain/users/$username/followers";
+
+        // Obtener todos los seguidores aceptados
+        $stmtFollowers = $db->prepare("
+            SELECT a.* 
+            FROM follows f
+            JOIN accounts a ON f.account_id = a.id
+            WHERE f.target_account_id = ? AND f.status = 'accepted'
+        ");
+        $stmtFollowers->execute([$account['id']]);
+        $rows = $stmtFollowers->fetchAll();
+
+        $items = [];
+        foreach ($rows as $row) {
+            if ($row['domain'] === null) {
+                $items[] = "$proto://$domain/users/{$row['username']}";
+            } else {
+                $items[] = !empty($row['inbox_url']) ? preg_replace('/\/inbox\/?$/i', '', $row['inbox_url']) : "https://{$row['domain']}/users/{$row['username']}";
+            }
+        }
+
+        header('Content-Type: application/activity+json; charset=utf-8');
+        echo json_encode([
+            '@context' => 'https://www.w3.org/ns/activitystreams',
+            'id' => $followersUrl,
+            'type' => 'OrderedCollection',
+            'totalItems' => count($items),
+            'first' => [
+                'id' => $followersUrl . '?page=1',
+                'type' => 'OrderedCollectionPage',
+                'totalItems' => count($items),
+                'partOf' => $followersUrl,
+                'orderedItems' => $items
+            ]
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    /**
+     * Endpoint de Siguiendo: /users/{username}/following
+     */
+    public static function getFollowing(array $params): void {
+        $username = $params['username'] ?? '';
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmt->execute([$username]);
+        $account = $stmt->fetch();
+
+        if (!$account) {
+            Router::json(['error' => 'Actor no encontrado'], 404);
+            return;
+        }
+
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $followingUrl = "$proto://$domain/users/$username/following";
+
+        // Obtener todas las cuentas seguidas aceptadas
+        $stmtFollowing = $db->prepare("
+            SELECT a.* 
+            FROM follows f
+            JOIN accounts a ON f.target_account_id = a.id
+            WHERE f.account_id = ? AND f.status = 'accepted'
+        ");
+        $stmtFollowing->execute([$account['id']]);
+        $rows = $stmtFollowing->fetchAll();
+
+        $items = [];
+        foreach ($rows as $row) {
+            if ($row['domain'] === null) {
+                $items[] = "$proto://$domain/users/{$row['username']}";
+            } else {
+                $items[] = !empty($row['inbox_url']) ? preg_replace('/\/inbox\/?$/i', '', $row['inbox_url']) : "https://{$row['domain']}/users/{$row['username']}";
+            }
+        }
+
+        header('Content-Type: application/activity+json; charset=utf-8');
+        echo json_encode([
+            '@context' => 'https://www.w3.org/ns/activitystreams',
+            'id' => $followingUrl,
+            'type' => 'OrderedCollection',
+            'totalItems' => count($items),
+            'first' => [
+                'id' => $followingUrl . '?page=1',
+                'type' => 'OrderedCollectionPage',
+                'totalItems' => count($items),
+                'partOf' => $followingUrl,
+                'orderedItems' => $items
+            ]
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    /**
+     * Endpoint de Status individual: /users/{username}/statuses/{id}
+     */
+    public static function getStatus(array $params): void {
+        $username = $params['username'] ?? '';
+        $id = $params['id'] ?? '';
+
+        $db = Database::connect();
+        
+        // 1. Obtener la cuenta local
+        $stmtAcc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmtAcc->execute([$username]);
+        $account = $stmtAcc->fetch();
+        if (!$account) {
+            Router::json(['error' => 'Actor no encontrado'], 404);
+            return;
+        }
+
+        // 2. Obtener la publicación por URI o coincidencia parcial
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $uri = "$proto://$domain/users/$username/statuses/$id";
+
+        $stmtStatus = $db->prepare("SELECT * FROM statuses WHERE account_id = ? AND (uri = ? OR uri LIKE ?) LIMIT 1");
+        $stmtStatus->execute([$account['id'], $uri, "%/statuses/$id"]);
+        $status = $stmtStatus->fetch();
+
+        if (!$status) {
+            Router::json(['error' => 'Publicación no encontrada'], 404);
+            return;
+        }
+
+        $visibility = $status['visibility'] ?? 'public';
+        $to = [];
+        $cc = [];
+        if ($visibility === 'public') {
+            $to[] = 'https://www.w3.org/ns/activitystreams#Public';
+            $cc[] = "$proto://$domain/users/$username/followers";
+        } else { // unlisted
+            $to[] = "$proto://$domain/users/$username/followers";
+            $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
+        }
+
+        header('Content-Type: application/activity+json; charset=utf-8');
+        echo json_encode([
+            '@context' => 'https://www.w3.org/ns/activitystreams',
+            'id' => $status['uri'],
+            'type' => 'Note',
+            'attributedTo' => "$proto://$domain/users/$username",
+            'content' => $status['content'],
+            'published' => date('c', strtotime($status['created_at'])),
+            'to' => $to,
+            'cc' => $cc
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    /**
      * Escribe un mensaje en el archivo de registro de ActivityPub
      */
     private static function log(string $message): void {

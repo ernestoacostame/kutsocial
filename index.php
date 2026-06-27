@@ -61,6 +61,7 @@ $router = new Router();
 
 // --- Rutas de Mastodon API ---
 $router->get('/api/v1/instance', [MastodonApiController::class, 'getInstance']);
+$router->get('/api/v1/instance/peers', [MastodonApiController::class, 'getPeers']);
 $router->get('/api/v2/instance', [MastodonApiController::class, 'getInstanceV2']);
 $router->get('/api/v1/custom_emojis', [MastodonApiController::class, 'getCustomEmojis']);
 $router->post('/api/v1/apps', [MastodonApiController::class, 'createApp']);
@@ -107,6 +108,9 @@ $router->get('/.well-known/webfinger', [ActivityPubController::class, 'webfinger
 $router->get('/users/:username', [ActivityPubController::class, 'getActor']);
 $router->post('/users/:username/inbox', [ActivityPubController::class, 'postInbox']);
 $router->get('/users/:username/outbox', [ActivityPubController::class, 'getOutbox']);
+$router->get('/users/:username/followers', [ActivityPubController::class, 'getFollowers']);
+$router->get('/users/:username/following', [ActivityPubController::class, 'getFollowing']);
+$router->get('/users/:username/statuses/:id', [ActivityPubController::class, 'getStatus']);
 
 // --- Timelines, Posting & Streaming REST APIs ---
 $router->get('/api/v1/timelines/home', [MastodonApiController::class, 'getHomeTimeline']);
