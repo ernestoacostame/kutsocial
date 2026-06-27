@@ -12,6 +12,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Google Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
+    <!-- DOMPurify para Saneamiento XSS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
     <style>
         :root {
             --bg-color: #0b0d12;
@@ -1841,6 +1843,17 @@
             }
             return `/api/proxy?url=${encodeURIComponent(url)}`;
         }
+        function sanitizeHTML(html) {
+            if (!html) return '';
+            if (window.DOMPurify) {
+                return DOMPurify.sanitize(html, {
+                    ALLOWED_TAGS: ['p', 'br', 'a', 'span', 'strong', 'em', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote'],
+                    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style']
+                });
+            }
+            // Fallback en caso de que no cargue la biblioteca externa
+            return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+        }
         let lastId = 0;
         let oldestId = null;
         let hasMoreToots = true;
@@ -2235,7 +2248,8 @@
             const favClass = toot.favourited ? 'active-fav' : '';
             const bookmarkClass = toot.bookmarked ? 'active-bookmark' : '';
 
-            let contentHTML = `<div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5; margin-bottom: 12px;' : ''}">${toot.content}</div>`;
+            const sanitizedContent = sanitizeHTML(toot.content);
+            let contentHTML = `<div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5; margin-bottom: 12px;' : ''}">${sanitizedContent}</div>`;
             if (toot.sensitive) {
                 contentHTML = `
                     <div style="margin-top: 8px;">
@@ -2243,7 +2257,7 @@
                         <div>
                             <button class="cw-spoiler-btn" onclick="toggleCWSpoiler(this)">Mostrar más</button>
                             <div class="cw-spoiler-content" style="display: none;">
-                                <div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5;' : ''}">${toot.content}</div>
+                                <div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5;' : ''}">${sanitizedContent}</div>
                             </div>
                         </div>
                     </div>
@@ -3378,7 +3392,7 @@
                     }
                 }
 
-                document.getElementById('profile-view-bio').innerHTML = account.note || '<p style="color:var(--text-muted)">Sin biografía.</p>';
+                document.getElementById('profile-view-bio').innerHTML = sanitizeHTML(account.note) || '<p style="color:var(--text-muted)">Sin biografía.</p>';
 
                 const fieldsGrid = document.getElementById('profile-view-fields');
                 fieldsGrid.innerHTML = '';
@@ -3390,7 +3404,7 @@
                         card.classList.add('verified');
                     }
 
-                    let valHTML = f.value || '';
+                    let valHTML = sanitizeHTML(f.value || '');
                     if (valHTML.includes('<a ')) {
                         const tempDiv = document.createElement('div');
                         tempDiv.innerHTML = valHTML;
