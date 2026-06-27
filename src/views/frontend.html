@@ -1984,8 +1984,8 @@
                 composer.style.display = 'none';
             }
             
-            // Cargar perfil del dueño o enrutar por hash
-            if (!handleHashRouting() && window.KUTSOCIAL_OWNER) {
+            // Cargar perfil del dueño o enrutar por path
+            if (!handlePathRouting() && window.KUTSOCIAL_OWNER) {
                 viewProfile(window.KUTSOCIAL_OWNER.id);
             }
         }
@@ -2083,35 +2083,55 @@
             }
         }
 
-        function handleHashRouting() {
-            const hash = window.location.hash;
-            if (!hash) return false;
+        async function resolveAndOpenProfile(username) {
+            try {
+                const res = await fetch(`/api/v1/search?q=${encodeURIComponent('@' + username)}&resolve=true`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.accounts && data.accounts.length > 0) {
+                        viewProfile(data.accounts[0].id, true);
+                    }
+                }
+            } catch (e) {
+                console.error("Error al buscar perfil para enrutamiento", e);
+            }
+        }
 
-            const tab = hash.substring(1);
-            if (tab === 'public' || tab === 'home' || tab === 'bookmarks') {
-                switchTimeline(tab, true);
+        function handlePathRouting() {
+            const path = window.location.pathname;
+            if (path === '/public' || path === '/home' || path === '/bookmarks') {
+                const type = path.substring(1);
+                switchTimeline(type, true);
                 return true;
-            } else if (tab === 'notifications' || tab === 'lists' || tab === 'collections' || tab === 'followed-hashtags' || tab === 'profile') {
+            } else if (path === '/notifications' || path === '/lists' || path === '/collections' || path === '/followed-hashtags' || path === '/profile') {
+                const tab = path.substring(1);
                 if (tab === 'profile') {
                     showTab('profile', true);
                 } else {
                     showTab(tab, true);
                 }
                 return true;
-            } else if (tab.startsWith('profile-view-')) {
-                const profileId = tab.substring('profile-view-'.length);
-                viewProfile(profileId, true);
+            } else if (path.startsWith('/@')) {
+                const username = path.substring(2);
+                if (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username.toLowerCase() === username.toLowerCase()) {
+                    viewProfile(window.KUTSOCIAL_OWNER.id, true);
+                } else {
+                    resolveAndOpenProfile(username);
+                }
                 return true;
-            } else if (tab.startsWith('thread-view-')) {
-                const threadId = tab.substring('thread-view-'.length);
-                viewTootThread(threadId, true);
+            } else if (path.includes('/statuses/')) {
+                const parts = path.split('/');
+                const statusId = parts[parts.length - 1];
+                viewTootThread(statusId, true);
                 return true;
             }
             return false;
         }
 
-        window.addEventListener('hashchange', () => {
-            handleHashRouting();
+        window.addEventListener('popstate', () => {
+            handlePathRouting();
         });
 
         // Inicializar Aplicación Autenticada
@@ -2152,8 +2172,8 @@
             // 2. Obtener estadísticas de instancia
             loadInstanceStats();
 
-            // 3. Cargar timeline inicial o enrutar por hash
-            if (!handleHashRouting()) {
+            // 3. Cargar timeline inicial o enrutar por path
+            if (!handlePathRouting()) {
                 loadTimeline();
             }
 
@@ -3663,8 +3683,9 @@
             if (fromHashChange && activeProfileViewId === accountId && document.getElementById('tab-profile-view').style.display === 'block') {
                 return;
             }
-            if (window.location.hash !== '#profile-view-' + accountId) {
-                window.location.hash = 'profile-view-' + accountId;
+            const tempPath = '/@id-' + accountId;
+            if (window.location.pathname !== tempPath && !fromHashChange) {
+                history.pushState(null, '', tempPath);
             }
             
             const activeTab = document.getElementById('tab-feed').style.display !== 'none' 
@@ -3685,7 +3706,7 @@
                 favSubtab.style.display = 'none';
             }
             
-            showTab('profile-view');
+            showTab('profile-view', fromHashChange);
 
             document.getElementById('profile-view-display-name').innerText = 'Cargando...';
             document.getElementById('profile-view-handle').innerText = '@...';
@@ -3709,6 +3730,12 @@
                 if (!res.ok) throw new Error("Error cargando perfil");
                 const account = await res.json();
                 lastLoadedProfile = account;
+
+                // Actualizar la URL de la barra del navegador con el handle real @username o @username@domain
+                const handlePath = account.domain ? `/@${account.username}@${account.domain}` : `/@${account.username}`;
+                if (window.location.pathname !== handlePath && !fromHashChange) {
+                    history.replaceState(null, '', handlePath);
+                }
 
                 document.getElementById('profile-view-display-name').innerText = account.display_name;
                 document.getElementById('profile-view-handle').innerText = `@${account.acct}`;
@@ -4004,8 +4031,9 @@
             if (fromHashChange && document.getElementById('tab-thread-view').style.display === 'block') {
                 return;
             }
-            if (window.location.hash !== '#thread-view-' + statusId) {
-                window.location.hash = 'thread-view-' + statusId;
+            const threadPath = '/users/iam/statuses/' + statusId;
+            if (window.location.pathname !== threadPath && !fromHashChange) {
+                history.pushState(null, '', threadPath);
             }
             
             const activeTab = document.getElementById('tab-feed').style.display !== 'none' 
