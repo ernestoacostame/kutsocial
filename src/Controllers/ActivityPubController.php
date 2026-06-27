@@ -366,12 +366,39 @@ class ActivityPubController {
             foreach ($object['attachment'] as $att) {
                 $attType = $att['type'] ?? '';
                 if ($attType === 'Document' || $attType === 'Image') {
+                    $url = '';
+                    if (isset($att['url'])) {
+                        if (is_string($att['url'])) {
+                            $url = $att['url'];
+                        } elseif (is_array($att['url'])) {
+                            if (isset($att['url']['href'])) {
+                                $url = $att['url']['href'];
+                            } else {
+                                foreach ($att['url'] as $subUrl) {
+                                    if (is_array($subUrl) && isset($subUrl['href'])) {
+                                        $url = $subUrl['href'];
+                                        break;
+                                    } elseif (is_string($subUrl)) {
+                                        $url = $subUrl;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (empty($url)) {
+                        continue;
+                    }
+
+                    $description = $att['name'] ?? $att['summary'] ?? $att['description'] ?? '';
+
                     $attachments[] = [
                         'id' => bin2hex(random_bytes(6)),
                         'type' => 'image',
-                        'url' => $att['url'] ?? '',
-                        'preview_url' => $att['url'] ?? '',
-                        'remote_url' => $att['url'] ?? ''
+                        'url' => $url,
+                        'preview_url' => $url,
+                        'remote_url' => $url,
+                        'description' => $description
                     ];
                 }
             }

@@ -2217,9 +2217,12 @@
                             </div>
                         `;
                     } else {
+                        const altText = media.description ? escapeHTML(media.description) : '';
+                        const altBadge = altText ? `<span class="media-alt-badge" title="${altText}" onclick="alert('${altText.replace(/'/g, "\\'")}')" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; cursor: pointer; user-select: none; z-index: 10;">ALT</span>` : '';
                         mediaHTML += `
-                            <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; max-height: 250px; display: flex;">
-                                <img src="${url}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer; border-radius: 8px;" onclick="window.open('${url}')">
+                            <div class="toot-media-item" style="position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; max-height: 250px; display: flex;">
+                                <img src="${url}" alt="${altText}" title="${altText}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer; border-radius: 8px;" onclick="window.open('${url}')">
+                                ${altBadge}
                             </div>
                         `;
                     }
