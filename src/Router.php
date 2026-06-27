@@ -202,7 +202,7 @@ class Router {
                     call_user_func($route['handler'], $params);
                 } catch (\Throwable $e) {
                     error_log("KutSocial Error: " . $e->getMessage() . " in " . $e->getFile() . ":" . $e->getLine());
-                    self::json(['error' => 'Error interno del servidor'], 500);
+                    self::json(['error' => $e->getMessage(), 'file' => $e->getFile(), 'line' => $e->getLine()], 500);
                 }
                 return;
             }

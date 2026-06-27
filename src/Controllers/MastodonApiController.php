@@ -2419,105 +2419,116 @@ HTML;
             return [];
         }
 
-        $db = Database::connect();
-        $statusIds = array_map(fn($r) => (int)$r['status_id'], $rows);
-        $accountIds = array_unique(array_map(fn($r) => (int)$r['account_id'], $rows));
+        try {
+            $db = Database::connect();
+            $statusIds = array_values(array_map(fn($r) => (int)$r['status_id'], $rows));
+            $accountIds = array_values(array_unique(array_map(fn($r) => (int)$r['account_id'], $rows)));
 
-        // Build placeholders for IN clauses
-        $statusPlaceholders = implode(',', array_fill(0, count($statusIds), '?'));
-        $accountPlaceholders = implode(',', array_fill(0, count($accountIds), '?'));
+            // Build placeholders for IN clauses
+            $statusPlaceholders = implode(',', array_fill(0, count($statusIds), '?'));
+            $accountPlaceholders = implode(',', array_fill(0, count($accountIds), '?'));
 
-        // 1. Batch favourite counts
-        $favCounts = [];
-        $stmt = $db->prepare("SELECT status_id, COUNT(*) as c FROM favourites WHERE status_id IN ($statusPlaceholders) GROUP BY status_id");
-        $stmt->execute($statusIds);
-        foreach ($stmt->fetchAll() as $r) {
-            $favCounts[(int)$r['status_id']] = (int)$r['c'];
-        }
-
-        // 2. Batch reply counts
-        $replyCounts = [];
-        $stmt = $db->prepare("SELECT in_reply_to_id, COUNT(*) as c FROM statuses WHERE in_reply_to_id IN ($statusPlaceholders) GROUP BY in_reply_to_id");
-        $stmt->execute($statusIds);
-        foreach ($stmt->fetchAll() as $r) {
-            $replyCounts[(int)$r['in_reply_to_id']] = (int)$r['c'];
-        }
-
-        // 3. Batch user favourites and bookmarks check
-        $userFavourites = [];
-        $userBookmarks = [];
-        if ($currentAccountId !== null) {
-            $stmt = $db->prepare("SELECT status_id FROM favourites WHERE account_id = ? AND status_id IN ($statusPlaceholders)");
-            $stmt->execute(array_merge([$currentAccountId], $statusIds));
+            // 1. Batch favourite counts
+            $favCounts = [];
+            $stmt = $db->prepare("SELECT status_id, COUNT(*) as c FROM favourites WHERE status_id IN ($statusPlaceholders) GROUP BY status_id");
+            $stmt->execute($statusIds);
             foreach ($stmt->fetchAll() as $r) {
-                $userFavourites[(int)$r['status_id']] = true;
+                $favCounts[(int)$r['status_id']] = (int)$r['c'];
             }
 
-            $stmt = $db->prepare("SELECT status_id FROM bookmarks WHERE account_id = ? AND status_id IN ($statusPlaceholders)");
-            $stmt->execute(array_merge([$currentAccountId], $statusIds));
+            // 2. Batch reply counts
+            $replyCounts = [];
+            $stmt = $db->prepare("SELECT in_reply_to_id, COUNT(*) as c FROM statuses WHERE in_reply_to_id IN ($statusPlaceholders) GROUP BY in_reply_to_id");
+            $stmt->execute($statusIds);
             foreach ($stmt->fetchAll() as $r) {
-                $userBookmarks[(int)$r['status_id']] = true;
-            }
-        }
-
-        // 4. Batch polls
-        $polls = [];
-        $stmt = $db->prepare("SELECT * FROM polls WHERE status_id IN ($statusPlaceholders)");
-        $stmt->execute($statusIds);
-        $pollRows = $stmt->fetchAll();
-        $pollIds = [];
-        foreach ($pollRows as $pr) {
-            $polls[(int)$pr['status_id']] = $pr;
-            $pollIds[] = (int)$pr['id'];
-        }
-
-        // 4b. Batch poll votes
-        $pollVoteCounts = [];
-        $pollUserVotes = [];
-        if (!empty($pollIds)) {
-            $pollPlaceholders = implode(',', array_fill(0, count($pollIds), '?'));
-            $stmt = $db->prepare("SELECT poll_id, choice_index, COUNT(*) as qty FROM poll_votes WHERE poll_id IN ($pollPlaceholders) GROUP BY poll_id, choice_index");
-            $stmt->execute($pollIds);
-            foreach ($stmt->fetchAll() as $r) {
-                $pollVoteCounts[(int)$r['poll_id']][(int)$r['choice_index']] = (int)$r['qty'];
+                $replyCounts[(int)$r['in_reply_to_id']] = (int)$r['c'];
             }
 
+            // 3. Batch user favourites and bookmarks check
+            $userFavourites = [];
+            $userBookmarks = [];
             if ($currentAccountId !== null) {
-                $stmt = $db->prepare("SELECT poll_id, choice_index FROM poll_votes WHERE poll_id IN ($pollPlaceholders) AND account_id = ?");
-                $stmt->execute(array_merge($pollIds, [$currentAccountId]));
+                $stmt = $db->prepare("SELECT status_id FROM favourites WHERE account_id = ? AND status_id IN ($statusPlaceholders)");
+                $stmt->execute(array_merge([$currentAccountId], $statusIds));
                 foreach ($stmt->fetchAll() as $r) {
-                    $pollUserVotes[(int)$r['poll_id']] = (int)$r['choice_index'];
+                    $userFavourites[(int)$r['status_id']] = true;
+                }
+
+                $stmt = $db->prepare("SELECT status_id FROM bookmarks WHERE account_id = ? AND status_id IN ($statusPlaceholders)");
+                $stmt->execute(array_merge([$currentAccountId], $statusIds));
+                foreach ($stmt->fetchAll() as $r) {
+                    $userBookmarks[(int)$r['status_id']] = true;
                 }
             }
-        }
 
-        // 5. Batch show_source flags
-        $showSourceFlags = [];
-        $stmt = $db->prepare("SELECT id, show_source FROM accounts WHERE id IN ($accountPlaceholders)");
-        $stmt->execute($accountIds);
-        foreach ($stmt->fetchAll() as $r) {
-            $showSourceFlags[(int)$r['id']] = (bool)($r['show_source'] ?? 1);
-        }
+            // 4. Batch polls
+            $polls = [];
+            $stmt = $db->prepare("SELECT * FROM polls WHERE status_id IN ($statusPlaceholders)");
+            $stmt->execute($statusIds);
+            $pollRows = $stmt->fetchAll();
+            $pollIds = [];
+            foreach ($pollRows as $pr) {
+                $polls[(int)$pr['status_id']] = $pr;
+                $pollIds[] = (int)$pr['id'];
+            }
 
-        // Now format each status using pre-loaded data
-        $result = [];
-        foreach ($rows as $row) {
-            $statusId = (int)$row['status_id'];
-            $result[] = self::formatStatus(
-                $row,
-                $currentAccountId,
-                $favCounts[$statusId] ?? 0,
-                $replyCounts[$statusId] ?? 0,
-                $userFavourites[$statusId] ?? false,
-                $userBookmarks[$statusId] ?? false,
-                $polls[$statusId] ?? null,
-                $pollVoteCounts,
-                $pollUserVotes,
-                $showSourceFlags[(int)$row['account_id']] ?? true
-            );
-        }
+            // 4b. Batch poll votes
+            $pollVoteCounts = [];
+            $pollUserVotes = [];
+            if (!empty($pollIds)) {
+                $pollPlaceholders = implode(',', array_fill(0, count($pollIds), '?'));
+                $stmt = $db->prepare("SELECT poll_id, choice_index, COUNT(*) as qty FROM poll_votes WHERE poll_id IN ($pollPlaceholders) GROUP BY poll_id, choice_index");
+                $stmt->execute($pollIds);
+                foreach ($stmt->fetchAll() as $r) {
+                    $pollVoteCounts[(int)$r['poll_id']][(int)$r['choice_index']] = (int)$r['qty'];
+                }
 
-        return $result;
+                if ($currentAccountId !== null) {
+                    $stmt = $db->prepare("SELECT poll_id, choice_index FROM poll_votes WHERE poll_id IN ($pollPlaceholders) AND account_id = ?");
+                    $stmt->execute(array_merge($pollIds, [$currentAccountId]));
+                    foreach ($stmt->fetchAll() as $r) {
+                        $pollUserVotes[(int)$r['poll_id']] = (int)$r['choice_index'];
+                    }
+                }
+            }
+
+            // 5. Batch show_source flags
+            $showSourceFlags = [];
+            $stmt = $db->prepare("SELECT id, show_source FROM accounts WHERE id IN ($accountPlaceholders)");
+            $stmt->execute($accountIds);
+            foreach ($stmt->fetchAll() as $r) {
+                $showSourceFlags[(int)$r['id']] = (bool)($r['show_source'] ?? 1);
+            }
+
+            // Now format each status using pre-loaded data
+            $result = [];
+            foreach ($rows as $row) {
+                $statusId = (int)$row['status_id'];
+                $result[] = self::formatStatus(
+                    $row,
+                    $currentAccountId,
+                    $favCounts[$statusId] ?? 0,
+                    $replyCounts[$statusId] ?? 0,
+                    $userFavourites[$statusId] ?? false,
+                    $userBookmarks[$statusId] ?? false,
+                    $polls[$statusId] ?? null,
+                    $pollVoteCounts,
+                    $pollUserVotes,
+                    $showSourceFlags[(int)$row['account_id']] ?? true
+                );
+            }
+
+            return $result;
+
+        } catch (\Throwable $e) {
+            // Fallback to individual formatting if batch fails
+            error_log("KutSocial: formatStatusesBatch failed, falling back to individual: " . $e->getMessage());
+            $result = [];
+            foreach ($rows as $row) {
+                $result[] = self::formatStatus($row, $currentAccountId);
+            }
+            return $result;
+        }
     }
 
     private static function formatStatus(array $row, ?int $currentAccountId = null, ?int $batchFavCount = null, ?int $batchRepCount = null, ?bool $batchFavourited = null, ?bool $batchBookmarked = null, ?array $batchPollRow = null, ?array $batchPollVoteCounts = null, ?array $batchPollUserVotes = null, ?bool $batchShowSource = null): array {
