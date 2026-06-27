@@ -91,7 +91,7 @@ class UpdaterService {
         }
 
         $remoteVersion = ltrim($release['tag_name'], 'vV');
-        $localVersion = defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0';
+        $localVersion = \KutSocial\Database::getVersion();
 
         if (version_compare($remoteVersion, $localVersion, '<=')) {
             $result = ['up_to_date' => true, 'version' => $localVersion];
