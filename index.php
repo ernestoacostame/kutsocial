@@ -22,6 +22,7 @@ if (!file_exists(__DIR__ . '/config.php')) {
 
 // 2. Cargar configuración y clases
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/version.php';
 
 // Iniciar sesión para rutas administrativas
 $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);

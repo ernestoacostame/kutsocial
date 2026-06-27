@@ -2221,7 +2221,7 @@
                         const altBadge = altText ? `<span class="media-alt-badge" title="${altText}" onclick="alert('${altText.replace(/'/g, "\\'")}')" style="position: absolute; bottom: 8px; left: 8px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 2px 6px; border-radius: 4px; cursor: pointer; user-select: none; z-index: 10;">ALT</span>` : '';
                         mediaHTML += `
                             <div class="toot-media-item" style="position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); max-width: 100%; max-height: 250px; display: flex;">
-                                <img src="${url}" alt="${altText}" title="${altText}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer; border-radius: 8px;" onclick="window.open('${url}')">
+                                <img src="${url}" alt="${altText}" title="${altText}" style="max-width: 100%; max-height: 250px; object-fit: contain; cursor: pointer; border-radius: 8px;" onclick="window.open('${url}', '_blank')">
                                 ${altBadge}
                             </div>
                         `;
@@ -2244,7 +2244,7 @@
                 const parsedDomain = (u) => { try { return new URL(u).hostname; } catch(e) { return ''; } };
 
                 cardHTML = `
-                    <div class="toot-link-card" onclick="window.open('${card.url}')" style="display: flex; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin-top: 12px; cursor: pointer; background: rgba(255,255,255,0.01); transition: all 0.2s; max-height: 140px; text-align: left; width: 100%;">
+                    <div class="toot-link-card" onclick="window.open('${card.url}', '_blank')" style="display: flex; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin-top: 12px; cursor: pointer; background: rgba(255,255,255,0.01); transition: all 0.2s; max-height: 140px; text-align: left; width: 100%;">
                         ${card.image ? `
                             <div style="width: 120px; min-width: 120px; background-image: url('${card.image}'); background-size: cover; background-position: center; border-right: 1px solid var(--border-color);"></div>
                         ` : ''}
@@ -3148,13 +3148,13 @@
                     if (data.accounts && data.accounts.length > 0) {
                         viewProfile(data.accounts[0].id);
                     } else {
-                        window.open(profileUrl);
+                        window.open(profileUrl, '_blank');
                     }
                 } else {
-                    window.open(profileUrl);
+                    window.open(profileUrl, '_blank');
                 }
             } catch (e) {
-                window.open(profileUrl);
+                window.open(profileUrl, '_blank');
             }
         }
 

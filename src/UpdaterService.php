@@ -68,7 +68,7 @@ class UpdaterService {
                 'Accept: application/vnd.github+json',
                 'X-GitHub-Api-Version: 2022-11-28',
             ],
-            CURLOPT_USERAGENT => 'KutSocial-Updater/' . (defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0'),
+            CURLOPT_USERAGENT => 'KutSocial-Updater/' . \KutSocial\Database::getVersion(),
             CURLOPT_TIMEOUT => 15,
             CURLOPT_SSL_VERIFYPEER => false,
             CURLOPT_SSL_VERIFYHOST => false
@@ -91,7 +91,7 @@ class UpdaterService {
         }
 
         $remoteVersion = ltrim($release['tag_name'], 'vV');
-        $localVersion = defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0';
+        $localVersion = \KutSocial\Database::getVersion();
 
         if (version_compare($remoteVersion, $localVersion, '<=')) {
             $result = ['up_to_date' => true, 'version' => $localVersion];
@@ -170,7 +170,7 @@ class UpdaterService {
                 'Accept: application/octet-stream',
                 'X-GitHub-Api-Version: 2022-11-28',
             ],
-            CURLOPT_USERAGENT => 'KutSocial-Updater/' . (defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0'),
+            CURLOPT_USERAGENT => 'KutSocial-Updater/' . \KutSocial\Database::getVersion(),
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
             CURLOPT_TIMEOUT => 120,
@@ -197,7 +197,7 @@ class UpdaterService {
     public function backup(): array {
         $rootDir = realpath(__DIR__ . '/..');
         $destDir = $this->getUpdateDir();
-        $currentVersion = defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : 'unknown';
+        $currentVersion = \KutSocial\Database::getVersion();
         $backupName = 'rollback-' . $currentVersion . '-' . date('Ymd_His') . '.tar.gz';
         $backupPath = $destDir . '/' . $backupName;
 
@@ -247,7 +247,7 @@ class UpdaterService {
         }
 
         $rootDir = realpath(__DIR__ . '/..');
-        $currentVersion = defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0';
+        $currentVersion = \KutSocial\Database::getVersion();
 
         // 1. Crear backup
         $backup = $this->backup();
