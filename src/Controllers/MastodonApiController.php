@@ -724,7 +724,33 @@ HTML;
         }
 
         \KutSocial\Controllers\ActivityPubController::log("verifyCredentials: success for username=" . $account['username']);
-        Router::json(self::formatAccount($account));
+        
+        $formatted = self::formatAccount($account);
+        
+        $rawFields = [];
+        if (!empty($account['fields'])) {
+            $fieldsArr = json_decode($account['fields'], true);
+            if (is_array($fieldsArr)) {
+                foreach ($fieldsArr as $f) {
+                    $rawFields[] = [
+                        'name' => $f['name'] ?? '',
+                        'value' => $f['value'] ?? '',
+                        'verified_at' => $f['verified_at'] ?? null
+                    ];
+                }
+            }
+        }
+
+        $formatted['source'] = [
+            'privacy' => 'public',
+            'sensitive' => false,
+            'language' => 'es',
+            'note' => $account['note'] ?: '',
+            'fields' => $rawFields,
+            'follow_requests_count' => 0
+        ];
+
+        Router::json($formatted);
     }
 
     /**
@@ -1649,12 +1675,15 @@ HTML;
             CURLOPT_USERAGENT => 'KutSocial-LinkVerifier/1.0',
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
             CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0,
-            CURLOPT_FOLLOWLOCATION => true // Seguir redireccionamientos (ej: de sin-www a www)
+            CURLOPT_FOLLOWLOCATION => true
         ]);
         
         $html = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
         curl_close($ch);
+        
+        \KutSocial\Controllers\ActivityPubController::log("verifyLinkRelation: Crawling URL=$url, HTTP Status=$httpCode, Curl Error=" . ($curlErr ?: 'None') . ", HTML Length=" . strlen($html ?: ''));
 
         if ($httpCode !== 200 || empty($html)) {
             return false;
@@ -1662,23 +1691,21 @@ HTML;
 
         // Encontrar todas las etiquetas <a> y <link>
         if (!preg_match_all('/<(a|link)\s+([^>]+)>/i', $html, $matches, PREG_SET_ORDER)) {
+            \KutSocial\Controllers\ActivityPubController::log("verifyLinkRelation: No 'a' or 'link' tags found on $url");
             return false;
         }
 
         foreach ($matches as $match) {
-            $attrs = $match[2]; // Atributos de la etiqueta (ej: href="..." rel="me")
+            $attrs = $match[2];
             
-            // Extraer valor de href
             if (!preg_match('/href=["\']([^"\']+)["\']/i', $attrs, $hrefMatch)) {
                 continue;
             }
             $href = html_entity_decode($hrefMatch[1]);
             
-            // Extraer rel
             $hasRelMe = false;
             if (preg_match('/rel=["\']([^"\']+)["\']/i', $attrs, $relMatch)) {
-                $rels = array_map('trim', explode(' ', strtolower($relMatch[1])));
-                if (in_array('me', $rels)) {
+                if (preg_match('/\bme\b/i', $relMatch[1])) {
                     $hasRelMe = true;
                 }
             } elseif (preg_match('/rel=me/i', $attrs)) {
@@ -1689,20 +1716,26 @@ HTML;
                 continue;
             }
             
-            // Normalizar y comprobar si coincide con el perfil local
             $cleanHref = rtrim(strtolower($href), '/');
             
             $target1_http = rtrim(strtolower("http://$domain/users/$username"), '/');
             $target1_https = rtrim(strtolower("https://$domain/users/$username"), '/');
             $target2_http = rtrim(strtolower("http://$domain/@$username"), '/');
             $target2_https = rtrim(strtolower("https://$domain/@$username"), '/');
+            $target3_http = rtrim(strtolower("http://$domain"), '/');
+            $target3_https = rtrim(strtolower("https://$domain"), '/');
             
+            \KutSocial\Controllers\ActivityPubController::log("verifyLinkRelation: Found rel=\"me\" link: $cleanHref. Comparing with targets: $target1_https, $target2_https, $target3_https");
+
             if ($cleanHref === $target1_http || $cleanHref === $target1_https || 
-                $cleanHref === $target2_http || $cleanHref === $target2_https) {
+                $cleanHref === $target2_http || $cleanHref === $target2_https ||
+                $cleanHref === $target3_http || $cleanHref === $target3_https) {
+                \KutSocial\Controllers\ActivityPubController::log("verifyLinkRelation: SUCCESS matching link $cleanHref on $url");
                 return true;
             }
         }
-
+        
+        \KutSocial\Controllers\ActivityPubController::log("verifyLinkRelation: FAILED, no matching rel=\"me\" link found pointing back to this profile on $url");
         return false;
     }
 
