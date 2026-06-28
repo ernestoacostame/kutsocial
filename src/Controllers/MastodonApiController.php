@@ -3932,6 +3932,7 @@ HTML;
         }
 
         Router::json([
+            'status' => $mainStatus,
             'ancestors' => $ancestors,
             'descendants' => $descendants
         ]);
