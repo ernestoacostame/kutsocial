@@ -133,9 +133,15 @@ function initPublicView() {
     document.getElementById('login-container').style.display = 'none';
     
     // Ocultar elementos exclusivos de usuarios registrados en el sidebar
-    document.getElementById('nav-bookmarks').style.display = 'none';
-    document.getElementById('nav-notifications').style.display = 'none';
-    document.getElementById('nav-profile').style.display = 'none';
+    const linksToHide = [
+        'nav-public', 'nav-home', 'nav-notifications', 'nav-bookmarks', 
+        'nav-lists', 'nav-collections', 'nav-hashtags', 'nav-profile', 
+        'nav-admin-settings'
+    ];
+    linksToHide.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
     
     // Mostrar link "Propietario"
     const itemOwner = document.getElementById('nav-item-owner');

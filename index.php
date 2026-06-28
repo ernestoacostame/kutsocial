@@ -63,8 +63,12 @@ $renderFrontend = function() {
     $db = Database::connect();
     
     // Obtener datos del usuario propietario local (único usuario del cliente)
-    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
     $localUser = $stmtOwner->fetch();
+    if (!$localUser) {
+        $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+        $localUser = $stmtOwner->fetch();
+    }
     
     $userLists = [];
     $userCollections = [];
@@ -195,8 +199,12 @@ $renderFrontend = function() {
                 }
             }
 
-            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
             $owner = $stmt->fetch();
+            if (!$owner) {
+                $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+                $owner = $stmt->fetch();
+            }
             if ($owner) {
                 if (isset($owner['indexable']) && !$owner['indexable']) {
                     $noindexTag = '<meta name="robots" content="noindex, nofollow">';
