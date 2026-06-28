@@ -2920,12 +2920,15 @@ HTML;
         }, $escaped);
 
         // Convertir menciones en enlaces (saltando etiquetas A existentes)
-        $escaped = preg_replace_callback('/<a\b[^>]*>.*?<\/a>(*SKIP)(*F)|@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', function($matches) use ($domain, $db, $proto) {
-            if (empty($matches[1])) {
+        $escaped = preg_replace_callback('/(<a\b[^>]*>.*?<\/a>)|@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', function($matches) use ($domain, $db, $proto) {
+            if (!empty($matches[1])) {
+                return $matches[1];
+            }
+            if (empty($matches[2])) {
                 return $matches[0];
             }
-            $mUsername = $matches[1];
-            $mDomain = isset($matches[2]) && !empty($matches[2]) ? strtolower($matches[2]) : null;
+            $mUsername = $matches[2];
+            $mDomain = isset($matches[3]) && !empty($matches[3]) ? strtolower($matches[3]) : null;
             
             if ($mDomain !== null && (strcasecmp($mDomain, $domain) === 0)) {
                 $mDomain = null;
