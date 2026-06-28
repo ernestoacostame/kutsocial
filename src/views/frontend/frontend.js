@@ -298,7 +298,10 @@ function handlePathRouting() {
         return true;
     } else if (path.startsWith('/@')) {
         const username = path.substring(2);
-        if (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username.toLowerCase() === username.toLowerCase()) {
+        if (username.startsWith('id-')) {
+            const profileId = username.substring(3);
+            viewProfile(profileId, true);
+        } else if (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username.toLowerCase() === username.toLowerCase()) {
             viewProfile(window.KUTSOCIAL_OWNER.id, true);
         } else {
             resolveAndOpenProfile(username);
