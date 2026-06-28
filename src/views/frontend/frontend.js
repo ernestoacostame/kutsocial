@@ -1885,9 +1885,14 @@ async function viewProfile(accountId, fromHashChange = false) {
         history.pushState(null, '', tempPath);
     }
     
-    const activeTab = document.getElementById('tab-feed').style.display !== 'none' 
-        ? 'feed' 
-        : (document.getElementById('tab-thread-view').style.display !== 'none' ? 'thread-view' : 'feed');
+    let activeTab = 'feed';
+    const tabFeed = document.getElementById('tab-feed');
+    const tabThread = document.getElementById('tab-thread-view');
+    if (tabFeed && tabFeed.style.display !== 'none') {
+        activeTab = 'feed';
+    } else if (tabThread && tabThread.style.display !== 'none') {
+        activeTab = 'thread-view';
+    }
     previousTab = activeTab;
 
     activeProfileViewId = accountId;
@@ -2243,9 +2248,14 @@ async function viewTootThread(statusId, fromHashChange = false) {
         history.pushState(null, '', threadPath);
     }
 
-    const activeTab = document.getElementById('tab-feed').style.display !== 'none' 
-        ? 'feed' 
-        : (document.getElementById('tab-profile-view').style.display !== 'none' ? 'profile-view' : 'feed');
+    let activeTab = 'feed';
+    const tabFeed = document.getElementById('tab-feed');
+    const tabProfile = document.getElementById('tab-profile-view');
+    if (tabFeed && tabFeed.style.display !== 'none') {
+        activeTab = 'feed';
+    } else if (tabProfile && tabProfile.style.display !== 'none') {
+        activeTab = 'profile-view';
+    }
     previousTab = activeTab;
 
     showTab('thread-view', fromHashChange);
