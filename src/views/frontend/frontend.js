@@ -1636,7 +1636,21 @@ async function loadNotifications() {
         const res = await fetch('/api/v1/notifications', {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const data = await res.json();
+        const resText = await res.text();
+        let data;
+        try {
+            data = JSON.parse(resText);
+        } catch (jsonErr) {
+            console.error("Error parsing JSON. Raw response was:", resText);
+            list.innerHTML = `<div style="text-align:left; padding: 20px; color: var(--error);">
+                <h4>Error del Servidor (no es JSON válido)</h4>
+                <p>El servidor devolvió HTML/Texto en lugar de JSON. Detalle:</p>
+                <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; font-family: monospace; max-height: 400px; overflow: auto; border: 1px solid var(--border-color); color: var(--text-color);">
+                    ${escapeHTML(resText)}
+                </div>
+            </div>`;
+            return;
+        }
         list.innerHTML = '';
         
         // 3. Renderizar solicitudes de seguimiento pendientes en la parte superior
