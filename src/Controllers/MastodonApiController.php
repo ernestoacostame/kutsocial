@@ -1569,6 +1569,8 @@ HTML;
             Router::json(['error' => 'Unauthorized'], 401);
         }
 
+        \KutSocial\Controllers\ActivityPubController::log("updateCredentials: Method=" . ($_SERVER['REQUEST_METHOD'] ?? 'unknown') . ", POST=" . json_encode($_POST) . ", FILES=" . json_encode(array_keys($_FILES)));
+
         $body = Router::getRequestBody();
 
         $db = Database::connect();

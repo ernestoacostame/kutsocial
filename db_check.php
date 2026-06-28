@@ -130,106 +130,138 @@ try {
 
     // 2. Probar petición local de Inbox
     echo "\n=== LOCAL INBOX ROUTING TEST ===\n";
-    $testAccount = $db->query("SELECT id, username, public_key, private_key FROM accounts WHERE domain IS NULL AND private_key IS NOT NULL LIMIT 1")->fetch();
-    if (!$testAccount) {
-        echo "No se encontró cuenta local para firmar la petición de prueba del Inbox.\n";
-    } else {
-        $localUsername = $testAccount['username'];
-        $privateKey = $testAccount['private_key'];
-        $publicKey = $testAccount['public_key'];
-        
-        $mockUsername = 'test_actor';
-        $mockDomain = 'remote.test';
-        $mockActorUrl = "https://$mockDomain/users/$mockUsername";
-        $mockInboxUrl = "https://$mockDomain/users/$mockUsername/inbox";
-        
-        // Insertar o actualizar actor remoto ficticio para la prueba
-        $stmt = $db->prepare("
-            INSERT OR REPLACE INTO accounts (username, domain, display_name, note, inbox_url, public_key, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-        ");
-        $stmt->execute([$mockUsername, $mockDomain, 'Test Remote Actor', 'Mock actor for local testing', $mockInboxUrl, $publicKey]);
-        
-        $host = $_SERVER['HTTP_HOST'] ?? 'kutsocial.ernestoacosta.org';
-        $localUrl = "http://127.0.0.1/users/$localUsername/inbox";
-        
-        $body = json_encode([
-            '@context' => 'https://www.w3.org/ns/activitystreams',
-            'id' => "https://$mockDomain/activities/test-follow-" . bin2hex(random_bytes(4)),
-            'type' => 'Follow',
-            'actor' => $mockActorUrl,
-            'object' => "https://$host/users/$localUsername"
-        ]);
-        
-        $date = gmdate('D, d M Y H:i:s') . ' GMT';
-        $digest = 'SHA-256=' . base64_encode(hash('sha256', $body, true));
-        $path = "/users/$localUsername/inbox";
-        
-        // Generar firma HTTP
-        $signingString = "(request-target): post $path\nhost: $host\ndate: $date\ndigest: $digest";
-        $sig = '';
-        if (openssl_sign($signingString, $sig, $privateKey, OPENSSL_ALGO_SHA256)) {
-            $keyId = "$mockActorUrl#main-key";
-            $sigHeader = sprintf(
-                'keyId="%s",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="%s"',
-                $keyId,
-                base64_encode($sig)
-            );
-            
-            echo "Haciendo POST firmado a: $localUrl (con Host: $host)\n";
-            $ch = curl_init($localUrl);
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => $body,
-                CURLOPT_HTTPHEADER => [
-                    "Host: $host",
-                    "Content-Type: application/activity+json",
-                    "Date: $date",
-                    "Digest: $digest",
-                    "Signature: $sigHeader",
-                    "X-Forwarded-Proto: https"
-                ],
-                CURLOPT_TIMEOUT => 5,
-                CURLOPT_SSL_VERIFYPEER => false,
-                CURLOPT_SSL_VERIFYHOST => false
-            ]);
-            $resp = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlErr = curl_error($ch);
-            curl_close($ch);
-            
-            echo "HTTP Status Code: $httpCode\n";
-            if ($curlErr) {
-                echo "Curl Error: $curlErr\n";
-            } else {
-                echo "Response Body: " . substr($resp, 0, 300) . "\n";
-            }
-            
-            // Limpiar los datos de prueba de base de datos para no generar notificaciones basura
-            $stmtCleanNotif = $db->prepare("DELETE FROM notifications WHERE from_account_id IN (SELECT id FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test')");
-            $stmtCleanNotif->execute();
-            $stmtCleanFollow = $db->prepare("DELETE FROM follows WHERE account_id IN (SELECT id FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test') OR target_account_id IN (SELECT id FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test')");
-            $stmtCleanFollow->execute();
-            $stmtCleanAcc = $db->prepare("DELETE FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test'");
-            $stmtCleanAcc->execute();
+    try {
+        $testAccount = $db->query("SELECT id, username, public_key, private_key FROM accounts WHERE domain IS NULL AND private_key IS NOT NULL LIMIT 1")->fetch();
+        if (!$testAccount) {
+            echo "No se encontró cuenta local para firmar la petición de prueba del Inbox.\n";
         } else {
-            echo "Error al generar la firma para la petición de prueba.\n";
+            $localUsername = $testAccount['username'];
+            $privateKey = $testAccount['private_key'];
+            $publicKey = $testAccount['public_key'];
+            
+            $mockUsername = 'test_actor';
+            $mockDomain = 'remote.test';
+            $mockActorUrl = "https://$mockDomain/users/$mockUsername";
+            $mockInboxUrl = "https://$mockDomain/users/$mockUsername/inbox";
+            
+            // Insertar o actualizar actor remoto ficticio para la prueba
+            $stmt = $db->prepare("
+                INSERT OR REPLACE INTO accounts (username, domain, display_name, note, inbox_url, public_key, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ");
+            $stmt->execute([$mockUsername, $mockDomain, 'Test Remote Actor', 'Mock actor for local testing', $mockInboxUrl, $publicKey]);
+            
+            $host = $_SERVER['HTTP_HOST'] ?? 'kutsocial.ernestoacosta.org';
+            $localUrl = "http://127.0.0.1/users/$localUsername/inbox";
+            
+            $body = json_encode([
+                '@context' => 'https://www.w3.org/ns/activitystreams',
+                'id' => "https://$mockDomain/activities/test-follow-" . bin2hex(random_bytes(4)),
+                'type' => 'Follow',
+                'actor' => $mockActorUrl,
+                'object' => "https://$host/users/$localUsername"
+            ]);
+            
+            $date = gmdate('D, d M Y H:i:s') . ' GMT';
+            $digest = 'SHA-256=' . base64_encode(hash('sha256', $body, true));
+            $path = "/users/$localUsername/inbox";
+            
+            // Generar firma HTTP
+            $signingString = "(request-target): post $path\nhost: $host\ndate: $date\ndigest: $digest";
+            $sig = '';
+            if (openssl_sign($signingString, $sig, $privateKey, OPENSSL_ALGO_SHA256)) {
+                $keyId = "$mockActorUrl#main-key";
+                $sigHeader = sprintf(
+                    'keyId="%s",algorithm="rsa-sha256",headers="(request-target) host date digest",signature="%s"',
+                    $keyId,
+                    base64_encode($sig)
+                );
+                
+                echo "Haciendo POST firmado a: $localUrl (con Host: $host)\n";
+                $ch = curl_init($localUrl);
+                curl_setopt_array($ch, [
+                    CURLOPT_POST => true,
+                    CURLOPT_POSTFIELDS => $body,
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_HTTPHEADER => [
+                        "Host: $host",
+                        "Date: $date",
+                        "Digest: $digest",
+                        "Signature: $sigHeader",
+                        "Content-Type: application/activity+json",
+                        "X-Forwarded-Proto: https"
+                    ],
+                    CURLOPT_TIMEOUT => 5,
+                    CURLOPT_SSL_VERIFYPEER => false,
+                    CURLOPT_SSL_VERIFYHOST => false
+                ]);
+                $resp = curl_exec($ch);
+                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                $curlErr = curl_error($ch);
+                curl_close($ch);
+                
+                echo "HTTP Status Code: $httpCode\n";
+                if ($curlErr) {
+                    echo "Curl Error: $curlErr\n";
+                } else {
+                    echo "Response Body: " . substr($resp, 0, 300) . "\n";
+                }
+                
+                // Limpiar los datos de prueba de base de datos para no generar notificaciones basura
+                $stmtCleanFollow = $db->prepare("DELETE FROM follows WHERE account_id IN (SELECT id FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test') OR target_account_id IN (SELECT id FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test')");
+                $stmtCleanFollow->execute();
+                $stmtCleanAcc = $db->prepare("DELETE FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test'");
+                $stmtCleanAcc->execute();
+            } else {
+                echo "Error al generar la firma para la petición de prueba.\n";
+            }
         }
+    } catch (\Throwable $e) {
+        echo "Error en LOCAL INBOX TEST: " . $e->getMessage() . "\n";
     }
 
     // 3. Probar petición local de Búsqueda
     echo "\n=== LOCAL SEARCH ROUTING TEST ===\n";
-    $searchUrl = "http://127.0.0.1/api/v2/search?q=elav";
-    echo "Haciendo GET a: $searchUrl (con Host: $host)\n";
-    $ch = curl_init($searchUrl);
+    try {
+        $host = $_SERVER['HTTP_HOST'] ?? 'kutsocial.ernestoacosta.org';
+        $searchUrl = "http://127.0.0.1/api/v2/search?q=elav";
+        echo "Haciendo GET a: $searchUrl (con Host: $host)\n";
+        $ch = curl_init($searchUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                "Host: $host",
+                "X-Forwarded-Proto: https"
+            ],
+            CURLOPT_TIMEOUT => 5,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false
+        ]);
+        $resp = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr = curl_error($ch);
+        curl_close($ch);
+        
+        echo "HTTP Status Code: $httpCode\n";
+        if ($curlErr) {
+            echo "Curl Error: $curlErr\n";
+        } else {
+            echo "Response Body: " . substr($resp, 0, 300) . "\n";
+        }
+    } catch (\Throwable $e) {
+        echo "Error en LOCAL SEARCH TEST: " . $e->getMessage() . "\n";
+    }
+
+    // 4. Probar rastreo de ernestoacosta.me
+    echo "\n=== LINK CRAWLER TEST (ernestoacosta.me) ===\n";
+    $testUrl = "https://ernestoacosta.me";
+    echo "Haciendo GET a: $testUrl\n";
+    $ch = curl_init($testUrl);
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_HTTPHEADER => [
-            "Host: $host",
-            "X-Forwarded-Proto: https"
-        ],
-        CURLOPT_TIMEOUT => 5,
+        CURLOPT_TIMEOUT => 8,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_USERAGENT => 'KutSocial-LinkVerifier/1.0',
         CURLOPT_SSL_VERIFYPEER => false,
         CURLOPT_SSL_VERIFYHOST => false
     ]);
@@ -242,7 +274,20 @@ try {
     if ($curlErr) {
         echo "Curl Error: $curlErr\n";
     } else {
-        echo "Response Body: " . substr($resp, 0, 300) . "\n";
+        echo "HTML Length: " . strlen($resp) . "\n";
+        echo "Snippet: " . substr($resp, 0, 300) . "\n";
+        // Buscar enlaces rel="me"
+        if (preg_match_all('/<(a|link)\s+([^>]+)>/i', $resp, $matches, PREG_SET_ORDER)) {
+            echo "Found tags:\n";
+            foreach ($matches as $match) {
+                $attrs = $match[2];
+                if (str_contains($attrs, 'rel=') && (str_contains($attrs, 'me') || str_contains($attrs, 'org'))) {
+                    echo "Tag: " . htmlspecialchars($match[0]) . "\n";
+                }
+            }
+        } else {
+            echo "No tags found in regex.\n";
+        }
     }
 
     echo "\n=== LOG FILE (activitypub.log) ===\n";
