@@ -227,6 +227,7 @@ $router->get('/oauth/authorize', [MastodonApiController::class, 'showAuthorize']
 $router->post('/oauth/authorize', [MastodonApiController::class, 'handleAuthorize']);
 $router->post('/oauth/token', [MastodonApiController::class, 'postToken']);
 $router->get('/api/v1/accounts/verify_credentials', [MastodonApiController::class, 'verifyCredentials']);
+$router->get('/api/v1/preferences', [MastodonApiController::class, 'getPreferences']);
 $router->get('/api/v1/collections', [MastodonApiController::class, 'getCollections']);
 
 // Perfil (Mastodon 4.6 plain text bio + accessibility)

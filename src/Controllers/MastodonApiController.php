@@ -777,38 +777,27 @@ HTML;
 
         \KutSocial\Controllers\ActivityPubController::log("verifyCredentials: success for username=" . $account['username']);
         
-        $formatted = self::formatAccount($account);
-        
-        $db = Database::connect();
-        $stmtPending = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'requested'");
-        $stmtPending->execute([$account['id']]);
-        $followRequestsCount = (int)$stmtPending->fetchColumn();
-        
-        $formatted['follow_requests_count'] = $followRequestsCount;
-        
-        $rawFields = [];
-        if (!empty($account['fields'])) {
-            $fieldsArr = json_decode($account['fields'], true);
-            if (is_array($fieldsArr)) {
-                foreach ($fieldsArr as $f) {
-                    $rawFields[] = [
-                        'name' => $f['name'] ?? '',
-                        'value' => $f['value'] ?? '',
-                        'verified_at' => $f['verified_at'] ?? null
-                    ];
-                }
-            }
+        $formatted = self::formatCredentialAccount($account);
+        Router::json($formatted);
+    }
+
+    /**
+     * Endpoint GET /api/v1/preferences
+     */
+    public static function getPreferences(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
         }
 
-        $formatted['source'] = [
-            'privacy' => 'public',
-            'sensitive' => false,
-            'language' => 'es',
-            'note' => $account['note'] ?: '',
-            'fields' => $rawFields
-        ];
-
-        Router::json($formatted);
+        Router::json([
+            'posting:default:visibility' => 'public',
+            'posting:default:sensitive' => false,
+            'posting:default:language' => 'es',
+            'reading:expand:media' => 'default',
+            'reading:expand:spoilers' => false
+        ]);
     }
 
     /**
@@ -1552,11 +1541,49 @@ HTML;
                 'id' => '1',
                 'name' => $account['role'] ?? 'user',
                 'color' => '',
-                'permissions' => 0
+                'permissions' => '0'
             ],
             'avatar_description' => $account['avatar_description'] ?? 'Imagen de perfil de ' . $account['username'],
             'header_description' => $account['header_description'] ?? 'Banner de perfil de ' . $account['username'],
         ];
+    }
+
+    /**
+     * Formatea una cuenta con los bloques CredentialAccount requeridos por verify_credentials y update_credentials.
+     */
+    public static function formatCredentialAccount(array $account): array {
+        $formatted = self::formatAccount($account);
+        
+        $db = Database::connect();
+        $stmtPending = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'requested'");
+        $stmtPending->execute([$account['id']]);
+        $followRequestsCount = (int)$stmtPending->fetchColumn();
+        
+        $formatted['follow_requests_count'] = $followRequestsCount;
+        
+        $rawFields = [];
+        if (!empty($account['fields'])) {
+            $fieldsArr = json_decode($account['fields'], true);
+            if (is_array($fieldsArr)) {
+                foreach ($fieldsArr as $f) {
+                    $rawFields[] = [
+                        'name' => $f['name'] ?? '',
+                        'value' => $f['value'] ?? '',
+                        'verified_at' => $f['verified_at'] ?? null
+                    ];
+                }
+            }
+        }
+
+        $formatted['source'] = [
+            'privacy' => 'public',
+            'sensitive' => false,
+            'language' => 'es',
+            'note' => $account['note'] ?: '',
+            'fields' => $rawFields
+        ];
+
+        return $formatted;
     }
 
     /**
@@ -1723,7 +1750,7 @@ HTML;
             \KutSocial\Controllers\ActivityPubController::broadcastProfileUpdate($account);
         }
 
-        Router::json(self::formatAccount($account));
+        Router::json(self::formatCredentialAccount($account));
     }
 
     /**
