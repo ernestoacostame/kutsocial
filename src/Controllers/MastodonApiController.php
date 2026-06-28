@@ -2919,9 +2919,41 @@ HTML;
     }
 
     private static function formatLocalContentToHtml(string $content, string $domain, \PDO $db, string $proto): string {
-        $escaped = htmlspecialchars($content, ENT_NOQUOTES, 'UTF-8');
+        // 1. Extraer etiquetas <a> temporales del contenido en crudo (antes de escapar)
+        $placeholders = [];
+        $result = '';
+        $offset = 0;
+        $len = strlen($content);
         
-        // Linkify URLs (convertir enlaces de texto plano en etiquetas A)
+        while ($offset < $len) {
+            $posA = stripos($content, '<a', $offset);
+            if ($posA === false) {
+                $result .= substr($content, $offset);
+                break;
+            }
+            
+            $result .= substr($content, $offset, $posA - $offset);
+            
+            $posClose = stripos($content, '</a>', $posA);
+            if ($posClose === false) {
+                $result .= substr($content, $posA);
+                break;
+            }
+            
+            $tagLen = $posClose + 4 - $posA;
+            $tagHtml = substr($content, $posA, $tagLen);
+            
+            $placeholderKey = '___LINK_PLACEHOLDER_' . count($placeholders) . '___';
+            $placeholders[$placeholderKey] = $tagHtml;
+            $result .= $placeholderKey;
+            
+            $offset = $posA + $tagLen;
+        }
+        
+        // 2. Escapar las partes restantes (que no son etiquetas aisladas)
+        $escaped = htmlspecialchars($result, ENT_NOQUOTES, 'UTF-8');
+        
+        // 3. Linkificar URLs en la parte escapada (no tocará los placeholders)
         $escaped = preg_replace_callback('/\bhttps?:\/\/[^\s<>\'\"]+/i', function($m) {
             $rawUrl = htmlspecialchars_decode($m[0], ENT_NOQUOTES);
             $cleanRawUrl = rtrim($rawUrl, '.,;:!?)-');
@@ -2931,42 +2963,7 @@ HTML;
             return '<a href="' . htmlspecialchars($cleanRawUrl, ENT_COMPAT, 'UTF-8') . '" target="_blank" rel="nofollow noopener noreferrer">' . $cleanVisibleUrl . '</a>' . $trailingVisible;
         }, $escaped);
 
-        // Extraer etiquetas <a> temporales usando búsqueda de cadenas simple (sin regex)
-        $placeholders = [];
-        $result = '';
-        $offset = 0;
-        $len = strlen($escaped);
-        
-        while ($offset < $len) {
-            $posA = stripos($escaped, '<a', $offset);
-            if ($posA === false) {
-                $result .= substr($escaped, $offset);
-                break;
-            }
-            
-            $result .= substr($escaped, $offset, $posA - $offset);
-            
-            // Buscar el final de la etiqueta </a>
-            $posClose = stripos($escaped, '</a>', $posA);
-            if ($posClose === false) {
-                // Etiqueta malformada, la dejamos tal cual
-                $result .= substr($escaped, $posA);
-                break;
-            }
-            
-            $tagLen = $posClose + 4 - $posA;
-            $tagHtml = substr($escaped, $posA, $tagLen);
-            
-            $placeholderKey = '___LINK_PLACEHOLDER_' . count($placeholders) . '___';
-            $placeholders[$placeholderKey] = $tagHtml;
-            $result .= $placeholderKey;
-            
-            $offset = $posA + $tagLen;
-        }
-        
-        $escaped = $result;
-
-        // Convertir menciones en enlaces
+        // 4. Convertir menciones en enlaces
         $escaped = preg_replace_callback('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', function($matches) use ($domain, $db, $proto) {
             $mUsername = $matches[1];
             $mDomain = isset($matches[2]) && !empty($matches[2]) ? strtolower($matches[2]) : null;
@@ -2997,7 +2994,7 @@ HTML;
             return $matches[0];
         }, $escaped);
 
-        // Restaurar etiquetas <a>
+        // 5. Restaurar etiquetas <a> en crudo
         if (!empty($placeholders)) {
             $escaped = strtr($escaped, $placeholders);
         }
