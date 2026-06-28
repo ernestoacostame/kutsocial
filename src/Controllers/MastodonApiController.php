@@ -779,6 +779,13 @@ HTML;
         
         $formatted = self::formatAccount($account);
         
+        $db = Database::connect();
+        $stmtPending = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'requested'");
+        $stmtPending->execute([$account['id']]);
+        $followRequestsCount = (int)$stmtPending->fetchColumn();
+        
+        $formatted['follow_requests_count'] = $followRequestsCount;
+        
         $rawFields = [];
         if (!empty($account['fields'])) {
             $fieldsArr = json_decode($account['fields'], true);
@@ -798,8 +805,7 @@ HTML;
             'sensitive' => false,
             'language' => 'es',
             'note' => $account['note'] ?: '',
-            'fields' => $rawFields,
-            'follow_requests_count' => 0
+            'fields' => $rawFields
         ];
 
         Router::json($formatted);
@@ -1542,7 +1548,12 @@ HTML;
             'last_status_at' => null,
             'emojis' => [],
             'fields' => $fields,
-            'role' => $account['role'] ?? 'user',
+            'role' => [
+                'id' => '1',
+                'name' => $account['role'] ?? 'user',
+                'color' => '',
+                'permissions' => 0
+            ],
             'avatar_description' => $account['avatar_description'] ?? 'Imagen de perfil de ' . $account['username'],
             'header_description' => $account['header_description'] ?? 'Banner de perfil de ' . $account['username'],
         ];

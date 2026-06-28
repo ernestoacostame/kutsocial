@@ -101,7 +101,7 @@ try {
         $lines = file($logFile);
         $matches = [];
         foreach ($lines as $line) {
-            if (str_contains($line, 'handleAuthorize') || str_contains($line, 'postToken') || str_contains($line, 'verifyCredentials') || str_contains($line, 'getAuthenticatedAccount')) {
+            if (str_contains($line, 'handleAuthorize') || str_contains($line, 'postToken') || str_contains($line, 'verifyCredentials') || str_contains($line, 'getAuthenticatedAccount') || str_contains($line, 'verifyLinkRelation')) {
                 $matches[] = $line;
             }
         }
