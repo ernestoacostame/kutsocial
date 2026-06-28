@@ -177,7 +177,7 @@ class Router {
 
             // Convertir /api/v1/accounts/:id en expresión regular
             $pattern = preg_replace('/:[a-zA-Z0-9_]+/', '([^/]+)', $route['route']);
-            $pattern = '@^' . $pattern . '$@';
+            $pattern = '#^' . $pattern . '$#';
 
             if (preg_match($pattern, $requestUri, $matches)) {
                 array_shift($matches); // Quitar la coincidencia completa
