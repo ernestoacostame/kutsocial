@@ -4879,6 +4879,7 @@ HTML;
             return;
         }
 
+        $db = Database::connect();
         $stmt = $db->prepare("
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
                    s.visibility as status_visibility, s.created_at as status_created_at, 
