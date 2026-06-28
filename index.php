@@ -231,6 +231,7 @@ $router->get('/api/v1/collections', [MastodonApiController::class, 'getCollectio
 $router->get('/api/v1/profile', [MastodonApiController::class, 'getProfile']);
 $router->patch('/api/v1/profile', [MastodonApiController::class, 'patchProfile']);
 $router->patch('/api/v1/accounts/update_credentials', [MastodonApiController::class, 'updateCredentials']);
+$router->post('/api/v1/accounts/update_credentials', [MastodonApiController::class, 'updateCredentials']);
 $router->get('/api/v1/accounts/relationships', [MastodonApiController::class, 'getRelationships']);
 $router->get('/api/v1/accounts/:id', [MastodonApiController::class, 'getAccountById']);
 $router->get('/api/v1/accounts/:id/statuses', [MastodonApiController::class, 'getAccountStatuses']);

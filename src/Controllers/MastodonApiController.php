@@ -1472,6 +1472,8 @@ HTML;
             Router::json(['error' => 'Unauthorized'], 401);
         }
 
+        $body = Router::getRequestBody();
+
         $db = Database::connect();
         $uploadsDir = dirname(Database::getDbPath()) . '/uploads';
         
