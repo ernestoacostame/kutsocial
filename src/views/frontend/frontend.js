@@ -1099,7 +1099,7 @@ function initQuoteToot(id, handle, uri) {
     document.getElementById('composer-context-text').innerText = `Citando publicación de @${handle}`;
     
     const textarea = document.getElementById('composer-text');
-    textarea.value = `RE: ${uri}\n`;
+    textarea.value = '';
     textarea.focus();
     updateCharCount();
     showTab('feed');

@@ -1249,25 +1249,8 @@ XML;
         }
 
         try {
-            $ch = curl_init($url);
-            $localDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HTTPHEADER => [
-                    "Accept: application/activity+json, application/ld+json",
-                    "User-Agent: KutSocial/1.0; (+https://$localDomain)"
-                ],
-                CURLOPT_TIMEOUT => 6,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS => 3,
-                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
-                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
-            ]);
-            $resp = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($httpCode !== 200 || !$resp) {
+            $resp = self::executeSignedGet($url);
+            if (!$resp) {
                 return null;
             }
 
@@ -1563,6 +1546,81 @@ XML;
             'cc' => $cc
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         exit;
+    }
+
+    /**
+     * Envía una petición GET firmada mediante HTTP Signatures a un servidor remoto.
+     */
+    public static function executeSignedGet(string $url): ?string {
+        $db = Database::connect();
+        
+        // 1. Obtener una clave privada local para firmar
+        $stmt = $db->prepare("SELECT id, username, private_key FROM accounts WHERE private_key IS NOT NULL AND domain IS NULL LIMIT 1");
+        $stmt->execute();
+        $account = $stmt->fetch();
+        if (!$account || empty($account['private_key'])) {
+            self::log("executeSignedGet: No se encontró cuenta local con clave privada para firmar.");
+            return null;
+        }
+
+        $privateKey = $account['private_key'];
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $keyId = "$proto://$domain/users/{$account['username']}#main-key";
+
+        $u = parse_url($url);
+        if (empty($u['host'])) {
+            return null;
+        }
+
+        $date = gmdate('D, d M Y H:i:s') . ' GMT';
+        $path = empty($u['path']) ? '/' : $u['path'];
+        if (!empty($u['query'])) {
+            $path .= '?' . $u['query'];
+        }
+
+        // String a firmar (GET)
+        $signingString = "(request-target): get $path\nhost: {$u['host']}\ndate: $date";
+        
+        $sig = '';
+        if (!openssl_sign($signingString, $sig, $privateKey, OPENSSL_ALGO_SHA256)) {
+            self::log("executeSignedGet: Error al firmar la petición RSA.");
+            return null;
+        }
+
+        $sigHeader = sprintf(
+            'keyId="%s",algorithm="rsa-sha256",headers="(request-target) host date",signature="%s"',
+            $keyId,
+            base64_encode($sig)
+        );
+
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER => [
+                "Host: {$u['host']}",
+                "Date: $date",
+                "Signature: $sigHeader",
+                "Accept: application/activity+json, application/ld+json",
+                "User-Agent: KutSocial/1.0; (+https://$domain)"
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 8,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 4,
+            CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+            CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
+        ]);
+
+        $resp = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode !== 200 || !$resp) {
+            self::log("executeSignedGet FAILED to $url. HTTP $httpCode");
+            return null;
+        }
+
+        return $resp;
     }
 
     /**
