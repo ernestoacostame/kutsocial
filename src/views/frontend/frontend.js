@@ -162,7 +162,7 @@ function initPublicView() {
     }
     
     // Ocultar composer en feed
-    const composer = document.querySelector('.composer-card');
+    const composer = document.querySelector('#tab-feed .composer-card');
     if (composer) {
         composer.style.display = 'none';
     }
