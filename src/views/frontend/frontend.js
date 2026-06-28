@@ -672,7 +672,7 @@ function createThreadTootElement(toot, isMain = false) {
     let sanitizedContent = sanitizeHTML(toot.content);
     
     let quotePlaceholderHTML = '';
-    const statusUrlRegex = /\/(users|@)[a-zA-Z0-9_\-\.]+\/statuses\/[a-zA-Z0-9]+/i;
+    const statusUrlRegex = /(\/(users|@)[a-zA-Z0-9_\-\.]+\/(statuses\/)?[a-zA-Z0-9]+)|(\/(notice|objects|display)\/[a-zA-Z0-9_\-\.]+)/i;
     
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = sanitizedContent;
