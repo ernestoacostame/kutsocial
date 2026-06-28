@@ -273,6 +273,141 @@ HTML;
         Router::html($html);
     }
 
+    private static function showOtpAuthorize(array $account, array $params, ?string $error = null): void {
+        $clientId = $params['client_id'] ?? '';
+        $redirectUri = $params['redirect_uri'] ?? '';
+        $responseType = $params['response_type'] ?? '';
+        $scope = $params['scope'] ?? '';
+        $username = $params['username'] ?? '';
+        $password = $params['password'] ?? '';
+
+        $errorHtml = '';
+        if ($error) {
+            $errorHtml = '<div class="error">' . htmlspecialchars($error) . '</div>';
+        }
+
+        $html = <<<HTML
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Verificación 2FA - KutSocial</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            color: #f8fafc;
+            font-family: 'Outfit', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: rgba(30, 41, 59, 0.45);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+        h2 {
+            margin-top: 0;
+            color: #38bdf8;
+            font-size: 24px;
+        }
+        p {
+            color: #94a3b8;
+            font-size: 14px;
+            margin-bottom: 25px;
+        }
+        .form-group {
+            text-align: left;
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: #cbd5e1;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            background: rgba(15, 23, 42, 0.6);
+            color: white;
+            box-sizing: border-box;
+            text-align: center;
+            font-size: 18px;
+            letter-spacing: 5px;
+            transition: all 0.3s;
+        }
+        input[type="text"]:focus {
+            border-color: #38bdf8;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+            outline: none;
+        }
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border-radius: 8px;
+            border: none;
+            background: linear-gradient(90deg, #38bdf8, #0ea5e9);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn:hover {
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.4);
+            transform: translateY(-2px);
+        }
+        .error {
+            color: #f87171;
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid rgba(248, 113, 113, 0.2);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Verificación de Dos Factores</h2>
+        <p>Introduce el código de verificación de 6 dígitos generado por tu aplicación de autenticación para continuar.</p>
+        
+        {$errorHtml}
+        
+        <form method="POST" action="/oauth/authorize">
+            <input type="hidden" name="client_id" value="{$clientId}">
+            <input type="hidden" name="redirect_uri" value="{$redirectUri}">
+            <input type="hidden" name="response_type" value="{$responseType}">
+            <input type="hidden" name="scope" value="{$scope}">
+            <input type="hidden" name="username" value="{$username}">
+            <input type="hidden" name="password" value="{$password}">
+            
+            <div class="form-group">
+                <label for="otp_code">Código 2FA</label>
+                <input type="text" id="otp_code" name="otp_code" required placeholder="123456" pattern="\d{6}" maxlength="6" autofocus autocomplete="one-time-code">
+            </div>
+            
+            <button type="submit" class="btn">Verificar y Autorizar</button>
+        </form>
+    </div>
+</body>
+</html>
+HTML;
+        Router::html($html);
+    }
+
     /**
      * Endpoint POST /oauth/authorize
      */
@@ -410,6 +545,20 @@ HTML;
 </html>
 HTML;
             Router::html($html);
+            return;
+        }
+
+        // Verificar 2FA si está activo
+        if (!empty($account['otp_secret'])) {
+            $otpCode = trim($_POST['otp_code'] ?? '');
+            if (empty($otpCode)) {
+                self::showOtpAuthorize($account, $_POST);
+                return;
+            }
+            if (!\KutSocial\TotpHelper::verifyCode($account['otp_secret'], $otpCode)) {
+                self::showOtpAuthorize($account, $_POST, "Código 2FA incorrecto o expirado");
+                return;
+            }
         }
 
         $code = self::generateCodeForUser((int)$account['id']);
@@ -523,6 +672,17 @@ HTML;
 
             if (!$account || !password_verify($password, $account['password_hash'])) {
                 Router::json(['error' => 'invalid_grant', 'error_description' => 'Usuario o contraseña incorrectos'], 400);
+            }
+
+            // Verificar 2FA si está habilitado
+            if (!empty($account['otp_secret'])) {
+                $otp = $_SERVER['HTTP_X_MASTODON_OTP'] ?? $body['otp'] ?? $body['otp_code'] ?? '';
+                if (empty($otp)) {
+                    Router::json(['error' => 'two_factor_required', 'error_description' => 'Autenticación de dos factores requerida'], 400);
+                }
+                if (!\KutSocial\TotpHelper::verifyCode($account['otp_secret'], $otp)) {
+                    Router::json(['error' => 'invalid_grant', 'error_description' => 'Código 2FA incorrecto o expirado'], 400);
+                }
             }
         } else {
             Router::json(['error' => 'unsupported_grant_type'], 400);
@@ -1273,7 +1433,7 @@ HTML;
             'group' => false,
             'created_at' => date('c', strtotime($account['created_at'])),
             'note' => $bio,
-            'url' => "$proto://$domain/users/" . $account['username'],
+            'url' => $account['domain'] ? "https://{$account['domain']}/@{$account['username']}" : "$proto://$domain/@" . $account['username'],
             'avatar' => $avatarUrl,
             'avatar_static' => $avatarUrl,
             'header' => $headerUrl,

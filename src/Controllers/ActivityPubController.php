@@ -85,13 +85,20 @@ class ActivityPubController {
         $response = [
             '@context' => [
                 'https://www.w3.org/ns/activitystreams',
-                'https://w3id.org/security/v1'
+                'https://w3id.org/security/v1',
+                [
+                    'PropertyValue' => 'schema:PropertyValue',
+                    'value' => 'schema:value',
+                    'toot' => 'http://joinmastodon.org/ns#',
+                    'schema' => 'http://schema.org#'
+                ]
             ],
             'id' => $actorUrl,
             'type' => 'Person',
             'preferredUsername' => $account['username'],
             'name' => $account['display_name'] ?: $account['username'],
             'summary' => $account['note'] ?: '',
+            'url' => "$proto://$domain/@" . $account['username'],
             'inbox' => "$actorUrl/inbox",
             'outbox' => "$actorUrl/outbox",
             'followers' => "$actorUrl/followers",
