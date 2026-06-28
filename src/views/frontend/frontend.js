@@ -1872,20 +1872,6 @@ async function loadNotifications() {
                     const dateTooltip = new Date(notif.created_at).toLocaleDateString('es-ES', { hour: '2-digit', minute: '2-digit' });
                     const dateDisplay = formatRelativeTime(notif.created_at);
 
-                    let mentionTootHTML = '';
-                    if (notif.status) {
-                        const statusCard = createThreadTootElement(notif.status, false);
-                        statusCard.style.border = 'none';
-                        statusCard.style.background = 'transparent';
-                        statusCard.style.boxShadow = 'none';
-                        statusCard.style.borderRadius = '0';
-                        statusCard.style.margin = '0';
-                        statusCard.style.padding = '15px';
-                        mentionTootHTML = statusCard.outerHTML;
-                    } else {
-                        mentionTootHTML = `<div style="padding: 15px; font-size: 14px; color: var(--text-muted);">No se pudo cargar el contenido de la mención.</div>`;
-                    }
-
                     div.innerHTML = `
                         <div style="display: flex; align-items: center; gap: 8px; padding: 10px 15px; background: rgba(217, 119, 6, ${isUnread ? '0.1' : '0.04'}); border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-muted);">
                             <span class="material-icons-outlined" style="font-size: 18px; color: #d97706; opacity: ${isUnread ? '1' : '0.6'};">chat_bubble_outline</span>
@@ -1899,8 +1885,23 @@ async function loadNotifications() {
                             </span>
                             <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
                         </div>
-                        ${mentionTootHTML}
                     `;
+
+                    if (notif.status) {
+                        const statusCard = createThreadTootElement(notif.status, false);
+                        statusCard.style.border = 'none';
+                        statusCard.style.background = 'transparent';
+                        statusCard.style.boxShadow = 'none';
+                        statusCard.style.borderRadius = '0';
+                        statusCard.style.margin = '0';
+                        statusCard.style.padding = '15px';
+                        div.appendChild(statusCard);
+                    } else {
+                        const fallbackDiv = document.createElement('div');
+                        fallbackDiv.style = "padding: 15px; font-size: 14px; color: var(--text-muted);";
+                        fallbackDiv.innerText = "No se pudo cargar el contenido de la mención.";
+                        div.appendChild(fallbackDiv);
+                    }
                 } else {
                     div.className = 'notification-item individual-notification';
                     div.style = `display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? 'var(--primary)' : 'transparent'}; border-radius: 12px; padding: 15px; transition: all 0.2s; margin-bottom: 8px;`;
@@ -2828,7 +2829,7 @@ async function viewTootThread(statusId, fromHashChange = false) {
     showTab('thread-view', fromHashChange);
 
     const ancestorsContainer = document.getElementById('thread-ancestors');
-    const mainContainer = document.getElementById('thread-main-status');
+    const mainContainer = document.getElementById('thread-main');
     const descendantsContainer = document.getElementById('thread-descendants');
 
     ancestorsContainer.innerHTML = '';
