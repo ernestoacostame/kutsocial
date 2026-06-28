@@ -2919,16 +2919,18 @@ HTML;
             return '<a href="' . htmlspecialchars($cleanRawUrl, ENT_COMPAT, 'UTF-8') . '" target="_blank" rel="nofollow noopener noreferrer">' . $cleanVisibleUrl . '</a>' . $trailingVisible;
         }, $escaped);
 
-        // Convertir menciones en enlaces (saltando etiquetas A existentes)
-        $escaped = preg_replace_callback('/(<a\b[^>]*>.*?<\/a>)|@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', function($matches) use ($domain, $db, $proto) {
-            if (!empty($matches[1])) {
-                return $matches[1];
-            }
-            if (empty($matches[2])) {
-                return $matches[0];
-            }
-            $mUsername = $matches[2];
-            $mDomain = isset($matches[3]) && !empty($matches[3]) ? strtolower($matches[3]) : null;
+        // Extraer etiquetas <a> temporales para evitar modificarlas
+        $placeholders = [];
+        $escaped = preg_replace_callback('/<a\b[^>]*>[^<]*<\/a>/i', function($m) use (&$placeholders) {
+            $key = '___LINK_PLACEHOLDER_' . count($placeholders) . '___';
+            $placeholders[$key] = $m[0];
+            return $key;
+        }, $escaped);
+
+        // Convertir menciones en enlaces
+        $escaped = preg_replace_callback('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', function($matches) use ($domain, $db, $proto) {
+            $mUsername = $matches[1];
+            $mDomain = isset($matches[2]) && !empty($matches[2]) ? strtolower($matches[2]) : null;
             
             if ($mDomain !== null && (strcasecmp($mDomain, $domain) === 0)) {
                 $mDomain = null;
@@ -2955,6 +2957,11 @@ HTML;
             
             return $matches[0];
         }, $escaped);
+
+        // Restaurar etiquetas <a>
+        if (!empty($placeholders)) {
+            $escaped = strtr($escaped, $placeholders);
+        }
         
         return '<p>' . nl2br($escaped) . '</p>';
     }
