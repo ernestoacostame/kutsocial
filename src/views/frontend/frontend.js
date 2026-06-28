@@ -717,53 +717,81 @@ function createThreadTootElement(toot, isMain = false) {
     let quotePlaceholderHTML = '';
     const statusUrlRegex = /(\/(users|@)[a-zA-Z0-9_\-\.]+\/(statuses\/)?[a-zA-Z0-9]+)|(\/(notice|objects|display)\/[a-zA-Z0-9_\-\.]+)/i;
     
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = sanitizedContent;
-    const links = tempDiv.querySelectorAll('a');
-    let quoteUrl = null;
+    const quotedToot = toot.quote ? (toot.quote.quoted_status || toot.quote) : null;
     
-    for (let link of links) {
-        const href = link.href || '';
-        if (statusUrlRegex.test(href)) {
-            quoteUrl = href;
-            break;
-        }
-    }
-
-    if (quoteUrl) {
+    if (quotedToot) {
+        const quotePlaceholderId = `quote-placeholder-${toot.id}-${Math.floor(Math.random() * 100000)}`;
+        quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container" style="margin-top:12px; border: 1px solid var(--border-color); border-radius:12px; padding:12px; background: rgba(255,255,255,0.02); transition: background 0.2s;"></div>`;
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = sanitizedContent;
+        const links = tempDiv.querySelectorAll('a');
         for (let link of links) {
-            if (link.href === quoteUrl) {
+            const href = link.href || '';
+            if (href === quotedToot.uri || href === quotedToot.url || statusUrlRegex.test(href)) {
                 let prevNode = link.previousSibling;
                 if (prevNode && prevNode.nodeType === 3 && prevNode.textContent.trim().endsWith('RE:')) {
                     const txt = prevNode.textContent;
                     prevNode.textContent = txt.substring(0, txt.lastIndexOf('RE:'));
                 }
                 link.remove();
+                break;
             }
         }
         sanitizedContent = tempDiv.innerHTML;
-
-        const quotePlaceholderId = `quote-placeholder-${toot.id}-${Math.floor(Math.random() * 100000)}`;
-        quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container" style="margin-top:12px; border: 1px solid var(--border-color); border-radius:12px; padding:12px; background: rgba(255,255,255,0.02); transition: background 0.2s;">Cargando publicación citada...</div>`;
         
-        setTimeout(async () => {
-            try {
-                const res = await fetch(`/api/v1/statuses/resolve?url=${encodeURIComponent(quoteUrl)}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) {
-                    const quotedToot = await res.json();
-                    renderEmbeddedQuote(quotePlaceholderId, quotedToot);
-                } else {
+        setTimeout(() => {
+            renderEmbeddedQuote(quotePlaceholderId, quotedToot);
+        }, 0);
+    } else {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = sanitizedContent;
+        const links = tempDiv.querySelectorAll('a');
+        let quoteUrl = null;
+        
+        for (let link of links) {
+            const href = link.href || '';
+            if (statusUrlRegex.test(href)) {
+                quoteUrl = href;
+                break;
+            }
+        }
+
+        if (quoteUrl) {
+            for (let link of links) {
+                if (link.href === quoteUrl) {
+                    let prevNode = link.previousSibling;
+                    if (prevNode && prevNode.nodeType === 3 && prevNode.textContent.trim().endsWith('RE:')) {
+                        const txt = prevNode.textContent;
+                        prevNode.textContent = txt.substring(0, txt.lastIndexOf('RE:'));
+                    }
+                    link.remove();
+                }
+            }
+            sanitizedContent = tempDiv.innerHTML;
+
+            const quotePlaceholderId = `quote-placeholder-${toot.id}-${Math.floor(Math.random() * 100000)}`;
+            quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container" style="margin-top:12px; border: 1px solid var(--border-color); border-radius:12px; padding:12px; background: rgba(255,255,255,0.02); transition: background 0.2s;">Cargando publicación citada...</div>`;
+            
+            setTimeout(async () => {
+                try {
+                    const res = await fetch(`/api/v1/statuses/resolve?url=${encodeURIComponent(quoteUrl)}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (res.ok) {
+                        const resolvedToot = await res.json();
+                        renderEmbeddedQuote(quotePlaceholderId, resolvedToot);
+                    } else {
+                        const el = document.getElementById(quotePlaceholderId);
+                        if (el) el.remove();
+                    }
+                } catch (e) {
+                    console.error("Error al resolver toot citado", e);
                     const el = document.getElementById(quotePlaceholderId);
                     if (el) el.remove();
                 }
-            } catch (e) {
-                console.error("Error al resolver toot citado", e);
-                const el = document.getElementById(quotePlaceholderId);
-                if (el) el.remove();
-            }
-        }, 50);
+            }, 50);
+        }
     }
 
     let contentHTML = `<div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5; margin-bottom: 12px;' : ''}">${sanitizedContent}</div>`;

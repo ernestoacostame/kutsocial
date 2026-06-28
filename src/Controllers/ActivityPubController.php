@@ -589,6 +589,15 @@ XML;
                 'cc' => $cc
             ];
 
+            if (!empty($status['reblog_of_id'])) {
+                $stmtQuoteUri = $db->prepare("SELECT uri FROM statuses WHERE id = ? LIMIT 1");
+                $stmtQuoteUri->execute([$status['reblog_of_id']]);
+                $quoteUri = $stmtQuoteUri->fetchColumn();
+                if ($quoteUri) {
+                    $objectNote['quoteUrl'] = $quoteUri;
+                }
+            }
+
             if (!empty($status['media_attachments'])) {
                 $dbMedia = json_decode($status['media_attachments'], true);
                 if (is_array($dbMedia)) {
@@ -1384,9 +1393,15 @@ XML;
             $inReplyToId = $stmtReply->fetchColumn() ?: null;
         }
 
+        $quoteUrl = $object['quoteUrl'] ?? $object['quoteUri'] ?? null;
+        $reblogOfId = null;
+        if ($quoteUrl) {
+            $reblogOfId = self::fetchAndRegisterRemoteStatus($quoteUrl);
+        }
+
         $stmtIns = $db->prepare("
-            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, reblog_of_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmtIns->execute([
             $remoteAccount['id'],
@@ -1395,7 +1410,8 @@ XML;
             $visibility,
             date('Y-m-d H:i:s', strtotime($createdAt)),
             $mediaJson,
-            $inReplyToId
+            $inReplyToId,
+            $reblogOfId
         ]);
 
         return (int)$db->lastInsertId();
@@ -1564,6 +1580,15 @@ XML;
             'to' => $to,
             'cc' => $cc
         ];
+
+        if (!empty($status['reblog_of_id'])) {
+            $stmtQuoteUri = $db->prepare("SELECT uri FROM statuses WHERE id = ? LIMIT 1");
+            $stmtQuoteUri->execute([$status['reblog_of_id']]);
+            $quoteUri = $stmtQuoteUri->fetchColumn();
+            if ($quoteUri) {
+                $note['quoteUrl'] = $quoteUri;
+            }
+        }
 
         if (!empty($status['media_attachments'])) {
             $dbMedia = json_decode($status['media_attachments'], true);

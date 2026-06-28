@@ -2732,6 +2732,13 @@ HTML;
         if (!empty($targetInboxes)) {
             $htmlContent = self::formatLocalContentToHtml($content, $domain, $db, $proto);
             
+            $quoteUrlVal = null;
+            if ($reblogOfId) {
+                $stmtQuoteUri = $db->prepare("SELECT uri FROM statuses WHERE id = ? LIMIT 1");
+                $stmtQuoteUri->execute([$reblogOfId]);
+                $quoteUrlVal = $stmtQuoteUri->fetchColumn() ?: null;
+            }
+
             $noteObject = [
                 'id' => $uri,
                 'type' => 'Note',
@@ -2741,6 +2748,10 @@ HTML;
                 'to' => $to,
                 'cc' => $cc
             ];
+
+            if ($quoteUrlVal) {
+                $noteObject['quoteUrl'] = $quoteUrlVal;
+            }
 
             if (!empty($tags)) {
                 $noteObject['tag'] = $tags;
@@ -3449,7 +3460,10 @@ HTML;
             'favourited' => $favourited,
             'reblogged' => $reblogged,
             'reblog' => $reblog,
-            'quote' => $quote,
+            'quote' => $quote ? [
+                'state' => 'accepted',
+                'quoted_status' => $quote
+            ] : null,
             'muted' => false,
             'bookmarked' => $bookmarked,
             'content' => $formattedContent,
