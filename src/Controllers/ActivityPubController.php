@@ -682,17 +682,18 @@ XML;
                     "Accept: application/activity+json, application/ld+json",
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
-                CURLOPT_TIMEOUT => 10,
+                CURLOPT_TIMEOUT => 15,
                 CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
                 CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
             $resp = curl_exec($ch);
+            $curlErr = curl_error($ch);
             $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            self::log("getOrRegisterRemoteActor: HTTP status: $httpCode");
-            if (!$resp) {
-                self::log("getOrRegisterRemoteActor: Respuesta vacía al consultar actor remoto");
+            self::log("getOrRegisterRemoteActor: HTTP status: $httpCode" . ($curlErr ? ", Curl Error: $curlErr" : ''));
+            if ($resp === false) {
+                self::log("getOrRegisterRemoteActor: Curl failed for $actorUrl");
                 return $account ?: null;
             }
 
@@ -941,15 +942,17 @@ XML;
                     "Accept: application/jrd+json, application/json",
                     "User-Agent: KutSocial/1.0; (+https://$localDomain)"
                 ],
-                CURLOPT_TIMEOUT => 5,
+                CURLOPT_TIMEOUT => 15,
                 CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
                 CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
             $resp = curl_exec($ch);
+            $curlErr = curl_error($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
 
-            if (!$resp) {
-                self::log("resolveWebfinger: Respuesta vacía de webfinger");
+            if ($resp === false) {
+                self::log("resolveWebfinger: Curl failed for $url. Error: $curlErr (HTTP Status: $httpCode)");
                 return null;
             }
 
