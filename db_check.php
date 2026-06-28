@@ -14,6 +14,11 @@ try {
     Database::setDbPath(KUTSOCIAL_DB_PATH);
     $db = Database::connect();
     
+    if (isset($_GET['reset_failed'])) {
+        $db->query("UPDATE jobs SET status = 'pending', attempts = 0 WHERE status = 'failed'");
+        echo "SUCCESS: Se han reiniciado todos los trabajos fallidos a estado 'pending'.\n\n";
+    }
+    
     echo "=== SYSTEM CHECK ===\n";
     echo "PHP Version: " . PHP_VERSION . "\n";
     echo "Server Software: " . ($_SERVER['SERVER_SOFTWARE'] ?? 'Unknown') . "\n";

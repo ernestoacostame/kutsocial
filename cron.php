@@ -20,6 +20,14 @@ if (!file_exists(__DIR__ . '/config.php')) {
 
 require_once __DIR__ . '/config.php';
 
+// Normalizar host y protocolo para ejecuciones CLI/Cron en producción
+if (defined('KUTSOCIAL_DOMAIN') && KUTSOCIAL_DOMAIN !== 'localhost') {
+    if (empty($_SERVER['HTTP_HOST']) || $_SERVER['HTTP_HOST'] === 'localhost') {
+        $_SERVER['HTTP_HOST'] = KUTSOCIAL_DOMAIN;
+    }
+    $_SERVER['HTTPS'] = 'on';
+}
+
 use KutSocial\Database;
 use KutSocial\Queue;
 
