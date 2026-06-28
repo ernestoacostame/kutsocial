@@ -703,10 +703,11 @@ HTML;
         // Generar token firmado sin guardar estado en DB
         $token = self::generateTokenForUser((int)$account['id']);
 
+        $requestedScope = $body['scope'] ?? 'read write follow push';
         Router::json([
             'access_token' => $token,
             'token_type' => 'Bearer',
-            'scope' => 'read write follow',
+            'scope' => $requestedScope,
             'created_at' => time()
         ]);
     }

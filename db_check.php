@@ -96,7 +96,38 @@ try {
     $failedJobs = $db->query("SELECT id, activity_type, attempts, last_error, created_at FROM jobs WHERE status = 'failed' ORDER BY id DESC LIMIT 10")->fetchAll();
     print_r($failedJobs);
 
-    
+    echo "\n=== AUTH LOGS SEARCH ===\n";
+    if (file_exists($logFile)) {
+        $lines = file($logFile);
+        $matches = [];
+        foreach ($lines as $line) {
+            if (str_contains($line, 'handleAuthorize') || str_contains($line, 'postToken')) {
+                $matches[] = $line;
+            }
+        }
+        $matchesTail = array_slice($matches, -40);
+        foreach ($matchesTail as $matchLine) {
+            echo $matchLine;
+        }
+    }
+
+    echo "\n=== PHP ERROR LOG ===\n";
+    $phpErrorLog = ini_get('error_log');
+    if ($phpErrorLog && file_exists($phpErrorLog)) {
+        echo "PHP Error Log path: $phpErrorLog\n";
+        $errLines = @file($phpErrorLog);
+        if ($errLines) {
+            $errTail = array_slice($errLines, -40);
+            foreach ($errTail as $errLine) {
+                echo $errLine;
+            }
+        } else {
+            echo "Failed to read PHP Error Log.\n";
+        }
+    } else {
+        echo "PHP Error Log not found or not readable (path: $phpErrorLog)\n";
+    }
+
     // 2. Probar petición local de Inbox
     echo "\n=== LOCAL INBOX ROUTING TEST ===\n";
     $testAccount = $db->query("SELECT id, username, public_key, private_key FROM accounts WHERE domain IS NULL AND private_key IS NOT NULL LIMIT 1")->fetch();

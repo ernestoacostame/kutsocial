@@ -254,6 +254,23 @@ class Router {
         if (preg_match('/Bearer\s(\S+)/i', $auth, $matches)) {
             return $matches[1];
         }
+
+        // Fallback a parámetro de consulta o cuerpo del POST
+        $queryToken = $_GET['access_token'] ?? null;
+        if ($queryToken) {
+            return $queryToken;
+        }
+
+        $bodyToken = $_POST['access_token'] ?? null;
+        if ($bodyToken) {
+            return $bodyToken;
+        }
+
+        $jsonBody = self::getRequestBody();
+        if (isset($jsonBody['access_token'])) {
+            return $jsonBody['access_token'];
+        }
+
         return null;
     }
 
