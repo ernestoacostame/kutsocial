@@ -2909,8 +2909,21 @@ HTML;
     private static function formatLocalContentToHtml(string $content, string $domain, \PDO $db, string $proto): string {
         $escaped = htmlspecialchars($content, ENT_NOQUOTES, 'UTF-8');
         
-        // Convertir menciones en enlaces
-        $escaped = preg_replace_callback('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/', function($matches) use ($domain, $db, $proto) {
+        // Linkify URLs (convertir enlaces de texto plano en etiquetas A)
+        $escaped = preg_replace_callback('/\bhttps?:\/\/[^\s<>\'\"]+/i', function($m) {
+            $rawUrl = htmlspecialchars_decode($m[0], ENT_NOQUOTES);
+            $cleanRawUrl = rtrim($rawUrl, '.,;:!?)-');
+            $trailingRaw = substr($rawUrl, strlen($cleanRawUrl));
+            $cleanVisibleUrl = htmlspecialchars($cleanRawUrl, ENT_NOQUOTES, 'UTF-8');
+            $trailingVisible = htmlspecialchars($trailingRaw, ENT_NOQUOTES, 'UTF-8');
+            return '<a href="' . htmlspecialchars($cleanRawUrl, ENT_COMPAT, 'UTF-8') . '" target="_blank" rel="nofollow noopener noreferrer">' . $cleanVisibleUrl . '</a>' . $trailingVisible;
+        }, $escaped);
+
+        // Convertir menciones en enlaces (saltando etiquetas A existentes)
+        $escaped = preg_replace_callback('/<a\b[^>]*>.*?<\/a>(*SKIP)(*F)|@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', function($matches) use ($domain, $db, $proto) {
+            if (empty($matches[1])) {
+                return $matches[0];
+            }
             $mUsername = $matches[1];
             $mDomain = isset($matches[2]) && !empty($matches[2]) ? strtolower($matches[2]) : null;
             

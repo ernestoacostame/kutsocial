@@ -26,6 +26,48 @@ function sanitizeHTML(html) {
     }
     return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 }
+
+function formatRelativeTime(dateInput) {
+    const date = new Date(dateInput);
+    if (isNaN(date.getTime())) return '';
+    const now = new Date();
+    const diffMs = now - date;
+    const diffSecs = Math.floor(diffMs / 1000);
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 60) {
+        return 'hace segundos';
+    } else if (diffMins < 60) {
+        return `hace ${diffMins} min`;
+    } else if (diffHours < 24) {
+        return `hace ${diffHours} h`;
+    } else {
+        return `hace ${diffDays} días`;
+    }
+}
+
+async function dismissGroupedNotifications(commaIds, element) {
+    if (!confirm('¿Estás seguro de que deseas eliminar estas notificaciones?')) return;
+    const ids = commaIds.split(',');
+    try {
+        await Promise.all(ids.map(id => 
+            fetch(`/api/v1/notifications/${id}/dismiss`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+        ));
+        element.remove();
+        const list = document.getElementById('notifications-list');
+        if (list.children.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No tienes ninguna notificación por el momento.</div>';
+        }
+    } catch (err) {
+        alert('Error al conectar con el servidor.');
+    }
+}
+
 let lastId = 0;
 let oldestId = null;
 let hasMoreToots = true;
@@ -661,9 +703,10 @@ function createThreadTootElement(toot, isMain = false) {
         card.style.borderLeft = '3px solid var(--primary)';
     }
 
-    const dateStr = new Date(toot.created_at).toLocaleDateString('es-ES', {
+    const absoluteDateStr = new Date(toot.created_at).toLocaleDateString('es-ES', {
         hour: '2-digit', minute: '2-digit'
     });
+    const relativeDateStr = formatRelativeTime(toot.created_at);
 
     const isMyToot = currentProfileData && String(toot.account.id) === String(currentProfileData.id);
     const favClass = toot.favourited ? 'active-fav' : '';
@@ -906,7 +949,7 @@ function createThreadTootElement(toot, isMain = false) {
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
                     </a>
-                    <a href="/users/${toot.account.username || 'iam'}/statuses/${toot.id}" class="toot-time clickable-actor" title="Ver conversación">${dateStr}</a>
+                    <a href="/users/${toot.account.username || 'iam'}/statuses/${toot.id}" class="toot-time clickable-actor" title="${absoluteDateStr}">${relativeDateStr}</a>
                 </div>
                 ${contentHTML}
                 ${mediaHTML}
@@ -1109,7 +1152,10 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
     const container = document.getElementById(placeholderId);
     if (!container) return;
 
-    const dateStr = new Date(quotedToot.created_at).toLocaleString();
+    const absoluteDate = new Date(quotedToot.created_at).toLocaleDateString('es-ES', {
+        hour: '2-digit', minute: '2-digit'
+    });
+    const relativeTime = formatRelativeTime(quotedToot.created_at);
     
     let mediaHTML = '';
     if (quotedToot.media_attachments && quotedToot.media_attachments.length > 0) {
@@ -1139,7 +1185,7 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
             <img src="${proxyUrl(quotedToot.account.avatar)}" style="width:20px; height:20px; border-radius:50%;" alt="Avatar">
             <span style="font-weight:600; font-size:12.5px; color:var(--text-color);">${escapeHTML(quotedToot.account.display_name || quotedToot.account.username)}</span>
             <span style="font-size:11.5px; color:var(--text-muted);">@${quotedToot.account.acct}</span>
-            <span style="font-size:11.5px; color:var(--text-muted); margin-left:auto;">${dateStr}</span>
+            <span style="font-size:11.5px; color:var(--text-muted); margin-left:auto;" title="${absoluteDate}">${relativeTime}</span>
         </div>
         <div style="font-size:12.5px; line-height:1.4; color:var(--text-color);">${cleanContent}</div>
         ${mediaHTML}
@@ -1600,112 +1646,270 @@ async function loadNotifications() {
             list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No tienes ninguna notificación por el momento.</div>';
             return;
         }
+
+        // 4. Agrupar notificaciones como Phanpy
+        const grouped = [];
+        const followGroup = {
+            type: 'grouped_follows',
+            notifications: [],
+            latest_created_at: null,
+            read: true
+        };
         
+        const interactionGroups = {};
+
         data.forEach(notif => {
             const isUnread = !notif.read;
+            const notifDate = new Date(notif.created_at);
             
-            if (notif.type === 'mention') {
-                const div = document.createElement('div');
-                div.className = 'notification-item mention-notification';
-                div.style = `display: flex; flex-grow: 1; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? 'var(--primary)' : 'transparent'}; border-radius: 12px; transition: all 0.2s; margin-bottom: 8px; overflow: hidden;`;
-                
-                div.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 8px; padding: 10px 15px; background: rgba(99, 102, 241, ${isUnread ? '0.1' : '0.04'}); border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-muted);">
-                        <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary); opacity: ${isUnread ? '1' : '0.6'};">reply</span>
-                        <span>
-                            <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name)}</strong>
-                            te ha mencionado
-                        </span>
-                        <div style="flex-grow: 1;"></div>
-                        <span style="font-size: 11.5px; color: var(--text-muted); margin-right: 8px;">
-                            ${new Date(notif.created_at).toLocaleString('es-ES')}
-                        </span>
-                        <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
-                    </div>
-                `;
-                
-                if (notif.status) {
-                    const statusCard = createThreadTootElement(notif.status, false);
-                    statusCard.style.border = 'none';
-                    statusCard.style.background = 'transparent';
-                    statusCard.style.boxShadow = 'none';
-                    statusCard.style.borderRadius = '0';
-                    statusCard.style.margin = '0';
-                    statusCard.style.padding = '15px';
-                    div.appendChild(statusCard);
+            if (notif.type === 'follow') {
+                followGroup.notifications.push(notif);
+                if (!followGroup.latest_created_at || notifDate > new Date(followGroup.latest_created_at)) {
+                    followGroup.latest_created_at = notif.created_at;
+                }
+                if (isUnread) {
+                    followGroup.read = false;
+                }
+            } else if (notif.type === 'favourite' || notif.type === 'reblog') {
+                const status = notif.status;
+                if (status) {
+                    const statusId = status.id;
+                    if (!interactionGroups[statusId]) {
+                        interactionGroups[statusId] = {
+                            type: 'grouped_interactions',
+                            status: status,
+                            favourites: [],
+                            reblogs: [],
+                            notifications: [],
+                            latest_created_at: null,
+                            read: true
+                        };
+                    }
+                    
+                    const group = interactionGroups[statusId];
+                    group.notifications.push(notif);
+                    if (notif.type === 'favourite') {
+                        if (!group.favourites.some(u => String(u.id) === String(notif.account.id))) {
+                            group.favourites.push(notif.account);
+                        }
+                    } else if (notif.type === 'reblog') {
+                        if (!group.reblogs.some(u => String(u.id) === String(notif.account.id))) {
+                            group.reblogs.push(notif.account);
+                        }
+                    }
+                    
+                    if (!group.latest_created_at || notifDate > new Date(group.latest_created_at)) {
+                        group.latest_created_at = notif.created_at;
+                    }
+                    if (isUnread) {
+                        group.read = false;
+                    }
                 } else {
-                    const fallbackDiv = document.createElement('div');
-                    fallbackDiv.style = "padding: 15px; font-size: 14px; color: var(--text-muted);";
-                    fallbackDiv.innerText = "No se pudo cargar el contenido de la mención.";
-                    div.appendChild(fallbackDiv);
+                    grouped.push({
+                        type: 'individual',
+                        notification: notif,
+                        latest_created_at: notif.created_at
+                    });
                 }
-                
-                list.appendChild(div);
-            } else if (notif.type === 'favourite') {
+            } else {
+                grouped.push({
+                    type: 'individual',
+                    notification: notif,
+                    latest_created_at: notif.created_at
+                });
+            }
+        });
+
+        if (followGroup.notifications.length > 0) {
+            grouped.push(followGroup);
+        }
+        
+        Object.values(interactionGroups).forEach(group => {
+            grouped.push(group);
+        });
+
+        grouped.sort((a, b) => new Date(b.latest_created_at) - new Date(a.latest_created_at));
+
+        // 5. Renderizar notificaciones agrupadas e individuales
+        grouped.forEach(item => {
+            if (item.type === 'grouped_follows') {
+                const isUnread = !item.read;
+                const qty = item.notifications.length;
                 const div = document.createElement('div');
-                div.className = 'notification-item favourite-notification';
-                div.style = `display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? '#f59e0b' : 'transparent'}; border-radius: 12px; padding: 15px; transition: all 0.2s; margin-bottom: 8px;`;
+                div.className = 'notification-item grouped-follows-notification';
+                div.style = `display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? 'var(--primary)' : 'transparent'}; border-radius: 12px; padding: 15px; margin-bottom: 8px; transition: all 0.2s;`;
                 
-                let statusPreviewHTML = '';
-                if (notif.status) {
-                    statusPreviewHTML = `
-                        <div class="notification-status-preview" onclick="viewTootThread('${notif.status.id}')" style="border: 1px solid var(--border-color); border-radius: 12px; background: rgba(255, 255, 255, 0.015); padding: 12px; cursor: pointer; transition: background 0.2s; font-size: 13.5px;" onmouseover="this.style.background='rgba(255, 255, 255, 0.04)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.015)'">
-                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px;">
-                                <img src="${notif.status.account.avatar}" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
-                                <strong style="color: var(--text-color);">${escapeHTML(notif.status.account.display_name)}</strong>
-                                <span style="color: var(--text-muted);">@${escapeHTML(notif.status.account.acct)}</span>
-                            </div>
-                            <div class="toot-content" style="font-size: 13.5px; color: var(--text-color); line-height: 1.4;">
-                                ${notif.status.content}
-                            </div>
-                        </div>
+                let avatarsHTML = '<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">';
+                item.notifications.forEach(n => {
+                    avatarsHTML += `
+                        <img class="user-avatar clickable-actor" onclick="viewProfile('${n.account.id}')" src="${proxyUrl(n.account.avatar)}" alt="${escapeHTML(n.account.display_name)}" title="@${escapeHTML(n.account.acct)} - ${escapeHTML(n.account.display_name)}" style="width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--border-color); cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(1)';" />
                     `;
-                }
+                });
+                avatarsHTML += '</div>';
+
+                const dismissIds = item.notifications.map(n => n.id).join(',');
+                const dismissButton = `
+                    <button onclick="dismissGroupedNotifications('${dismissIds}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0; margin-left: auto;" title="Eliminar estas notificaciones" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
+                `;
 
                 div.innerHTML = `
-                    <div style="display: flex; gap: 15px; align-items: center; width: 100%;">
-                        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">
-                            <span class="material-icons" style="font-size: 20px; color: #f59e0b; opacity: ${isUnread ? '1' : '0.6'};">star</span>
+                    <div style="display: flex; align-items: center; width: 100%;">
+                        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; margin-right: 12px;">
+                            <span class="material-icons-outlined" style="font-size: 20px; color: var(--primary); opacity: ${isUnread ? '1' : '0.6'};">person_add</span>
                         </div>
-                        <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${proxyUrl(notif.account.avatar)}" alt="Avatar" style="width: 36px; height: 36px; flex-shrink: 0;">
-                        <div style="flex-grow: 1; min-width: 0;">
-                            <div style="font-size: 14px;">
-                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name)}</strong> 
-                                <span style="color: var(--text-muted);">@${escapeHTML(notif.account.acct)}</span>
-                                ha marcado tu publicación como favorita
-                            </div>
-                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                                ${new Date(notif.created_at).toLocaleString('es-ES')}
-                            </div>
+                        <div style="flex-grow: 1; min-width: 0; font-size: 14px; color: var(--text-color);">
+                            <strong>${qty} ${qty === 1 ? 'persona' : 'personas'}</strong> te comenzaron a seguir.
                         </div>
-                        <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
+                        ${dismissButton}
                     </div>
+                    ${avatarsHTML}
+                `;
+                list.appendChild(div);
+            } else if (item.type === 'grouped_interactions') {
+                const isUnread = !item.read;
+                const favQty = item.favourites.length;
+                const rebQty = item.reblogs.length;
+                const totalQty = favQty + rebQty;
+                
+                let text = '';
+                let icon = '';
+                if (favQty > 0 && rebQty > 0) {
+                    text = `<strong>${totalQty} personas</strong> impulsaron y les gustó tu publicación.`;
+                    icon = `<span class="material-icons" style="font-size: 20px; color: #f59e0b; opacity: ${isUnread ? '1' : '0.6'};">star</span>`;
+                } else if (favQty > 0) {
+                    text = `A <strong>${favQty} ${favQty === 1 ? 'persona' : 'personas'}</strong> le${favQty === 1 ? '' : 's'} gustó tu publicación.`;
+                    icon = `<span class="material-icons" style="font-size: 20px; color: #ef4444; opacity: ${isUnread ? '1' : '0.6'};">favorite</span>`;
+                } else if (rebQty > 0) {
+                    text = `<strong>${rebQty} ${rebQty === 1 ? 'persona' : 'personas'}</strong> impulsó${rebQty === 1 ? 'n' : 'aron'} tu publicación.`;
+                    icon = `<span class="material-icons" style="font-size: 20px; color: #10b981; opacity: ${isUnread ? '1' : '0.6'};">repeat</span>`;
+                }
+
+                const div = document.createElement('div');
+                div.className = 'notification-item grouped-interactions-notification';
+                div.style = `display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? 'var(--primary)' : 'transparent'}; border-radius: 12px; padding: 15px; margin-bottom: 8px; transition: all 0.2s;`;
+                
+                let avatarsHTML = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">';
+                item.favourites.forEach(u => {
+                    avatarsHTML += `
+                        <div style="position: relative; display: inline-block;">
+                            <img class="user-avatar clickable-actor" onclick="viewProfile('${u.id}')" src="${proxyUrl(u.avatar)}" alt="${escapeHTML(u.display_name)}" title="@${escapeHTML(u.acct)} - le gustó" style="width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--border-color); cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(1)';" />
+                            <span style="position: absolute; bottom: -4px; right: -4px; font-size: 10px; background: rgba(0,0,0,0.6); border-radius: 50%; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; pointer-events: none;" title="Favorito">❤️</span>
+                        </div>
+                    `;
+                });
+                item.reblogs.forEach(u => {
+                    avatarsHTML += `
+                        <div style="position: relative; display: inline-block;">
+                            <img class="user-avatar clickable-actor" onclick="viewProfile('${u.id}')" src="${proxyUrl(u.avatar)}" alt="${escapeHTML(u.display_name)}" title="@${escapeHTML(u.acct)} - impulsó" style="width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--border-color); cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(1)';" />
+                            <span style="position: absolute; bottom: -4px; right: -4px; font-size: 10px; background: rgba(0,0,0,0.6); border-radius: 50%; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; pointer-events: none;" title="Impulso">🚀</span>
+                        </div>
+                    `;
+                });
+                avatarsHTML += '</div>';
+
+                const statusPreviewHTML = `
+                    <div class="notification-status-preview" onclick="viewTootThread('${item.status.id}')" style="margin-top: 12px; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(255, 255, 255, 0.015); padding: 12px; cursor: pointer; transition: background 0.2s; font-size: 13.5px;" onmouseover="this.style.background='rgba(255, 255, 255, 0.04)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.015)'">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px;">
+                            <img src="${proxyUrl(item.status.account.avatar)}" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
+                            <strong style="color: var(--text-color);">${escapeHTML(item.status.account.display_name || item.status.account.username)}</strong>
+                            <span style="color: var(--text-muted);">@${escapeHTML(item.status.account.acct)}</span>
+                            <span style="font-size: 11px; color: var(--text-muted); margin-left: auto;" title="${new Date(item.status.created_at).toLocaleDateString('es-ES', { hour: '2-digit', minute: '2-digit' })}">${formatRelativeTime(item.status.created_at)}</span>
+                        </div>
+                        <div class="toot-content" style="font-size: 13px; color: var(--text-color); line-height: 1.4;">
+                            ${sanitizeHTML(item.status.content)}
+                        </div>
+                    </div>
+                `;
+
+                const dismissIds = item.notifications.map(n => n.id).join(',');
+                const dismissButton = `
+                    <button onclick="dismissGroupedNotifications('${dismissIds}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0; margin-left: auto;" title="Eliminar estas notificaciones" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
+                `;
+
+                div.innerHTML = `
+                    <div style="display: flex; align-items: center; width: 100%;">
+                        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; margin-right: 12px;">
+                            ${icon}
+                        </div>
+                        <div style="flex-grow: 1; min-width: 0; font-size: 14px; color: var(--text-color);">
+                            ${text}
+                        </div>
+                        ${dismissButton}
+                    </div>
+                    ${avatarsHTML}
                     ${statusPreviewHTML}
                 `;
                 list.appendChild(div);
-            } else {
+            } else if (item.type === 'individual') {
+                const notif = item.notification;
+                const isUnread = !notif.read;
                 const div = document.createElement('div');
-                div.className = 'notification-item follow-notification';
-                div.style = `display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? '#10b981' : 'transparent'}; border-radius: 12px; padding: 15px; transition: all 0.2s; margin-bottom: 8px;`;
                 
-                let actionText = 'te ha seguido';
-                let actionIcon = `<span class="material-icons-outlined" style="font-size: 20px; color: #10b981; opacity: ${isUnread ? '1' : '0.6'};">person_add</span>`;
+                if (notif.type === 'mention') {
+                    div.className = 'notification-item mention-notification';
+                    div.style = `display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? '#d97706' : 'transparent'}; border-radius: 12px; transition: all 0.2s; margin-bottom: 8px; overflow: hidden;`;
+                    
+                    const dateTooltip = new Date(notif.created_at).toLocaleDateString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                    const dateDisplay = formatRelativeTime(notif.created_at);
+
+                    let mentionTootHTML = '';
+                    if (notif.status) {
+                        const statusCard = createThreadTootElement(notif.status, false);
+                        statusCard.style.border = 'none';
+                        statusCard.style.background = 'transparent';
+                        statusCard.style.boxShadow = 'none';
+                        statusCard.style.borderRadius = '0';
+                        statusCard.style.margin = '0';
+                        statusCard.style.padding = '15px';
+                        mentionTootHTML = statusCard.outerHTML;
+                    } else {
+                        mentionTootHTML = `<div style="padding: 15px; font-size: 14px; color: var(--text-muted);">No se pudo cargar el contenido de la mención.</div>`;
+                    }
+
+                    div.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 8px; padding: 10px 15px; background: rgba(217, 119, 6, ${isUnread ? '0.1' : '0.04'}); border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-muted);">
+                            <span class="material-icons-outlined" style="font-size: 18px; color: #d97706; opacity: ${isUnread ? '1' : '0.6'};">chat_bubble_outline</span>
+                            <span>
+                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name || notif.account.username)}</strong>
+                                te ha mencionado
+                            </span>
+                            <div style="flex-grow: 1;"></div>
+                            <span style="font-size: 11.5px; color: var(--text-muted); margin-right: 8px;" title="${dateTooltip}">
+                                ${dateDisplay}
+                            </span>
+                            <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
+                        </div>
+                        ${mentionTootHTML}
+                    `;
+                } else {
+                    div.className = 'notification-item individual-notification';
+                    div.style = `display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? 'var(--primary)' : 'transparent'}; border-radius: 12px; padding: 15px; transition: all 0.2s; margin-bottom: 8px;`;
+                    
+                    let actionText = 'realizó una acción';
+                    let actionIcon = '<span class="material-icons-outlined">notifications</span>';
+                    
+                    if (notif.type === 'follow') {
+                        actionText = 'te ha seguido';
+                        actionIcon = `<span class="material-icons-outlined" style="font-size: 20px; color: #10b981; opacity: ${isUnread ? '1' : '0.6'};">person_add</span>`;
+                    }
+                    
+                    div.innerHTML = `
+                        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">${actionIcon}</div>
+                        <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${proxyUrl(notif.account.avatar)}" alt="Avatar" style="width: 36px; height: 36px; flex-shrink: 0;">
+                        <div style="flex-grow: 1; min-width: 0;">
+                            <div style="font-size: 14px;">
+                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name || notif.account.username)}</strong> 
+                                <span style="color: var(--text-muted);">@${escapeHTML(notif.account.acct)}</span>
+                                ${actionText}
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                                <span title="${new Date(notif.created_at).toLocaleDateString('es-ES', { hour: '2-digit', minute: '2-digit' })}">${formatRelativeTime(notif.created_at)}</span>
+                            </div>
+                        </div>
+                        <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
+                    `;
+                }
                 
-                div.innerHTML = `
-                    <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">${actionIcon}</div>
-                    <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${proxyUrl(notif.account.avatar)}" alt="Avatar" style="width: 36px; height: 36px; flex-shrink: 0;">
-                    <div style="flex-grow: 1; min-width: 0;">
-                        <div style="font-size: 14px;">
-                            <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name)}</strong> 
-                            <span style="color: var(--text-muted);">@${escapeHTML(notif.account.acct)}</span>
-                            ${actionText}
-                        </div>
-                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                            ${new Date(notif.created_at).toLocaleString('es-ES')}
-                        </div>
-                    </div>
-                    <button onclick="dismissNotification('${notif.id}', this.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
-                `;
                 list.appendChild(div);
             }
         });
