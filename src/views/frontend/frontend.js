@@ -1737,10 +1737,19 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
             const updatedProfile = await response.json();
             currentProfileData = updatedProfile;
 
-            document.getElementById('my-display-name').innerText = updatedProfile.display_name;
+            const dispNameEl = document.getElementById('my-display-name');
+            if (dispNameEl) {
+                dispNameEl.innerText = updatedProfile.display_name;
+            }
             if (updatedProfile.avatar) {
-                document.getElementById('my-avatar').src = updatedProfile.avatar;
-                document.getElementById('composer-avatar').src = updatedProfile.avatar;
+                const myAvEl = document.getElementById('my-avatar');
+                if (myAvEl) {
+                    myAvEl.src = updatedProfile.avatar;
+                }
+                const compAvEl = document.getElementById('composer-avatar');
+                if (compAvEl) {
+                    compAvEl.src = updatedProfile.avatar;
+                }
             }
 
             statusDiv.innerText = '✓ Cambios guardados correctamente.';
