@@ -563,7 +563,25 @@ function startStreaming() {
         eventSource.close();
     }
 
-    eventSource = new EventSource(`/api/v1/streaming?since_id=${lastId}`);
+    let queryStr = `since_id=${lastId}`;
+    if (token) {
+        queryStr += `&access_token=${token}`;
+    }
+    if (currentTimeline === 'home') {
+        queryStr += `&stream=user`;
+    } else if (currentTimeline === 'local') {
+        queryStr += `&stream=public:local`;
+    } else if (currentTimeline.startsWith('tag_')) {
+        const tagName = currentTimeline.split('_')[1];
+        queryStr += `&stream=hashtag&tag=${tagName}`;
+    } else if (currentTimeline.startsWith('list_')) {
+        const listId = currentTimeline.split('_')[1];
+        queryStr += `&stream=list&list_id=${listId}`;
+    } else {
+        queryStr += `&stream=public`;
+    }
+
+    eventSource = new EventSource(`/api/v1/streaming?${queryStr}`);
     
     eventSource.addEventListener('update', (e) => {
         const toot = JSON.parse(e.data);

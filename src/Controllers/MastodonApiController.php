@@ -2723,6 +2723,48 @@ HTML;
         }
         ob_implicit_flush(true);
 
+        $stream = $_GET['stream'] ?? 'public';
+        $tag = $_GET['tag'] ?? null;
+        $listId = isset($_GET['list_id']) ? (int)$_GET['list_id'] : null;
+
+        $currUser = self::getAuthenticatedAccount();
+        $currUserId = $currUser ? (int)$currUser['id'] : null;
+
+        $whereClauses = ["s.id > ?"];
+        $queryParams = [0]; // Reemplazado por $lastId en cada ciclo
+
+        if ($stream === 'public:local') {
+            $whereClauses[] = "s.visibility = 'public'";
+            $whereClauses[] = "(a.domain IS NULL OR a.domain = '')";
+        } elseif ($stream === 'user') {
+            if (!$currUserId) {
+                exit;
+            }
+            $whereClauses[] = "(
+                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
+                OR
+                (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
+            )";
+            $queryParams[] = $currUserId;
+            $queryParams[] = $currUserId;
+            $queryParams[] = $currUserId;
+            $queryParams[] = '%@' . $currUser['username'] . '%';
+            $queryParams[] = '%/users/' . $currUser['username'] . '%';
+        } elseif ($stream === 'hashtag' && $tag) {
+            $whereClauses[] = "s.visibility IN ('public', 'unlisted')";
+            $whereClauses[] = "(s.content LIKE ? OR s.content LIKE ?)";
+            $queryParams[] = '%#' . $tag . '%';
+            $queryParams[] = '%/tags/' . $tag . '%';
+        } elseif ($stream === 'list' && $listId) {
+            $whereClauses[] = "s.visibility IN ('public', 'unlisted')";
+            $whereClauses[] = "s.account_id IN (SELECT account_id FROM list_accounts WHERE list_id = ?)";
+            $queryParams[] = $listId;
+        } else {
+            $whereClauses[] = "s.visibility = 'public'";
+        }
+
+        $whereSql = implode(" AND ", $whereClauses);
+
         $lastId = (int)($_GET['since_id'] ?? 0);
         if ($lastId <= 0) {
             $db = Database::connect();
@@ -2739,24 +2781,26 @@ HTML;
                 break;
             }
 
+            $queryParams[0] = $lastId;
+
             $stmt = $db->prepare("
                 SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
                        s.visibility as status_visibility, s.created_at as status_created_at, 
-                       s.in_reply_to_id, s.sensitive, s.spoiler_text,
+                       s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
                        a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
                        a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
                        a.locked, a.discoverable
                 FROM statuses s
                 JOIN accounts a ON s.account_id = a.id
-                WHERE s.id > ? AND s.visibility = 'public'
+                WHERE $whereSql
                 ORDER BY s.id ASC
             ");
-            $stmt->execute([$lastId]);
+            $stmt->execute($queryParams);
             $newStatuses = $stmt->fetchAll();
 
             foreach ($newStatuses as $row) {
                 $lastId = max($lastId, (int)$row['status_id']);
-                $statusFormatted = self::formatStatus($row);
+                $statusFormatted = self::formatStatus($row, $currUserId);
                 echo "event: update\n";
                 echo "data: " . json_encode($statusFormatted, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n\n";
                 flush();
