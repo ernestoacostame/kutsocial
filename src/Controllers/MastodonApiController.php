@@ -3439,15 +3439,25 @@ HTML;
             }
         }
 
-        $formattedContent = (!empty($row['domain']) || str_contains($row['status_content'], '<p>') || str_contains($row['status_content'], '</a>')) 
+        $formattedContent = (!empty($row['domain']) || str_contains($row['status_content'], '<p>')) 
             ? $row['status_content'] 
             : self::formatLocalContentToHtml($row['status_content'], $domain, $db, $proto);
+
+        $inReplyToAccountId = null;
+        if (!empty($row['in_reply_to_id'])) {
+            $stmtPar = $db->prepare("SELECT account_id FROM statuses WHERE id = ? LIMIT 1");
+            $stmtPar->execute([$row['in_reply_to_id']]);
+            $inReplyToAccountId = $stmtPar->fetchColumn() ?: null;
+            if ($inReplyToAccountId) {
+                $inReplyToAccountId = (string)$inReplyToAccountId;
+            }
+        }
  
         return [
             'id' => (string)$row['status_id'],
             'created_at' => date('c', strtotime($row['status_created_at'])),
             'in_reply_to_id' => !empty($row['in_reply_to_id']) ? (string)$row['in_reply_to_id'] : null,
-            'in_reply_to_account_id' => null,
+            'in_reply_to_account_id' => $inReplyToAccountId,
             'sensitive' => !empty($row['sensitive']),
             'spoiler_text' => $row['spoiler_text'] ?? '',
             'visibility' => $row['status_visibility'] ?? 'public',

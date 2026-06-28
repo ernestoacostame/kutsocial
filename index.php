@@ -308,6 +308,7 @@ $router->get('/@:username', function($params) use ($renderFrontend) {
 $router->get('/api/v1/timelines/home', [MastodonApiController::class, 'getHomeTimeline']);
 $router->get('/api/v1/timelines/public', [MastodonApiController::class, 'getPublicTimeline']);
 $router->post('/api/v1/statuses', [MastodonApiController::class, 'postStatus']);
+$router->post('/api/v2/statuses', [MastodonApiController::class, 'postStatus']);
 $router->get('/api/v1/statuses/resolve', [MastodonApiController::class, 'resolveStatusUrl']);
 $router->get('/api/v1/statuses/:id', [MastodonApiController::class, 'getSingleStatus']);
 $router->get('/api/v1/statuses/:id/context', [MastodonApiController::class, 'getStatusContext']);
