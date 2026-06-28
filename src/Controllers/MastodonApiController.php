@@ -1238,7 +1238,7 @@ HTML;
         // Consultar estadísticas en tiempo real en SQLite
         $db = Database::connect();
         
-        if ($account['domain'] !== null) {
+        if (!empty($account['domain'])) {
             $followersCount = (int)($account['followers_count'] ?? 0);
             $followingCount = (int)($account['following_count'] ?? 0);
             $statusesCount = (int)($account['statuses_count'] ?? 0);
@@ -1539,7 +1539,7 @@ HTML;
             return;
         }
 
-        if ($account['domain'] !== null) {
+        if (!empty($account['domain'])) {
             $lastUpdated = strtotime($account['updated_at']);
             if (time() - $lastUpdated >= 300) {
                 $updatedAccount = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($account['username'] . '@' . $account['domain']);
@@ -1780,7 +1780,7 @@ HTML;
         $stmtAccount->execute([$id]);
         $account = $stmtAccount->fetch();
 
-        if ($account && $account['domain'] !== null) {
+        if ($account && !empty($account['domain'])) {
             $stmtCount = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
             $stmtCount->execute([$id]);
             $localCount = (int)$stmtCount->fetchColumn();
@@ -2701,7 +2701,7 @@ HTML;
             }
         }
 
-        $formattedContent = ($row['domain'] !== null || str_contains($row['status_content'], '<p>') || str_contains($row['status_content'], '</a>')) 
+        $formattedContent = (!empty($row['domain']) || str_contains($row['status_content'], '<p>') || str_contains($row['status_content'], '</a>')) 
             ? $row['status_content'] 
             : self::formatLocalContentToHtml($row['status_content'], $domain, $db, $proto);
  
@@ -4205,7 +4205,7 @@ HTML;
         $stmtFollower->execute([$followerId]);
         $follower = $stmtFollower->fetch();
 
-        if ($follower && $follower['domain'] !== null && !empty($follower['inbox_url'])) {
+        if ($follower && !empty($follower['domain']) && !empty($follower['inbox_url'])) {
             $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
             $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
             $localActorUrl = "$proto://$domain/users/{$account['username']}";
@@ -4251,7 +4251,7 @@ HTML;
         $stmtFollower->execute([$followerId]);
         $follower = $stmtFollower->fetch();
 
-        if ($follower && $follower['domain'] !== null && !empty($follower['inbox_url'])) {
+        if ($follower && !empty($follower['domain']) && !empty($follower['inbox_url'])) {
             $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
             $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
             $localActorUrl = "$proto://$domain/users/{$account['username']}";
