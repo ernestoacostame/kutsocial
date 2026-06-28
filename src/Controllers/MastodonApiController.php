@@ -716,11 +716,14 @@ HTML;
      * Endpoint GET /api/v1/accounts/verify_credentials
      */
     public static function verifyCredentials(): void {
+        \KutSocial\Controllers\ActivityPubController::log("verifyCredentials: request received. Headers=" . json_encode(Router::getAllHeaders()));
         $account = self::getAuthenticatedAccount();
         if (!$account) {
+            \KutSocial\Controllers\ActivityPubController::log("verifyCredentials: Unauthorized");
             Router::json(['error' => 'Unauthorized'], 401);
         }
 
+        \KutSocial\Controllers\ActivityPubController::log("verifyCredentials: success for username=" . $account['username']);
         Router::json(self::formatAccount($account));
     }
 
@@ -1116,12 +1119,14 @@ HTML;
 
     public static function getAuthenticatedAccount(): ?array {
         $token = Router::getBearerToken();
+        \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: token received=" . ($token ?: 'null'));
         if (!$token) {
             return null;
         }
 
         $parts = explode('_', $token);
         if (count($parts) !== 3 || $parts[0] !== 'token') {
+            \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: token format invalid");
             return null;
         }
 
@@ -1132,6 +1137,7 @@ HTML;
         $expectedHash = hash_hmac('sha256', $userId, $secret);
 
         if (!hash_equals($expectedHash, $hash)) {
+            \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: token hash mismatch");
             return null;
         }
 
@@ -1140,6 +1146,7 @@ HTML;
         $stmt->execute([$userId]);
         $account = $stmt->fetch();
 
+        \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: resolved account=" . ($account ? $account['username'] : 'null'));
         return $account ?: null;
     }
 
