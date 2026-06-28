@@ -109,6 +109,9 @@ $renderFrontend = function() {
     } elseif ($uri === '/home') {
         $section = 'feed';
         $currentTimeline = 'home';
+    } elseif ($uri === '/local') {
+        $section = 'feed';
+        $currentTimeline = 'local';
     } elseif ($uri === '/bookmarks') {
         $section = 'feed';
         $currentTimeline = 'bookmarks';
@@ -367,6 +370,7 @@ $router->post('/api/v1/import', [MastodonApiController::class, 'handleImport']);
 $router->get('/', $renderFrontend);
 $router->get('/public', $renderFrontend);
 $router->get('/home', $renderFrontend);
+$router->get('/local', $renderFrontend);
 $router->get('/bookmarks', $renderFrontend);
 $router->get('/notifications', $renderFrontend);
 $router->get('/lists', $renderFrontend);

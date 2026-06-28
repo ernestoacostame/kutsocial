@@ -66,13 +66,18 @@
 
                 <ul class="nav-menu">
                     <li class="nav-item">
-                        <a href="/public" id="nav-public" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'public') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">public</span> Federación Pública
+                        <a href="/home" id="nav-home" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">home</span> Inicio
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="/home" id="nav-home" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">home</span> Timeline Local
+                        <a href="/local" id="nav-local" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'local') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">groups</span> Timeline Local
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/public" id="nav-public" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'public') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">public</span> Federación Pública
                         </a>
                     </li>
                     <li class="nav-item">
