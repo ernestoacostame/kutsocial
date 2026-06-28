@@ -148,10 +148,15 @@ class ActivityPubController {
             if (is_array($fieldsList)) {
                 $attachments = [];
                 foreach ($fieldsList as $f) {
+                    $val = $f['value'] ?? '';
+                    if (filter_var($val, FILTER_VALIDATE_URL)) {
+                        $label = preg_replace('/^https?:\/\/(www\.)?/', '', $val);
+                        $val = sprintf('<a href="%s" rel="me nofollow noopener noreferrer" target="_blank">%s</a>', $val, $label);
+                    }
                     $attachments[] = [
                         'type' => 'PropertyValue',
-                        'name' => $f['name'],
-                        'value' => $f['value']
+                        'name' => $f['name'] ?? '',
+                        'value' => $val
                     ];
                 }
                 if (!empty($attachments)) {
