@@ -216,6 +216,8 @@ $renderFrontend = function() {
 };
 
 // --- Rutas de Mastodon API ---
+$router->get('/.well-known/nodeinfo', [MastodonApiController::class, 'wellKnownNodeinfo']);
+$router->get('/nodeinfo/2.0', [MastodonApiController::class, 'nodeinfo20']);
 $router->get('/api/v1/instance', [MastodonApiController::class, 'getInstance']);
 $router->get('/api/v1/instance/peers', [MastodonApiController::class, 'getPeers']);
 $router->get('/api/v2/instance', [MastodonApiController::class, 'getInstanceV2']);

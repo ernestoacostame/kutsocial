@@ -109,6 +109,58 @@ class MastodonApiController {
     }
 
     /**
+     * Endpoint GET /.well-known/nodeinfo
+     */
+    public static function wellKnownNodeinfo(): void {
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        
+        Router::json([
+            'links' => [
+                [
+                    'rel' => 'http://nodeinfo.diaspora.gene.ar/ns/schema/2.0',
+                    'href' => "$proto://$domain/nodeinfo/2.0"
+                ]
+            ]
+        ]);
+    }
+
+    /**
+     * Endpoint GET /nodeinfo/2.0
+     */
+    public static function nodeinfo20(): void {
+        $db = Database::connect();
+        
+        $userCount = self::getTableRowCount('accounts', "domain IS NULL");
+        $statusCount = self::getTableRowCount('statuses');
+
+        Router::json([
+            'version' => '2.0',
+            'software' => [
+                'name' => 'mastodon',
+                'version' => '4.6.0-kutsocial'
+            ],
+            'protocols' => [
+                'activitypub'
+            ],
+            'services' => [
+                'inbound' => [],
+                'outbound' => []
+            ],
+            'openRegistrations' => false,
+            'usage' => [
+                'users' => [
+                    'total' => $userCount,
+                    'activeHalfyear' => $userCount,
+                    'activeMonth' => $userCount
+                ],
+                'localPosts' => $statusCount
+            ],
+            'metadata' => (object)[]
+        ]);
+    }
+
+    /**
      * Endpoint POST /api/v1/apps
      */
     public static function createApp(): void {
