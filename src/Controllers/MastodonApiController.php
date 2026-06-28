@@ -5870,8 +5870,8 @@ HTML;
         $id = (int)$params['id'];
         $db = Database::connect();
 
-        // Eliminar el reblog
-        $stmtDel = $db->prepare("DELETE FROM statuses WHERE account_id = ? AND reblog_of_id = ? AND content = ''");
+        // Eliminar el reblog (retoot simple o cita)
+        $stmtDel = $db->prepare("DELETE FROM statuses WHERE account_id = ? AND reblog_of_id = ?");
         $stmtDel->execute([$account['id'], $id]);
 
         // Retornar el status original formateado
