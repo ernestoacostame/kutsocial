@@ -4879,9 +4879,10 @@ HTML;
             return;
         }
 
-        $db = Database::connect();
         $stmt = $db->prepare("
-            SELECT s.*, 
+            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                   s.visibility as status_visibility, s.created_at as status_created_at, 
+                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
                    a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
                    a.locked, a.discoverable, a.fields
