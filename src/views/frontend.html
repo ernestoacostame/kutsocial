@@ -102,7 +102,7 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="/profile" id="nav-profile" class="nav-link <?= ($section === 'profile') ? 'active' : '' ?>">
+                        <a href="/@<?= htmlspecialchars($owner['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= (($section === 'profile') || ($section === 'profile-view' && $activeProfileViewId === ($owner['id'] ?? null))) ? 'active' : '' ?>">
                             <span class="material-icons-outlined">person</span> Mi Perfil
                         </a>
                     </li>

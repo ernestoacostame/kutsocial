@@ -36,6 +36,17 @@ try {
         echo "SUCCESS: Escritura de log correcta ($testWrite bytes escritos).\n";
     }
 
+    echo "\n=== LOG TAIL ===\n";
+    if (file_exists($logFile)) {
+        $lines = file($logFile);
+        $tail = array_slice($lines, -40);
+        foreach ($tail as $line) {
+            echo $line;
+        }
+    } else {
+        echo "El archivo de log no existe.\n";
+    }
+
     echo "\n=== FOLLOWS ===\n";
     $follows = $db->query("SELECT * FROM follows ORDER BY id DESC LIMIT 20")->fetchAll();
     if (empty($follows)) {
@@ -55,6 +66,14 @@ try {
     echo "\n=== ACCOUNTS ===\n";
     $accounts = $db->query("SELECT id, username, domain, inbox_url, created_at FROM accounts ORDER BY id DESC LIMIT 20")->fetchAll();
     print_r($accounts);
+    
+    echo "\n=== ALL TABLES ===\n";
+    $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN);
+    print_r($tables);
+
+    echo "\n=== APPLIED MIGRATIONS ===\n";
+    $migrations = $db->query("SELECT version FROM schema_migrations ORDER BY version ASC")->fetchAll(PDO::FETCH_COLUMN);
+    print_r($migrations);
     
     echo "\n=== FOLLOWS COUNT BY STATUS ===\n";
     $followsCount = $db->query("SELECT status, COUNT(*) as qty FROM follows GROUP BY status")->fetchAll();
