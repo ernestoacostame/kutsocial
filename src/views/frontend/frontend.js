@@ -61,8 +61,10 @@ window.addEventListener('scroll', () => {
 });
 
 // Evento de Login
-document.getElementById('login-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
+const loginForm = document.getElementById('login-form');
+if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
     const u = document.getElementById('username').value;
     const p = document.getElementById('password').value;
     const errDiv = document.getElementById('login-error');
@@ -117,7 +119,8 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         errDiv.innerText = 'Error de red al conectar al servidor.';
         errDiv.style.display = 'block';
     }
-});
+    });
+}
 
 function logout() {
     localStorage.removeItem('kutsocial_token');
@@ -1716,56 +1719,59 @@ async function loadProfileFormValues() {
 }
 
 // Interceptar submit del formulario de perfil
-document.getElementById('profile-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const statusDiv = document.getElementById('profile-save-status');
-    statusDiv.innerText = 'Guardando cambios...';
-    statusDiv.style.color = 'var(--text-muted)';
+const profileForm = document.getElementById('profile-form');
+if (profileForm) {
+    profileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const statusDiv = document.getElementById('profile-save-status');
+        statusDiv.innerText = 'Guardando cambios...';
+        statusDiv.style.color = 'var(--text-muted)';
 
-    const formData = new FormData(document.getElementById('profile-form'));
+        const formData = new FormData(profileForm);
 
-    try {
-        const response = await fetch('/api/v1/accounts/update_credentials', {
-            method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            },
-            body: formData
-        });
+        try {
+            const response = await fetch('/api/v1/accounts/update_credentials', {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
 
-        if (response.ok) {
-            const updatedProfile = await response.json();
-            currentProfileData = updatedProfile;
+            if (response.ok) {
+                const updatedProfile = await response.json();
+                currentProfileData = updatedProfile;
 
-            const dispNameEl = document.getElementById('my-display-name');
-            if (dispNameEl) {
-                dispNameEl.innerText = updatedProfile.display_name;
-            }
-            if (updatedProfile.avatar) {
-                const myAvEl = document.getElementById('my-avatar');
-                if (myAvEl) {
-                    myAvEl.src = updatedProfile.avatar;
+                const dispNameEl = document.getElementById('my-display-name');
+                if (dispNameEl) {
+                    dispNameEl.innerText = updatedProfile.display_name;
                 }
-                const compAvEl = document.getElementById('composer-avatar');
-                if (compAvEl) {
-                    compAvEl.src = updatedProfile.avatar;
+                if (updatedProfile.avatar) {
+                    const myAvEl = document.getElementById('my-avatar');
+                    if (myAvEl) {
+                        myAvEl.src = updatedProfile.avatar;
+                    }
+                    const compAvEl = document.getElementById('composer-avatar');
+                    if (compAvEl) {
+                        compAvEl.src = updatedProfile.avatar;
+                    }
                 }
+
+                statusDiv.innerText = '✓ Cambios guardados correctamente.';
+                statusDiv.style.color = 'var(--secondary)';
+
+                loadProfileFormValues();
+            } else {
+                const data = await response.json();
+                statusDiv.innerText = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
+                statusDiv.style.color = 'var(--error)';
             }
-
-            statusDiv.innerText = '✓ Cambios guardados correctamente.';
-            statusDiv.style.color = 'var(--secondary)';
-
-            loadProfileFormValues();
-        } else {
-            const data = await response.json();
-            statusDiv.innerText = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
+        } catch (err) {
+            statusDiv.innerText = 'Error al conectar al servidor.';
             statusDiv.style.color = 'var(--error)';
         }
-    } catch (err) {
-        statusDiv.innerText = 'Error al conectar al servidor.';
-        statusDiv.style.color = 'var(--error)';
-    }
-});
+    });
+}
 
 // Funciones de descarga de exportaciones
 async function downloadExport(endpoint, defaultFilename) {
@@ -1801,38 +1807,41 @@ async function downloadExport(endpoint, defaultFilename) {
 }
 
 // Interceptar submit del formulario de importación
-document.getElementById('import-form').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const statusDiv = document.getElementById('import-status-msg');
-    statusDiv.innerText = 'Procesando importación...';
-    statusDiv.style.color = 'var(--text-muted)';
+const importForm = document.getElementById('import-form');
+if (importForm) {
+    importForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const statusDiv = document.getElementById('import-status-msg');
+        statusDiv.innerText = 'Procesando importación...';
+        statusDiv.style.color = 'var(--text-muted)';
 
-    const formData = new FormData(document.getElementById('import-form'));
+        const formData = new FormData(importForm);
 
-    try {
-        const response = await fetch('/api/v1/import', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`
-            },
-            body: formData
-        });
+        try {
+            const response = await fetch('/api/v1/import', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
 
-        if (response.ok) {
-            const data = await response.json();
-            statusDiv.innerText = `✓ Importación completada: ${data.imported} registros procesados correctamente. Errores: ${data.errors || 0}`;
-            statusDiv.style.color = 'var(--secondary)';
-            document.getElementById('import-file').value = '';
-        } else {
-            const data = await response.json();
-            statusDiv.innerText = 'Error al importar: ' + (data.error || 'Intenta de nuevo.');
+            if (response.ok) {
+                const data = await response.json();
+                statusDiv.innerText = `✓ Importación completada: ${data.imported} registros procesados correctamente. Errores: ${data.errors || 0}`;
+                statusDiv.style.color = 'var(--secondary)';
+                document.getElementById('import-file').value = '';
+            } else {
+                const data = await response.json();
+                statusDiv.innerText = 'Error al importar: ' + (data.error || 'Intenta de nuevo.');
+                statusDiv.style.color = 'var(--error)';
+            }
+        } catch (err) {
+            statusDiv.innerText = 'Error al conectar al servidor.';
             statusDiv.style.color = 'var(--error)';
         }
-    } catch (err) {
-        statusDiv.innerText = 'Error al conectar al servidor.';
-        statusDiv.style.color = 'var(--error)';
-    }
-});
+    });
+}
 
 async function loadUsersList(type, accountId) {
     if (!accountId) return;

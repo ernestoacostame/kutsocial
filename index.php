@@ -129,18 +129,22 @@ $renderFrontend = function() {
     } elseif (str_starts_with($uri, '/@')) {
         $section = 'profile-view';
         $usernameWithAt = substr($uri, 2);
-        // Intentar resolver ID en DB local
-        $parts = explode('@', $usernameWithAt);
-        $uname = $parts[0];
-        $udomain = $parts[1] ?? null;
-        if ($udomain) {
-            $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
-            $stmt->execute([$uname, $udomain]);
+        if (str_starts_with($usernameWithAt, 'id-')) {
+            $activeProfileViewId = (int)substr($usernameWithAt, 3);
         } else {
-            $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
-            $stmt->execute([$uname]);
+            // Intentar resolver ID en DB local
+            $parts = explode('@', $usernameWithAt);
+            $uname = $parts[0];
+            $udomain = $parts[1] ?? null;
+            if ($udomain) {
+                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                $stmt->execute([$uname, $udomain]);
+            } else {
+                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                $stmt->execute([$uname]);
+            }
+            $activeProfileViewId = $stmt->fetchColumn() ?: null;
         }
-        $activeProfileViewId = $stmt->fetchColumn() ?: null;
     } elseif (str_contains($uri, '/statuses/')) {
         $section = 'thread-view';
         $parts = explode('/', $uri);
