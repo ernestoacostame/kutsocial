@@ -174,6 +174,14 @@ try {
             } else {
                 echo "Response Body: " . substr($resp, 0, 300) . "\n";
             }
+            
+            // Limpiar los datos de prueba de base de datos para no generar notificaciones basura
+            $stmtCleanNotif = $db->prepare("DELETE FROM notifications WHERE from_account_id IN (SELECT id FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test')");
+            $stmtCleanNotif->execute();
+            $stmtCleanFollow = $db->prepare("DELETE FROM follows WHERE account_id IN (SELECT id FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test') OR target_account_id IN (SELECT id FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test')");
+            $stmtCleanFollow->execute();
+            $stmtCleanAcc = $db->prepare("DELETE FROM accounts WHERE username = 'test_actor' AND domain = 'remote.test'");
+            $stmtCleanAcc->execute();
         } else {
             echo "Error al generar la firma para la petición de prueba.\n";
         }
