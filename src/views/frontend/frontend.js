@@ -1935,7 +1935,8 @@ async function loadNotifications() {
             }
         });
     } catch (e) {
-        list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar notificaciones.</div>';
+        console.error("Error al cargar notificaciones:", e);
+        list.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar notificaciones: ${escapeHTML(e.message)}<pre style="text-align:left; font-size:11px; margin-top:10px; max-height:200px; overflow:auto; background:rgba(0,0,0,0.2); padding:10px; border-radius:6px;">${escapeHTML(e.stack)}</pre></div>`;
     }
 }
 
