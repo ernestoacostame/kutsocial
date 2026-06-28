@@ -264,6 +264,7 @@ $router->get('/api/v2/search', [MastodonApiController::class, 'search']);
 
 // --- Rutas de ActivityPub ---
 $router->get('/.well-known/webfinger', [ActivityPubController::class, 'webfinger']);
+$router->get('/.well-known/host-meta', [ActivityPubController::class, 'hostMeta']);
 $router->get('/users/:username', [ActivityPubController::class, 'getActor']);
 $router->post('/users/:username/inbox', [ActivityPubController::class, 'postInbox']);
 $router->get('/users/:username/outbox', [ActivityPubController::class, 'getOutbox']);

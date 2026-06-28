@@ -8,6 +8,23 @@ use Exception;
 
 class ActivityPubController {
     /**
+     * Endpoint GET /.well-known/host-meta
+     */
+    public static function hostMeta(): void {
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        
+        header('Content-Type: application/xrd+xml; charset=utf-8');
+        echo <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<XRD xmlns="http://docs.oasis-open.org/ns/xri/xrd-1.0">
+  <Link rel="lrdd" type="application/xrd+xml" template="$proto://$domain/.well-known/webfinger?resource={uri}"/>
+</XRD>
+XML;
+        exit;
+    }
+
+    /**
      * Endpoint Webfinger: /.well-known/webfinger
      */
     public static function webfinger(): void {
