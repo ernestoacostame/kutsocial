@@ -102,7 +102,7 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="/@<?= htmlspecialchars($owner['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= (($section === 'profile') || ($section === 'profile-view' && $activeProfileViewId === ($owner['id'] ?? null))) ? 'active' : '' ?>">
+                        <a href="/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= (($section === 'profile') || ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null))) ? 'active' : '' ?>">
                             <span class="material-icons-outlined">person</span> Mi Perfil
                         </a>
                     </li>
@@ -112,7 +112,7 @@
                         </a>
                     </li>
                     <li class="nav-item" id="nav-item-owner" style="display: none;">
-                        <a href="/@<?= htmlspecialchars($owner['username'] ?? '') ?>" id="nav-owner-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($owner['id'] ?? null)) ? 'active' : '' ?>">
+                        <a href="/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-owner-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>">
                             <span class="material-icons-outlined">verified_user</span> Propietario
                         </a>
                     </li>
