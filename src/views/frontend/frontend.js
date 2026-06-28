@@ -292,7 +292,7 @@ async function updateNotificationBadge() {
             });
             if (res.ok) {
                 const data = await res.json();
-                notifCount = Array.isArray(data) ? data.length : 0;
+                notifCount = Array.isArray(data) ? data.filter(n => !n.read).length : 0;
             }
         } catch (e) {}
 
@@ -1586,13 +1586,16 @@ async function loadNotifications() {
         }
         
         data.forEach(notif => {
+            const isUnread = !notif.read;
+            
             if (notif.type === 'mention') {
                 const div = document.createElement('div');
-                div.style = "display: flex; flex-grow: 1; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; transition: background 0.2s; margin-bottom: 8px; overflow: hidden;";
+                div.className = 'notification-item mention-notification';
+                div.style = `display: flex; flex-grow: 1; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? 'var(--primary)' : 'transparent'}; border-radius: 12px; transition: all 0.2s; margin-bottom: 8px; overflow: hidden;`;
                 
                 div.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 8px; padding: 10px 15px; background: rgba(99, 102, 241, 0.05); border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-muted);">
-                        <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary);">reply</span>
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 10px 15px; background: rgba(99, 102, 241, ${isUnread ? '0.1' : '0.04'}); border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-muted);">
+                        <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary); opacity: ${isUnread ? '1' : '0.6'};">reply</span>
                         <span>
                             <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name)}</strong>
                             te ha mencionado
@@ -1624,7 +1627,8 @@ async function loadNotifications() {
                 list.appendChild(div);
             } else if (notif.type === 'favourite') {
                 const div = document.createElement('div');
-                div.style = "display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; transition: background 0.2s; margin-bottom: 8px;";
+                div.className = 'notification-item favourite-notification';
+                div.style = `display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? '#f59e0b' : 'transparent'}; border-radius: 12px; padding: 15px; transition: all 0.2s; margin-bottom: 8px;`;
                 
                 let statusPreviewHTML = '';
                 if (notif.status) {
@@ -1645,7 +1649,7 @@ async function loadNotifications() {
                 div.innerHTML = `
                     <div style="display: flex; gap: 15px; align-items: center; width: 100%;">
                         <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">
-                            <span class="material-icons" style="font-size: 20px; color: #f59e0b;">star</span>
+                            <span class="material-icons" style="font-size: 20px; color: #f59e0b; opacity: ${isUnread ? '1' : '0.6'};">star</span>
                         </div>
                         <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${proxyUrl(notif.account.avatar)}" alt="Avatar" style="width: 36px; height: 36px; flex-shrink: 0;">
                         <div style="flex-grow: 1; min-width: 0;">
@@ -1665,10 +1669,11 @@ async function loadNotifications() {
                 list.appendChild(div);
             } else {
                 const div = document.createElement('div');
-                div.style = "display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px; padding: 15px; transition: background 0.2s; margin-bottom: 8px;";
+                div.className = 'notification-item follow-notification';
+                div.style = `display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? '#10b981' : 'transparent'}; border-radius: 12px; padding: 15px; transition: all 0.2s; margin-bottom: 8px;`;
                 
                 let actionText = 'te ha seguido';
-                let actionIcon = '<span class="material-icons-outlined" style="font-size: 20px; color: var(--text-muted);">person_add</span>';
+                let actionIcon = `<span class="material-icons-outlined" style="font-size: 20px; color: #10b981; opacity: ${isUnread ? '1' : '0.6'};">person_add</span>`;
                 
                 div.innerHTML = `
                     <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">${actionIcon}</div>
@@ -1731,7 +1736,7 @@ async function dismissNotification(id, element) {
 }
 
 async function clearAllNotifications() {
-    if (!confirm('¿Estás seguro de que deseas eliminar todas las notificaciones?')) return;
+    if (!confirm('¿Estás seguro de que deseas marcar todas las notificaciones como leídas?')) return;
     try {
         const res = await fetch('/api/v1/notifications/clear', {
             method: 'POST',
@@ -1740,7 +1745,7 @@ async function clearAllNotifications() {
         if (res.ok) {
             loadNotifications();
         } else {
-            alert('Error al limpiar las notificaciones.');
+            alert('Error al marcar las notificaciones como leídas.');
         }
     } catch (err) {
         alert('Error al conectar con el servidor.');

@@ -383,6 +383,9 @@ class Database {
                 "ALTER TABLE statuses ADD COLUMN emojis TEXT NULL",
                 "ALTER TABLE accounts ADD COLUMN emojis TEXT NULL",
                 "ALTER TABLE accounts ADD COLUMN url TEXT NULL"
+            ],
+            16 => [
+                "ALTER TABLE accounts ADD COLUMN notifications_read_at TEXT NULL"
             ]
         ];
     }

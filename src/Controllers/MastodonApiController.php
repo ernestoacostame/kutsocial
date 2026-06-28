@@ -1188,12 +1188,16 @@ HTML;
         if ($limit > 80) $limit = 80;
         $notifications = array_slice($notifications, 0, $limit);
 
+        $readAt = !empty($account['notifications_read_at']) ? strtotime($account['notifications_read_at']) : 0;
+
         // Lógica de fallback para tipos no soportados
         $filtered = [];
         foreach ($notifications as $notification) {
             if ($supportedTypes !== null && !in_array($notification['type'], $supportedTypes)) {
                 $notification['type'] = 'mention'; // Fallback a mención genérica
             }
+            $createdTime = strtotime($notification['created_at']);
+            $notification['read'] = ($createdTime <= $readAt);
             $filtered[] = $notification;
         }
 
@@ -1231,27 +1235,12 @@ HTML;
         $account = self::getAuthenticatedAccount();
         if (!$account) {
             Router::json(['error' => 'Unauthorized'], 401);
+            return;
         }
 
         $db = Database::connect();
-
-        // Obtener las notificaciones actuales para guardarlas como descartadas
-        $stmt = $db->prepare("
-            SELECT f.id FROM follows f
-            WHERE f.target_account_id = ?
-        ");
+        $stmt = $db->prepare("UPDATE accounts SET notifications_read_at = datetime('now') WHERE id = ?");
         $stmt->execute([$account['id']]);
-        $rows = $stmt->fetchAll(\PDO::FETCH_COLUMN);
-
-        if (!empty($rows)) {
-            $ins = $db->prepare("
-                INSERT OR IGNORE INTO dismissed_notifications (account_id, notification_id)
-                VALUES (?, ?)
-            ");
-            foreach ($rows as $id) {
-                $ins->execute([$account['id'], 'follow_' . $id]);
-            }
-        }
 
         Router::json([]);
     }
@@ -2488,9 +2477,10 @@ HTML;
                         $description = trim(file_get_contents($descFile));
                     }
 
+                    $mediaApiType = self::detectMediaTypeFromUrl($fileUrl);
                     $mediaAttachments[] = [
                         'id' => $mId,
-                        'type' => 'image',
+                        'type' => $mediaApiType,
                         'url' => $fileUrl,
                         'preview_url' => $fileUrl,
                         'remote_url' => null,
@@ -3259,7 +3249,20 @@ HTML;
         $attachments = [];
         if (!empty($row['media_attachments'])) {
             $attachments = json_decode($row['media_attachments'], true);
-            if (!is_array($attachments)) {
+            if (is_array($attachments)) {
+                foreach ($attachments as &$att) {
+                    $url = $att['url'] ?? '';
+                    $currentType = $att['type'] ?? 'image';
+                    
+                    // Si el tipo actual es 'image', pero la extensión de la URL o el nombre dice que es video/audio
+                    if ($currentType === 'image') {
+                        $inferredType = self::detectMediaTypeFromUrl($url);
+                        if ($inferredType !== 'image') {
+                            $att['type'] = $inferredType;
+                        }
+                    }
+                }
+            } else {
                 $attachments = [];
             }
         }
@@ -4248,7 +4251,7 @@ HTML;
             return;
         }
 
-        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        $allowedExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'm4v', 'webm', 'mov', 'mp3', 'm4a', 'ogg', 'wav', 'aac', 'opus'];
         $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
 
         if (!in_array($ext, $allowedExtensions)) {
@@ -4297,9 +4300,11 @@ HTML;
             file_put_contents($descFile, $description);
         }
 
+        $mediaApiType = self::detectMediaTypeFromUrl($fileUrl);
+
         $attachment = [
             'id' => $mediaId,
-            'type' => 'image',
+            'type' => $mediaApiType,
             'url' => $fileUrl,
             'preview_url' => $fileUrl,
             'remote_url' => null,
