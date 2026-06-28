@@ -63,7 +63,7 @@ $renderFrontend = function() {
     $db = Database::connect();
     
     // Obtener datos del usuario propietario local (único usuario del cliente)
-    $stmtOwner = $db->query("SELECT * FROM accounts WHERE domain IS NULL AND role = 'owner' LIMIT 1");
+    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
     $localUser = $stmtOwner->fetch();
     
     $userLists = [];
@@ -137,7 +137,7 @@ $renderFrontend = function() {
             $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
             $stmt->execute([$uname, $udomain]);
         } else {
-            $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+            $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
             $stmt->execute([$uname]);
         }
         $activeProfileViewId = $stmt->fetchColumn() ?: null;
@@ -191,7 +191,7 @@ $renderFrontend = function() {
                 }
             }
 
-            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE domain IS NULL AND role = 'owner' LIMIT 1");
+            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
             $owner = $stmt->fetch();
             if ($owner) {
                 if (isset($owner['indexable']) && !$owner['indexable']) {

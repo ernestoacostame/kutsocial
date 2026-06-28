@@ -67,6 +67,10 @@ try {
     $accounts = $db->query("SELECT id, username, domain, inbox_url, created_at FROM accounts ORDER BY id DESC LIMIT 20")->fetchAll();
     print_r($accounts);
     
+    echo "\n=== LOCAL ACCOUNTS (domain IS NULL) ===\n";
+    $localAccounts = $db->query("SELECT id, username, domain, role, created_at FROM accounts WHERE domain IS NULL")->fetchAll();
+    print_r($localAccounts);
+    
     echo "\n=== ALL TABLES ===\n";
     $tables = $db->query("SELECT name FROM sqlite_master WHERE type='table'")->fetchAll(PDO::FETCH_COLUMN);
     print_r($tables);
