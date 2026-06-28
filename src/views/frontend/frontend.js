@@ -137,6 +137,7 @@ function initPublicView() {
 }
 
 function showLoginModal() {
+    document.documentElement.classList.remove('is-authenticated');
     document.getElementById('login-container').style.display = 'flex';
     
     let closeBtn = document.getElementById('btn-close-login');
@@ -149,6 +150,7 @@ function showLoginModal() {
         closeBtn.style.cssText = 'display:block; margin-top:15px; font-size:13.5px; color:var(--text-muted); text-decoration:none; font-weight: 500;';
         closeBtn.onclick = (e) => {
             e.preventDefault();
+            document.documentElement.classList.add('is-authenticated');
             document.getElementById('login-container').style.display = 'none';
         };
         card.appendChild(closeBtn);
