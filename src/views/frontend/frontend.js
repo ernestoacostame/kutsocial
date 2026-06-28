@@ -735,7 +735,6 @@ function createThreadTootElement(toot, isMain = false) {
                     prevNode.textContent = txt.substring(0, txt.lastIndexOf('RE:'));
                 }
                 link.remove();
-                break;
             }
         }
         sanitizedContent = tempDiv.innerHTML;

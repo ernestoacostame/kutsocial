@@ -2516,7 +2516,16 @@ HTML;
                 // Si hay texto propio del usuario, es un Quote Post.
                 // Agregamos el enlace al post citado al final de la publicación para que Mona/Ice Cubes rendericen la cita.
                 if (!empty($content)) {
-                    $content .= " <a href=\"{$quoteRow['uri']}\" class=\"mention\">{$quoteRow['uri']}</a>";
+                    $hasLink = str_contains($content, $quoteRow['uri']);
+                    if (!$hasLink) {
+                        $path = parse_url($quoteRow['uri'], PHP_URL_PATH);
+                        if ($path && str_contains($content, $path)) {
+                            $hasLink = true;
+                        }
+                    }
+                    if (!$hasLink) {
+                        $content .= " <a href=\"{$quoteRow['uri']}\" class=\"mention\">{$quoteRow['uri']}</a>";
+                    }
                 }
             }
         }
