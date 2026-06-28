@@ -2919,13 +2919,40 @@ HTML;
             return '<a href="' . htmlspecialchars($cleanRawUrl, ENT_COMPAT, 'UTF-8') . '" target="_blank" rel="nofollow noopener noreferrer">' . $cleanVisibleUrl . '</a>' . $trailingVisible;
         }, $escaped);
 
-        // Extraer etiquetas <a> temporales para evitar modificarlas
+        // Extraer etiquetas <a> temporales usando búsqueda de cadenas simple (sin regex)
         $placeholders = [];
-        $escaped = preg_replace_callback('/<a\b[^>]*>[^<]*<\/a>/i', function($m) use (&$placeholders) {
-            $key = '___LINK_PLACEHOLDER_' . count($placeholders) . '___';
-            $placeholders[$key] = $m[0];
-            return $key;
-        }, $escaped);
+        $result = '';
+        $offset = 0;
+        $len = strlen($escaped);
+        
+        while ($offset < $len) {
+            $posA = stripos($escaped, '<a', $offset);
+            if ($posA === false) {
+                $result .= substr($escaped, $offset);
+                break;
+            }
+            
+            $result .= substr($escaped, $offset, $posA - $offset);
+            
+            // Buscar el final de la etiqueta </a>
+            $posClose = stripos($escaped, '</a>', $posA);
+            if ($posClose === false) {
+                // Etiqueta malformada, la dejamos tal cual
+                $result .= substr($escaped, $posA);
+                break;
+            }
+            
+            $tagLen = $posClose + 4 - $posA;
+            $tagHtml = substr($escaped, $posA, $tagLen);
+            
+            $placeholderKey = '___LINK_PLACEHOLDER_' . count($placeholders) . '___';
+            $placeholders[$placeholderKey] = $tagHtml;
+            $result .= $placeholderKey;
+            
+            $offset = $posA + $tagLen;
+        }
+        
+        $escaped = $result;
 
         // Convertir menciones en enlaces
         $escaped = preg_replace_callback('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', function($matches) use ($domain, $db, $proto) {
