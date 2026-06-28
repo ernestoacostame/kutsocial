@@ -43,11 +43,54 @@ window.addEventListener('DOMContentLoaded', () => {
         initApp();
     }
 
-    // Registrar event listeners para autocompletado en el composer
+    // Registrar event listeners para autocompletado, drag & drop y paste en el composer
     const textarea = document.getElementById('composer-text');
     if (textarea) {
         textarea.addEventListener('input', handleComposerInput);
         textarea.addEventListener('keydown', handleComposerKeydown);
+
+        // Drag & Drop en el textarea/composer-card
+        const composerCard = document.querySelector('#tab-feed .composer-card');
+        const dragTarget = composerCard || textarea;
+        
+        dragTarget.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dragTarget.style.borderColor = 'var(--primary)';
+        });
+        dragTarget.addEventListener('dragleave', () => {
+            dragTarget.style.borderColor = '';
+        });
+        dragTarget.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragTarget.style.borderColor = '';
+            const files = e.dataTransfer.files;
+            if (files && files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    uploadFileDirectly(files[i]);
+                }
+            }
+        });
+
+        // Pegar desde el portapapeles
+        textarea.addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData || window.clipboardData).items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file') {
+                    const blob = items[i].getAsFile();
+                    uploadFileDirectly(blob);
+                }
+            }
+        });
+    }
+
+    // Inicializar checkbox de preferencia de AltText
+    const warnMissingAltCheckbox = document.getElementById('pref-warn-missing-alt');
+    if (warnMissingAltCheckbox) {
+        const savedVal = localStorage.getItem('kutsocial_warn_missing_alt') !== 'false';
+        warnMissingAltCheckbox.checked = savedVal;
+        warnMissingAltCheckbox.addEventListener('change', () => {
+            localStorage.setItem('kutsocial_warn_missing_alt', warnMissingAltCheckbox.checked);
+        });
     }
 });
 
@@ -1252,6 +1295,23 @@ async function publishToot() {
     };
 
     if (composerUploadedMediaIds.length > 0) {
+        // Verificar si la preferencia de advertencia de AltText está activa
+        const warnMissingAlt = localStorage.getItem('kutsocial_warn_missing_alt') !== 'false';
+        if (warnMissingAlt) {
+            const altInputs = document.querySelectorAll('#composer-media-preview .media-preview-item input');
+            let missingAlt = false;
+            altInputs.forEach(input => {
+                if (!input.value.trim()) {
+                    missingAlt = true;
+                }
+            });
+            if (missingAlt) {
+                const confirmPublish = confirm("¿Estás seguro de que quieres publicar? Hay imágenes sin texto alternativo (AltText).");
+                if (!confirmPublish) {
+                    return;
+                }
+            }
+        }
         payload.media_ids = composerUploadedMediaIds;
     }
 
@@ -2539,98 +2599,89 @@ function toggleComposerCW() {
     }
 }
 
+let altTextTimeout = {};
+async function updateMediaAltText(mediaId, value) {
+    if (altTextTimeout[mediaId]) {
+        clearTimeout(altTextTimeout[mediaId]);
+    }
+    altTextTimeout[mediaId] = setTimeout(async () => {
+        try {
+            await fetch(`/api/v1/media/${mediaId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `description=${encodeURIComponent(value.trim())}`
+            });
+        } catch (err) {
+            console.error('Error al guardar el texto alternativo:', err);
+        }
+    }, 500);
+}
+
+async function uploadFileDirectly(file) {
+    if (!file.type.startsWith('image/')) {
+        alert('Solo se admiten imágenes.');
+        return;
+    }
+    const previewContainer = document.getElementById('composer-media-preview');
+    if (!previewContainer) return;
+    
+    const previewId = 'media-uploading-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    const tempDiv = document.createElement('div');
+    tempDiv.id = previewId;
+    tempDiv.className = 'media-preview-item';
+    tempDiv.style = "display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; position: relative; margin-bottom: 8px;";
+    tempDiv.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); padding: 5px;">Subiendo...</div>';
+    previewContainer.appendChild(tempDiv);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/api/v1/media', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
+
+        if (response.ok) {
+            const media = await response.json();
+            composerUploadedMediaIds.push(media.id);
+            
+            tempDiv.innerHTML = `
+                <div style="width: 50px; height: 50px; border-radius: 6px; background-image: url(${media.url}); background-size: cover; background-position: center; position: relative;">
+                    <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                </div>
+                <input type="text" placeholder="Texto alternativo (Alt)..." style="width: 160px; font-size: 12px; padding: 6px 10px; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: white; border-radius: 6px; margin: 0;" oninput="updateMediaAltText('${media.id}', this.value)">
+            `;
+            
+            const removeBtn = tempDiv.querySelector('.remove-media-btn');
+            removeBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                removeComposerMedia(media.id, previewId);
+            };
+        } else {
+            tempDiv.remove();
+            alert('Error al subir imagen: ' + file.name);
+        }
+    } catch (e) {
+        tempDiv.remove();
+        alert('Error de conexión al subir imagen: ' + file.name);
+    }
+}
+
 async function handleComposerFileUpload() {
     const fileInput = document.getElementById('composer-file-input');
     const files = fileInput.files;
     if (!files.length) return;
 
-    const previewContainer = document.getElementById('composer-media-preview');
-
     for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const previewId = 'media-uploading-' + Date.now() + '-' + i;
-        const tempDiv = document.createElement('div');
-        tempDiv.id = previewId;
-        tempDiv.style = "position: relative; width: 60px; height: 60px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-muted);";
-        tempDiv.innerText = 'Subiendo...';
-        previewContainer.appendChild(tempDiv);
-
-        const formData = new FormData();
-        formData.append('file', file);
-
-        try {
-            const response = await fetch('/api/v1/media', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                },
-                body: formData
-            });
-
-            if (response.ok) {
-                const media = await response.json();
-                composerUploadedMediaIds.push(media.id);
-                
-                tempDiv.innerText = '';
-                tempDiv.style.backgroundImage = `url(${media.url})`;
-                tempDiv.style.backgroundSize = 'cover';
-                tempDiv.style.backgroundPosition = 'center';
-                tempDiv.style.cursor = 'pointer';
-                tempDiv.title = 'Haz clic para añadir texto alternativo (Alt Text)';
-                
-                const removeBtn = document.createElement('button');
-                removeBtn.innerText = '✕';
-                removeBtn.style = "position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.6); color: white; border: none; border-radius: 50%; width: 16px; height: 16px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;";
-                removeBtn.onclick = (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    removeComposerMedia(media.id, previewId);
-                };
-                tempDiv.appendChild(removeBtn);
-
-                tempDiv.onclick = async (e) => {
-                    if (e.target === removeBtn) return;
-                    const existingAlt = tempDiv.getAttribute('data-alt') || '';
-                    const altText = prompt('Introduce texto alternativo (Alt Text) para esta imagen:', existingAlt);
-                    if (altText !== null) {
-                        const trimmed = altText.trim();
-                        try {
-                             const res = await fetch(`/api/v1/media/${media.id}`, {
-                                 method: 'POST',
-                                 headers: {
-                                     'Authorization': `Bearer ${token}`,
-                                     'Content-Type': 'application/x-www-form-urlencoded'
-                                 },
-                                 body: `description=${encodeURIComponent(trimmed)}`
-                             });
-                             if (res.ok) {
-                                 tempDiv.setAttribute('data-alt', trimmed);
-                                 let altBadge = tempDiv.querySelector('.composer-alt-badge');
-                                 if (trimmed) {
-                                     if (!altBadge) {
-                                         altBadge = document.createElement('span');
-                                         altBadge.className = 'composer-alt-badge';
-                                         tempDiv.appendChild(altBadge);
-                                     }
-                                     altBadge.innerText = 'ALT ✓';
-                                     altBadge.style = 'position: absolute; bottom: 2px; left: 2px; background: #10b981; color: #fff; font-size: 8px; font-weight: bold; padding: 2px 4px; border-radius: 3px; pointer-events: none;';
-                                 } else {
-                                     if (altBadge) altBadge.remove();
-                                 }
-                             }
-                        } catch (err) {
-                            alert('Error al guardar el texto alternativo.');
-                        }
-                    }
-                };
-            } else {
-                tempDiv.remove();
-                alert('Error al subir imagen: ' + file.name);
-            }
-        } catch (e) {
-            tempDiv.remove();
-            alert('Error de conexión al subir imagen: ' + file.name);
-        }
+        await uploadFileDirectly(files[i]);
     }
     fileInput.value = '';
 }

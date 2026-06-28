@@ -64,6 +64,14 @@
             </label>
         </div>
         
+        <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 25px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Preferencias de Publicación</h3>
+        <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                <input type="checkbox" id="pref-warn-missing-alt" style="width: auto;">
+                <span>Avisar cuando se vaya a publicar una imagen sin descripción (texto alternativo/AltText)</span>
+            </label>
+        </div>
+        
         <button type="submit" style="margin-top: 15px;">Guardar Cambios</button>
         <div id="profile-save-status" style="margin-top: 12px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
     </form>
