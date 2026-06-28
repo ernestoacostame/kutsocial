@@ -2507,9 +2507,17 @@ HTML;
         $reblogOfId = null;
         if ($quoteId) {
             $quoteId = preg_replace('/[^a-zA-Z0-9]/', '', $quoteId);
-            $stmtQuote = $db->prepare("SELECT id FROM statuses WHERE id = ? LIMIT 1");
+            $stmtQuote = $db->prepare("SELECT id, uri FROM statuses WHERE id = ? LIMIT 1");
             $stmtQuote->execute([$quoteId]);
-            $reblogOfId = $stmtQuote->fetchColumn() ?: null;
+            $quoteRow = $stmtQuote->fetch();
+            if ($quoteRow) {
+                $reblogOfId = $quoteRow['id'];
+                // Si hay texto propio del usuario, es un Quote Post.
+                // Agregamos el enlace al post citado al final de la publicación para que Mona/Ice Cubes rendericen la cita.
+                if (!empty($content)) {
+                    $content .= " <a href=\"{$quoteRow['uri']}\" class=\"mention\">{$quoteRow['uri']}</a>";
+                }
+            }
         }
 
         // Insertar status
@@ -3340,8 +3348,9 @@ HTML;
             $reblogged = (bool)$stmtRebCheck->fetchColumn();
         }
 
-        // Cargar reblogged status
+        // Cargar reblogged status o quote status
         $reblog = null;
+        $quote = null;
         $reblogOfId = null;
         if (array_key_exists('reblog_of_id', $row)) {
             $reblogOfId = $row['reblog_of_id'];
@@ -3350,10 +3359,21 @@ HTML;
             $stmtRebOf->execute([$statusId]);
             $reblogOfId = $stmtRebOf->fetchColumn() ?: null;
         }
+
+        $hasOwnContent = !empty(trim($row['status_content'] ?? $row['content'] ?? ''));
         if ($reblogOfId) {
-            $origRow = self::fetchStatusRow($db, (int)$reblogOfId);
-            if ($origRow) {
-                $reblog = self::formatStatus($origRow, $currentAccountId);
+            if (!$hasOwnContent) {
+                // Compartido / Reblog simple
+                $origRow = self::fetchStatusRow($db, (int)$reblogOfId);
+                if ($origRow) {
+                    $reblog = self::formatStatus($origRow, $currentAccountId);
+                }
+            } else {
+                // Cita / Quote Post nativo (Mastodon v4.4+)
+                $origRow = self::fetchStatusRow($db, (int)$reblogOfId);
+                if ($origRow) {
+                    $quote = self::formatStatus($origRow, $currentAccountId);
+                }
             }
         }
 
@@ -3378,6 +3398,7 @@ HTML;
             'favourited' => $favourited,
             'reblogged' => $reblogged,
             'reblog' => $reblog,
+            'quote' => $quote,
             'muted' => false,
             'bookmarked' => $bookmarked,
             'content' => $formattedContent,
