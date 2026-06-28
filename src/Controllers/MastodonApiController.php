@@ -1145,7 +1145,7 @@ HTML;
 
     public static function getAuthenticatedAccount(): ?array {
         $token = Router::getBearerToken();
-        \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: token received=" . ($token ?: 'null'));
+        \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: token received=" . ($token ?: 'null') . " for URI=" . ($_SERVER['REQUEST_URI'] ?? 'unknown'));
         if (!$token) {
             return null;
         }
