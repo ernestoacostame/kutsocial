@@ -12,61 +12,54 @@
         </div>
         <div class="form-group" style="margin-bottom: 15px;">
             <label for="profile-display-name">Nombre a Mostrar</label>
-            <input type="text" id="profile-display-name" name="display_name" placeholder="Tu nombre">
+            <input type="text" id="profile-display-name" name="display_name" placeholder="Tu nombre" value="<?= htmlspecialchars($localUser['display_name'] ?? '') ?>">
         </div>
         <div class="form-group" style="margin-bottom: 15px;">
             <label for="profile-note">Biografía (Texto plano)</label>
-            <textarea id="profile-note" name="note" class="composer-textarea" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; height: 100px;" placeholder="Cuéntale algo al Fediverso..."></textarea>
+            <textarea id="profile-note" name="note" class="composer-textarea" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; height: 100px;" placeholder="Cuéntale algo al Fediverso..."><?= htmlspecialchars($localUser['note'] ?? '') ?></textarea>
         </div>
         
         <h3 style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Campos Personalizados (Metadatos de Verificación)</h3>
         <div id="metadata-fields-container">
+            <?php 
+            $fields = json_decode($localUser['fields'] ?? '[]', true) ?: [];
+            for ($i = 0; $i < 4; $i++): 
+                $f = $fields[$i] ?? ['name' => '', 'value' => '', 'verified_at' => null];
+            ?>
             <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                <input type="text" id="field-name-0" name="fields_attributes[0][name]" placeholder="Etiqueta (ej. Sitio Web)" style="flex: 1;">
-                <input type="text" id="field-value-0" name="fields_attributes[0][value]" placeholder="Valor (ej. https://miweb.com)" style="flex: 2;">
-                <span id="field-verified-0" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right;"></span>
+                <input type="text" id="field-name-<?= $i ?>" name="fields_attributes[<?= $i ?>][name]" placeholder="Etiqueta" style="flex: 1;" value="<?= htmlspecialchars($f['name']) ?>">
+                <input type="text" id="field-value-<?= $i ?>" name="fields_attributes[<?= $i ?>][value]" placeholder="Valor" style="flex: 2;" value="<?= htmlspecialchars($f['value']) ?>">
+                <span id="field-verified-<?= $i ?>" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right; color: var(--success, #10b981);">
+                    <?= !empty($f['verified_at']) ? '✓ Verificado' : '' ?>
+                </span>
             </div>
-            <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                <input type="text" id="field-name-1" name="fields_attributes[1][name]" placeholder="Etiqueta" style="flex: 1;">
-                <input type="text" id="field-value-1" name="fields_attributes[1][value]" placeholder="Valor" style="flex: 2;">
-                <span id="field-verified-1" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right;"></span>
-            </div>
-            <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                <input type="text" id="field-name-2" name="fields_attributes[2][name]" placeholder="Etiqueta" style="flex: 1;">
-                <input type="text" id="field-value-2" name="fields_attributes[2][value]" placeholder="Valor" style="flex: 2;">
-                <span id="field-verified-2" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right;"></span>
-            </div>
-            <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                <input type="text" id="field-name-3" name="fields_attributes[3][name]" placeholder="Etiqueta" style="flex: 1;">
-                <input type="text" id="field-value-3" name="fields_attributes[3][value]" placeholder="Valor" style="flex: 2;">
-                <span id="field-verified-3" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right;"></span>
-            </div>
+            <?php endfor; ?>
         </div>
         
         <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 12px; line-height: 1.4; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px;">
-            💡 <strong>Verificación:</strong> Si añades un enlace aquí (ej. <code>https://tuweb.com</code>), asegúrate de que tu página web tenga un enlace de vuelta a tu perfil local (<code id="profile-verification-url-preview">@cargando</code>) con el atributo <code>rel="me"</code> (ej: <code>&lt;a href="..." rel="me"&gt;Mi Perfil&lt;/a&gt;</code>) para que aparezca verificado en verde.
+            💡 <strong>Verificación:</strong> Si añades un enlace aquí (ej. <code>https://tuweb.com</code>), asegúrate de que tu página web tenga un enlace de vuelta a tu perfil local (<code id="profile-verification-url-preview"><?= htmlspecialchars($localUser['url'] ?? '') ?></code>) con el atributo <code>rel="me"</code> (ej: <code>&lt;a href="..." rel="me"&gt;Mi Perfil&lt;/a&gt;</code>) para que aparezca verificado en verde.
         </p>
 
         <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 25px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Ajustes de Privacidad</h3>
         <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
             <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
-                <input type="checkbox" id="profile-discoverable" name="discoverable" style="width: auto;">
+                <input type="checkbox" id="profile-discoverable" name="discoverable" style="width: auto;" <?= ($localUser['discoverable'] ?? 0) ? 'checked' : '' ?>>
                 <span>Descubrible (Aparecer en el directorio de perfiles y sugerencias)</span>
             </label>
             <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
-                <input type="checkbox" id="profile-auto-accept" name="auto_accept" style="width: auto;">
+                <input type="checkbox" id="profile-auto-accept" name="auto_accept" style="width: auto;" <?= !($localUser['locked'] ?? 1) ? 'checked' : '' ?>>
                 <span>Aceptar seguidores automáticamente (Si no se marca, se requerirá aprobación manual)</span>
             </label>
             <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
-                <input type="checkbox" id="profile-searchable" name="searchable" style="width: auto;">
+                <input type="checkbox" id="profile-searchable" name="searchable" style="width: auto;" <?= ($localUser['searchable'] ?? 0) ? 'checked' : '' ?>>
                 <span>Permitir búsquedas internas (Permitir que otros busquen tu usuario y contenido)</span>
             </label>
             <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
-                <input type="checkbox" id="profile-indexable" name="indexable" style="width: auto;">
+                <input type="checkbox" id="profile-indexable" name="indexable" style="width: auto;" <?= ($localUser['indexable'] ?? 0) ? 'checked' : '' ?>>
                 <span>Indexable por buscadores (Permitir que Google y otros indexen tu perfil)</span>
             </label>
             <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
-                <input type="checkbox" id="profile-show-source" name="show_source" style="width: auto;">
+                <input type="checkbox" id="profile-show-source" name="show_source" style="width: auto;" <?= ($localUser['show_source'] ?? 1) ? 'checked' : '' ?>>
                 <span>Mostrar aplicación de origen (Mostrar la app cliente con la que publicas tus toots)</span>
             </label>
         </div>

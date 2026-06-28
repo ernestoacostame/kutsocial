@@ -7,7 +7,15 @@
     </div>
     <div id="collections-layout" style="display: grid; grid-template-columns: 200px 1fr; gap: 20px;">
         <div id="collections-sidebar" style="border-right: 1px solid var(--border-color); padding-right: 15px; display: flex; flex-direction: column; gap: 8px; min-height: 200px;">
-            <!-- Se llena vía JS -->
+            <?php if (empty($userCollections)): ?>
+                <div style="font-size: 13px; color: var(--text-muted); padding: 10px 0;">No tienes colecciones.</div>
+            <?php else: ?>
+                <?php foreach ($userCollections as $col): ?>
+                    <button class="collection-nav-btn" data-collection-id="<?= $col['id'] ?>" onclick="selectCollection(<?= $col['id'] ?>)" style="background: none; border: none; text-align: left; padding: 8px 12px; border-radius: 8px; color: var(--text-color); cursor: pointer; transition: all 0.2s; font-size: 13.5px; width: 100%; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; font-weight: normal;">
+                        <span>📁 <?= htmlspecialchars($col['title']) ?></span>
+                    </button>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
         <div id="collection-content-area">
             <div id="collection-no-selection" style="text-align: center; padding: 40px; color: var(--text-muted);">

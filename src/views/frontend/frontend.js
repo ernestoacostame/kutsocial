@@ -2870,27 +2870,23 @@ async function loadLists() {
         window.location.href = '/lists';
         return;
     }
-    try {
-        const res = await fetch('/api/v1/lists', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error("Error cargando listas");
-        allLists = await res.json();
-        renderListsSidebar();
-        
-        if (allLists.length > 0) {
-            if (selectedListId && allLists.some(l => l.id === selectedListId)) {
-                selectList(selectedListId);
-            } else {
-                selectList(allLists[0].id);
-            }
+    if (window.KUTSOCIAL_USER_LISTS) {
+        allLists = window.KUTSOCIAL_USER_LISTS;
+    } else {
+        allLists = [];
+    }
+    renderListsSidebar();
+    
+    if (allLists.length > 0) {
+        if (selectedListId && allLists.some(l => l.id === selectedListId)) {
+            selectList(selectedListId);
         } else {
-            document.getElementById('list-no-selection').style.display = 'block';
-            document.getElementById('list-detail-view').style.display = 'none';
-            selectedListId = null;
+            selectList(allLists[0].id);
         }
-    } catch (err) {
-        console.error(err);
+    } else {
+        document.getElementById('list-no-selection').style.display = 'block';
+        document.getElementById('list-detail-view').style.display = 'none';
+        selectedListId = null;
     }
 }
 
@@ -3085,28 +3081,23 @@ async function loadCollections() {
         window.location.href = '/collections';
         return;
     }
-    try {
-        const res = await fetch('/api/v1/collections', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error("Error cargando colecciones");
-        const data = await res.json();
-        allCollections = data.items || [];
-        renderCollectionsSidebar();
-        
-        if (allCollections.length > 0) {
-            if (selectedCollectionId && allCollections.some(c => c.id === selectedCollectionId)) {
-                selectCollection(selectedCollectionId);
-            } else {
-                selectCollection(allCollections[0].id);
-            }
+    if (window.KUTSOCIAL_USER_COLLECTIONS) {
+        allCollections = window.KUTSOCIAL_USER_COLLECTIONS;
+    } else {
+        allCollections = [];
+    }
+    renderCollectionsSidebar();
+    
+    if (allCollections.length > 0) {
+        if (selectedCollectionId && allCollections.some(c => c.id === selectedCollectionId)) {
+            selectCollection(selectedCollectionId);
         } else {
-            document.getElementById('collection-no-selection').style.display = 'block';
-            document.getElementById('collection-detail-view').style.display = 'none';
-            selectedCollectionId = null;
+            selectCollection(allCollections[0].id);
         }
-    } catch (err) {
-        console.error(err);
+    } else {
+        document.getElementById('collection-no-selection').style.display = 'block';
+        document.getElementById('collection-detail-view').style.display = 'none';
+        selectedCollectionId = null;
     }
 }
 
@@ -3267,35 +3258,31 @@ async function loadFollowedHashtags() {
         window.location.href = '/followed-hashtags';
         return;
     }
+    if (window.KUTSOCIAL_USER_HASHTAGS) {
+        followedTags = window.KUTSOCIAL_USER_HASHTAGS;
+    } else {
+        followedTags = [];
+    }
+    
     const container = document.getElementById('followed-hashtags-container');
-    container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--text-muted);">Cargando hashtags...</div>';
-
-    try {
-        const res = await fetch('/api/v1/followed_tags', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error("Error cargando hashtags");
-        followedTags = await res.json();
-        
-        container.innerHTML = '';
-        if (followedTags.length === 0) {
-            container.innerHTML = '<div style="grid-column:1/-1; text-align:center; padding: 20px; color: var(--text-muted);">No sigues ningún hashtag todavía.</div>';
-            return;
-        }
+    container.innerHTML = '';
+    
+    if (followedTags.length === 0) {
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--text-muted);">No sigues ningún hashtag todavía.</div>';
+    } else {
         followedTags.forEach(tag => {
             const div = document.createElement('div');
             div.className = 'tag-follow-card';
+            div.style = "display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 15px;";
             div.innerHTML = `
-                <div style="cursor:pointer; display:flex; flex-direction:column; min-width:0; flex:1; margin-right:8px;" onclick="viewHashtagTimeline('${tag.name}')">
-                    <span style="font-weight:700; color:var(--text-color); font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">#${escapeHTML(tag.name)}</span>
+                <div style="cursor:pointer; display:flex; flex-direction:column; min-width:0; flex:1; margin-right:8px;" onclick="viewHashtagTimeline('${tag}')">
+                    <span style="font-weight:700; color:var(--text-color); font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">#${escapeHTML(tag)}</span>
                     <span style="font-size:11px; color:var(--text-muted); margin-top:2px;">Ver publicaciones</span>
                 </div>
-                <button class="btn-publish" style="width:auto; white-space:nowrap; flex-shrink:0; padding: 4px 10px; font-size: 11px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color);" onclick="unfollowHashtag('${tag.name}', this)">Dejar de seguir</button>
+                <button class="btn-publish" style="width:auto; white-space:nowrap; flex-shrink:0; padding: 4px 10px; font-size: 11px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color);" onclick="unfollowHashtag('${tag}', this.parentElement)">Dejar de seguir</button>
             `;
             container.appendChild(div);
         });
-    } catch (e) {
-        container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--error);">Error al cargar hashtags seguidos.</div>';
     }
 }
 

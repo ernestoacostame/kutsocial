@@ -9,6 +9,18 @@
         </div>
     </div>
     <div id="followed-hashtags-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px;">
-        <!-- Se llena vía JS -->
+        <?php if (empty($userHashtags)): ?>
+            <div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--text-muted);">No sigues ningún hashtag todavía.</div>
+        <?php else: ?>
+            <?php foreach ($userHashtags as $tag): ?>
+                <div class="tag-follow-card" style="display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 15px;">
+                    <div style="cursor:pointer; display:flex; flex-direction:column; min-width:0; flex:1; margin-right:8px;" onclick="viewHashtagTimeline('<?= htmlspecialchars($tag) ?>')">
+                        <span style="font-weight:700; color:var(--text-color); font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">#<?= htmlspecialchars($tag) ?></span>
+                        <span style="font-size:11px; color:var(--text-muted); margin-top:2px;">Ver publicaciones</span>
+                    </div>
+                    <button class="btn-publish" style="width:auto; white-space:nowrap; flex-shrink:0; padding: 4px 10px; font-size: 11px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color);" onclick="unfollowHashtag('<?= htmlspecialchars($tag) ?>', this.parentElement)">Dejar de seguir</button>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 </div>

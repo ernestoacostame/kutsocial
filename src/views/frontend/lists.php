@@ -7,7 +7,15 @@
     </div>
     <div id="lists-layout" style="display: grid; grid-template-columns: 200px 1fr; gap: 20px;">
         <div id="lists-sidebar" style="border-right: 1px solid var(--border-color); padding-right: 15px; display: flex; flex-direction: column; gap: 8px; min-height: 200px;">
-            <!-- Se llena vía JS -->
+            <?php if (empty($userLists)): ?>
+                <div style="font-size: 13px; color: var(--text-muted); padding: 10px 0;">No tienes listas.</div>
+            <?php else: ?>
+                <?php foreach ($userLists as $lst): ?>
+                    <button class="list-nav-btn" data-list-id="<?= $lst['id'] ?>" onclick="selectList(<?= $lst['id'] ?>)" style="background: none; border: none; text-align: left; padding: 8px 12px; border-radius: 8px; color: var(--text-color); cursor: pointer; transition: all 0.2s; font-size: 13.5px; width: 100%; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; font-weight: normal;">
+                        <span>📋 <?= htmlspecialchars($lst['title']) ?></span>
+                    </button>
+                <?php endforeach; ?>
+            <?php endif; ?>
         </div>
         <div id="list-content-area">
             <div id="list-no-selection" style="text-align: center; padding: 40px; color: var(--text-muted);">

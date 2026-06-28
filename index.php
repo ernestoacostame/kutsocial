@@ -62,6 +62,31 @@ $router = new Router();
 $renderFrontend = function() {
     $db = Database::connect();
     
+    // Obtener datos del usuario propietario local (único usuario del cliente)
+    $stmtOwner = $db->query("SELECT * FROM accounts WHERE domain IS NULL AND role = 'owner' LIMIT 1");
+    $localUser = $stmtOwner->fetch();
+    
+    $userLists = [];
+    $userCollections = [];
+    $userHashtags = [];
+    
+    if ($localUser) {
+        // Cargar listas
+        $stmtLists = $db->prepare("SELECT * FROM lists WHERE account_id = ? ORDER BY title ASC");
+        $stmtLists->execute([$localUser['id']]);
+        $userLists = $stmtLists->fetchAll();
+        
+        // Cargar colecciones
+        $stmtCol = $db->prepare("SELECT * FROM collections WHERE account_id = ? ORDER BY title ASC");
+        $stmtCol->execute([$localUser['id']]);
+        $userCollections = $stmtCol->fetchAll();
+        
+        // Cargar hashtags seguidos
+        $stmtTags = $db->prepare("SELECT hashtag FROM followed_hashtags WHERE account_id = ? ORDER BY id DESC");
+        $stmtTags->execute([$localUser['id']]);
+        $userHashtags = $stmtTags->fetchAll(PDO::FETCH_COLUMN);
+    }
+
     // Determinar la sección activa según la ruta
     $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
     $uri = rtrim($uri, '/');
@@ -139,6 +164,9 @@ $renderFrontend = function() {
         window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
         window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
         window.KUTSOCIAL_ACTIVE_THREAD_ID = " . ($activeThreadId ? "'$activeThreadId'" : "null") . ";
+        window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.KUTSOCIAL_USER_HASHTAGS = " . json_encode($userHashtags, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
     </script>
         ";
         $html = str_replace('<head>', "<head>\n" . $jsGlobals, $html);
