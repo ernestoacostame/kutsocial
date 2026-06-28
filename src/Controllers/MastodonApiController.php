@@ -157,10 +157,10 @@ class MastodonApiController {
      * Endpoint GET /oauth/authorize
      */
     public static function showAuthorize(): void {
-        $clientId = $_GET['client_id'] ?? '';
-        $redirectUri = $_GET['redirect_uri'] ?? '';
-        $responseType = $_GET['response_type'] ?? '';
-        $scope = $_GET['scope'] ?? '';
+        $clientId = htmlspecialchars($_GET['client_id'] ?? '', ENT_QUOTES, 'UTF-8');
+        $redirectUri = htmlspecialchars($_GET['redirect_uri'] ?? '', ENT_QUOTES, 'UTF-8');
+        $responseType = htmlspecialchars($_GET['response_type'] ?? '', ENT_QUOTES, 'UTF-8');
+        $scope = htmlspecialchars($_GET['scope'] ?? '', ENT_QUOTES, 'UTF-8');
 
         $html = <<<HTML
 <!DOCTYPE html>
@@ -274,12 +274,12 @@ HTML;
     }
 
     private static function showOtpAuthorize(array $account, array $params, ?string $error = null): void {
-        $clientId = $params['client_id'] ?? '';
-        $redirectUri = $params['redirect_uri'] ?? '';
-        $responseType = $params['response_type'] ?? '';
-        $scope = $params['scope'] ?? '';
-        $username = $params['username'] ?? '';
-        $password = $params['password'] ?? '';
+        $clientId = htmlspecialchars($params['client_id'] ?? '', ENT_QUOTES, 'UTF-8');
+        $redirectUri = htmlspecialchars($params['redirect_uri'] ?? '', ENT_QUOTES, 'UTF-8');
+        $responseType = htmlspecialchars($params['response_type'] ?? '', ENT_QUOTES, 'UTF-8');
+        $scope = htmlspecialchars($params['scope'] ?? '', ENT_QUOTES, 'UTF-8');
+        $username = htmlspecialchars($params['username'] ?? '', ENT_QUOTES, 'UTF-8');
+        $password = htmlspecialchars($params['password'] ?? '', ENT_QUOTES, 'UTF-8');
 
         $errorHtml = '';
         if ($error) {
@@ -419,12 +419,15 @@ HTML;
         $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
 
+        \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: username=$username, clientId=$clientId, redirectUri=$redirectUri");
+
         $db = Database::connect();
         $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
         $stmt->execute([$username]);
         $account = $stmt->fetch();
 
         if (!$account || !password_verify($password, $account['password_hash'])) {
+            \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: password verify failed for username=$username");
             $html = <<<HTML
 <!DOCTYPE html>
 <html lang="es">
@@ -551,17 +554,22 @@ HTML;
         // Verificar 2FA si está activo
         if (!empty($account['otp_secret'])) {
             $otpCode = trim($_POST['otp_code'] ?? '');
+            \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: 2FA is active, otpCode received=" . $otpCode);
             if (empty($otpCode)) {
+                \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: otpCode is empty, showing OTP page");
                 self::showOtpAuthorize($account, $_POST);
                 return;
             }
             if (!\KutSocial\TotpHelper::verifyCode($account['otp_secret'], $otpCode)) {
+                \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: OTP verify failed");
                 self::showOtpAuthorize($account, $_POST, "Código 2FA incorrecto o expirado");
                 return;
             }
+            \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: OTP verify success");
         }
 
         $code = self::generateCodeForUser((int)$account['id']);
+        \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: auth code generated=" . $code);
 
         if ($redirectUri === 'urn:ietf:wg:oauth:2.0:oob') {
             $html = <<<HTML
@@ -634,6 +642,7 @@ HTML;
             } else {
                 $redirectUrl .= '?code=' . urlencode($code);
             }
+            \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: redirecting browser to " . $redirectUrl);
             header("Location: " . $redirectUrl);
             exit;
         }
@@ -646,9 +655,12 @@ HTML;
         $body = Router::getRequestBody();
         $grantType = $body['grant_type'] ?? '';
 
+        \KutSocial\Controllers\ActivityPubController::log("postToken: request body=" . json_encode($body));
+
         if ($grantType === 'authorization_code') {
             $code = $body['code'] ?? '';
             $userId = self::verifyCodeAndGetUserId($code);
+            \KutSocial\Controllers\ActivityPubController::log("postToken: code received=" . $code . ", resolved userId=" . ($userId ?: 'null'));
             if (!$userId) {
                 Router::json(['error' => 'invalid_grant', 'error_description' => 'Código de autorización inválido o expirado'], 400);
             }
