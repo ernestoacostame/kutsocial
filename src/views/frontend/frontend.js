@@ -1507,8 +1507,28 @@ function switchTimeline(type, fromHashChange = false) {
 }
 
 function updateCharCount() {
-    const text = document.getElementById('composer-text').value;
-    document.getElementById('char-count').innerText = maxTootChars - text.length;
+    const textarea = document.getElementById('composer-text');
+    if (textarea) {
+        const text = textarea.value;
+        document.getElementById('char-count').innerText = maxTootChars - text.length;
+
+        // Auto-grow textarea up to twice its height (180px), then scroll
+        textarea.style.height = '90px';
+        const scrollHeight = textarea.scrollHeight;
+        const maxHeight = 180;
+        if (scrollHeight > 90) {
+            if (scrollHeight > maxHeight) {
+                textarea.style.height = maxHeight + 'px';
+                textarea.style.overflowY = 'auto';
+            } else {
+                textarea.style.height = scrollHeight + 'px';
+                textarea.style.overflowY = 'hidden';
+            }
+        } else {
+            textarea.style.height = '90px';
+            textarea.style.overflowY = 'hidden';
+        }
+    }
 }
 
 function showTab(tabName, fromHashChange = false) {
@@ -3062,7 +3082,7 @@ async function uploadFileDirectly(file) {
     const tempDiv = document.createElement('div');
     tempDiv.id = previewId;
     tempDiv.className = 'media-preview-item';
-    tempDiv.style = "display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; position: relative; margin-bottom: 8px;";
+    tempDiv.style = "display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; position: relative; margin-bottom: 8px; width: 100%; box-sizing: border-box;";
     tempDiv.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); padding: 5px;">Subiendo...</div>';
     previewContainer.appendChild(tempDiv);
 
@@ -3083,10 +3103,10 @@ async function uploadFileDirectly(file) {
             composerUploadedMediaIds.push(media.id);
             
             tempDiv.innerHTML = `
-                <div style="width: 50px; height: 50px; border-radius: 6px; background-image: url(${media.url}); background-size: cover; background-position: center; position: relative;">
+                <div style="width: 50px; height: 50px; border-radius: 6px; background-image: url(${media.url}); background-size: cover; background-position: center; position: relative; flex-shrink: 0;">
                     <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
                 </div>
-                <input type="text" placeholder="Texto alternativo (Alt)..." style="width: 160px; font-size: 12px; padding: 6px 10px; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: white; border-radius: 6px; margin: 0;" oninput="updateMediaAltText('${media.id}', this.value)">
+                <input type="text" placeholder="Texto alternativo (Alt)..." style="flex-grow: 1; font-size: 12px; padding: 6px 10px; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: white; border-radius: 6px; margin: 0; min-width: 0;" oninput="updateMediaAltText('${media.id}', this.value)">
             `;
             
             const removeBtn = tempDiv.querySelector('.remove-media-btn');
