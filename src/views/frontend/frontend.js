@@ -7,6 +7,7 @@ if (token || (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked)) {
     document.documentElement.classList.add('is-authenticated');
 }
 let currentTimeline = 'public';
+let lastRenderedTimeline = '';
 let lastLoadedProfile = null;
 function proxyUrl(url) {
     if (!url) return '';
@@ -462,11 +463,14 @@ async function loadTimeline(loadMore = false) {
 
     const feed = document.getElementById('feed');
     let loadingIndicator = null;
+    const isTimelineChange = !loadMore && (lastRenderedTimeline !== currentTimeline || feed.innerHTML === '' || feed.innerHTML.includes('Cargando toots...'));
 
     if (!loadMore) {
-        feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
-        lastId = 0;
-        oldestId = null;
+        if (isTimelineChange) {
+            feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+            lastId = 0;
+            oldestId = null;
+        }
         hasMoreToots = true;
     } else {
         loadingIndicator = document.createElement('div');
@@ -508,8 +512,19 @@ async function loadTimeline(loadMore = false) {
             loadingIndicator.parentNode.removeChild(loadingIndicator);
         }
 
+        // Si es refresco (no cambio de timeline) y no hay toots nuevos, salir silenciosamente
+        if (!loadMore && !isTimelineChange && toots.length > 0) {
+            const newestId = parseInt(toots[0].id);
+            if (newestId <= lastId) {
+                isLoadingToots = false;
+                return;
+            }
+        }
+
         if (!loadMore) {
             feed.innerHTML = '';
+            lastId = 0;
+            oldestId = null;
         }
 
         if (toots.length === 0) {
@@ -539,6 +554,7 @@ async function loadTimeline(loadMore = false) {
         }
 
         if (!loadMore) {
+            lastRenderedTimeline = currentTimeline;
             if (currentTimeline !== 'bookmarks') {
                 startStreaming();
             } else if (eventSource) {
@@ -1743,7 +1759,33 @@ async function clearAllNotifications() {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
-            loadNotifications();
+            // Actualizar interfaz visual localmente de inmediato sin recargar el DOM
+            const items = document.querySelectorAll('.notification-item');
+            items.forEach(item => {
+                // Quitar el borde de color
+                item.style.borderLeftColor = 'transparent';
+                
+                // Atenuar iconos de tipo (star, reply, person_add)
+                const icons = item.querySelectorAll('.material-icons, .material-icons-outlined');
+                icons.forEach(icon => {
+                    if (icon.innerText === 'star' || icon.innerText === 'reply' || icon.innerText === 'person_add') {
+                        icon.style.opacity = '0.6';
+                    }
+                });
+                
+                // Atenuar fondos de cabecera en menciones
+                const header = item.querySelector('div[style*="background: rgba(99, 102, 241"]');
+                if (header) {
+                    header.style.backgroundColor = 'rgba(99, 102, 241, 0.04)';
+                }
+            });
+            
+            // Ocultar el badge lateral
+            const badge = document.getElementById('nav-notifications-count');
+            if (badge) {
+                badge.innerText = '0';
+                badge.style.display = 'none';
+            }
         } else {
             alert('Error al marcar las notificaciones como leídas.');
         }
