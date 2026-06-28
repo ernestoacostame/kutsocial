@@ -1418,6 +1418,9 @@ HTML;
     }
 
     private static function formatAccount(array $account, bool $plainTextBio = false): array {
+        // En consultas de notificaciones a veces 'id' representa la relación y 'account_id' la cuenta
+        $accountId = $account['account_id'] ?? $account['id'] ?? null;
+        
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         
@@ -1498,22 +1501,22 @@ HTML;
         } else {
             // Contar seguidores recibidos
             $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'accepted'");
-            $stmtFollowers->execute([$account['id']]);
+            $stmtFollowers->execute([$accountId]);
             $followersCount = (int)$stmtFollowers->fetchColumn();
 
             // Contar seguidos realizados
             $stmtFollowing = $db->prepare("SELECT COUNT(*) FROM follows WHERE account_id = ? AND status = 'accepted'");
-            $stmtFollowing->execute([$account['id']]);
+            $stmtFollowing->execute([$accountId]);
             $followingCount = (int)$stmtFollowing->fetchColumn();
 
             // Contar toots creados
             $stmtStatuses = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
-            $stmtStatuses->execute([$account['id']]);
+            $stmtStatuses->execute([$accountId]);
             $statusesCount = (int)$stmtStatuses->fetchColumn();
         }
 
         return [
-            'id' => (string)$account['id'],
+            'id' => (string)$accountId,
             'username' => $account['username'],
             'acct' => $account['domain'] ? $account['username'] . '@' . $account['domain'] : $account['username'],
             'display_name' => $account['display_name'] ?: $account['username'],
