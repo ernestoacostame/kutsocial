@@ -1511,20 +1511,23 @@ HTML;
         }
 
         // 2. Manejo de campos de texto
-        if (isset($_POST['display_name'])) {
+        $displayName = $_POST['display_name'] ?? $body['display_name'] ?? null;
+        if ($displayName !== null) {
             $fieldsToUpdate[] = "display_name = ?";
-            $params[] = trim($_POST['display_name']);
+            $params[] = trim($displayName);
         }
 
-        if (isset($_POST['note'])) {
+        $note = $_POST['note'] ?? $body['note'] ?? null;
+        if ($note !== null) {
             $fieldsToUpdate[] = "note = ?";
-            $params[] = strip_tags(trim($_POST['note']));
+            $params[] = strip_tags(trim($note));
         }
 
         // 3. Manejo de Campos de Metadatos Personalizados (Estilo Mastodon)
-        if (isset($_POST['fields_attributes']) && is_array($_POST['fields_attributes'])) {
+        $fieldsAttributes = $_POST['fields_attributes'] ?? $body['fields_attributes'] ?? null;
+        if (is_array($fieldsAttributes)) {
             $metaFields = [];
-            foreach ($_POST['fields_attributes'] as $f) {
+            foreach ($fieldsAttributes as $f) {
                 $name = trim($f['name'] ?? '');
                 $value = trim($f['value'] ?? '');
                 
@@ -1548,8 +1551,6 @@ HTML;
             $fieldsToUpdate[] = "fields = ?";
             $params[] = json_encode($metaFields, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         }
-
-        $body = Router::getRequestBody();
         
         // Discoverable
         if (isset($_POST['discoverable']) || isset($body['discoverable'])) {
