@@ -4441,6 +4441,29 @@ HTML;
                 }
                 $address = trim($row[0]);
                 if (!empty($address)) {
+                    // Si ya existe la cuenta localmente y ya la seguimos, omitir
+                    $cleanAddress = ltrim($address, '@');
+                    $parts = explode('@', $cleanAddress);
+                    $uname = $parts[0] ?? '';
+                    $udomain = $parts[1] ?? null;
+                    if (!empty($uname)) {
+                        if ($udomain) {
+                            $stmtAcc = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                            $stmtAcc->execute([$uname, $udomain]);
+                        } else {
+                            $stmtAcc = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                            $stmtAcc->execute([$uname]);
+                        }
+                        $targetId = $stmtAcc->fetchColumn();
+                        if ($targetId) {
+                            $stmtFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+                            $stmtFollow->execute([$account['id'], $targetId]);
+                            if ($stmtFollow->fetchColumn()) {
+                                continue; // Ya lo seguimos, omitir importación
+                            }
+                        }
+                    }
+
                     // Encolar de forma no bloqueante para evitar timeouts del servidor al resolver remotamente cada usuario
                     $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollow', ?, 'local', 'pending', datetime('now'))");
                     $stmtJob->execute([

@@ -73,6 +73,11 @@ class Queue {
     public static function process(int $limit = 10): int {
         $db = Database::connect();
         
+        // Liberar tareas atascadas en 'processing' por más de 10 minutos
+        try {
+            $db->exec("UPDATE jobs SET status = 'pending' WHERE status = 'processing' AND next_attempt <= datetime('now', '-10 minutes')");
+        } catch (\Exception $e) {}
+        
         // Obtener tareas pendientes o fallidas con intentos menores a 5
         $stmt = $db->prepare("
             SELECT * FROM jobs 
@@ -237,6 +242,7 @@ class Queue {
         if (!$account) return;
 
         // 2. Resolver la cuenta a seguir
+        $address = ltrim(trim($address), '@');
         $resolvedAcc = null;
         if (filter_var($address, FILTER_VALIDATE_URL)) {
             $resolvedAcc = \KutSocial\Controllers\ActivityPubController::getOrRegisterRemoteActor($address);
