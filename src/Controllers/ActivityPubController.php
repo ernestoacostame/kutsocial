@@ -285,17 +285,39 @@ XML;
             
             $db = Database::connect();
             $host = parse_url($actorUrl, PHP_URL_HOST);
-            $pathParts = explode('/', parse_url($actorUrl, PHP_URL_PATH));
-            $username = strtolower(end($pathParts));
+            $pathParts = explode('/', trim(parse_url($actorUrl, PHP_URL_PATH) ?? '', '/'));
+            $username = end($pathParts);
+            // Limpiar prefijo @ si existe (algunas instancias usan /@username)
+            $username = ltrim($username, '@');
             
+            // Buscar por username y domain exacto
             $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
             $stmt->execute([$username, $host]);
             $remoteAccount = $stmt->fetch();
+            
+            // Fallback: buscar case-insensitive
+            if (!$remoteAccount) {
+                $stmt2 = $db->prepare("SELECT id FROM accounts WHERE LOWER(username) = LOWER(?) AND domain = ? LIMIT 1");
+                $stmt2->execute([$username, $host]);
+                $remoteAccount = $stmt2->fetch();
+            }
+
+            // Fallback: buscar por URL del inbox
+            if (!$remoteAccount) {
+                $stmt3 = $db->prepare("SELECT id FROM accounts WHERE inbox_url LIKE ? AND domain = ? LIMIT 1");
+                $stmt3->execute(['%' . $host . '%', $host]);
+                $remoteAccount = $stmt3->fetch();
+                if ($remoteAccount) {
+                    self::log("handleAccept: Encontrado actor remoto por inbox_url fallback");
+                }
+            }
             
             if ($remoteAccount) {
                 $upd = $db->prepare("UPDATE follows SET status = 'accepted' WHERE account_id = ? AND target_account_id = ?");
                 $upd->execute([$localAccount['id'], $remoteAccount['id']]);
                 self::log("handleAccept: Seguimiento de local ID {$localAccount['id']} -> remoto ID {$remoteAccount['id']} marcado como aceptado");
+            } else {
+                self::log("handleAccept: No se encontró cuenta remota para actor '$actorUrl' (username='$username', host='$host')");
             }
         }
     }
@@ -397,12 +419,12 @@ XML;
         // Determinar visibilidad usando el helper determineVisibility
         $visibility = self::determineVisibility($object);
 
-        // Procesar adjuntos (media)
+        // Procesar adjuntos (media) con detección correcta de tipo
         $attachments = [];
         if (!empty($object['attachment'])) {
             foreach ($object['attachment'] as $att) {
                 $attType = $att['type'] ?? '';
-                if ($attType === 'Document' || $attType === 'Image') {
+                if ($attType === 'Document' || $attType === 'Image' || $attType === 'Video' || $attType === 'Audio') {
                     $url = '';
                     if (isset($att['url'])) {
                         if (is_string($att['url'])) {
@@ -429,18 +451,63 @@ XML;
 
                     $description = $att['name'] ?? $att['summary'] ?? $att['description'] ?? '';
 
+                    // Detectar tipo de media correctamente
+                    $mimeType = $att['mediaType'] ?? '';
+                    if (!empty($mimeType)) {
+                        $mediaApiType = \KutSocial\Controllers\MastodonApiController::detectMediaType($mimeType);
+                    } else {
+                        $mediaApiType = \KutSocial\Controllers\MastodonApiController::detectMediaTypeFromUrl($url);
+                    }
+
+                    // Para videos, intentar obtener preview_url del blurhash o del thumbnail
+                    $previewUrl = $url;
+                    if ($mediaApiType === 'video' || $mediaApiType === 'audio') {
+                        $previewUrl = $att['icon']['url'] ?? $att['preview_url'] ?? $url;
+                    }
+
                     $attachments[] = [
                         'id' => bin2hex(random_bytes(6)),
-                        'type' => 'image',
+                        'type' => $mediaApiType,
                         'url' => $url,
-                        'preview_url' => $url,
+                        'preview_url' => $previewUrl,
                         'remote_url' => $url,
-                        'description' => $description
+                        'description' => $description,
+                        'blurhash' => $att['blurhash'] ?? null,
+                        'meta' => null
                     ];
                 }
             }
         }
         $mediaJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+
+        // Extraer emojis personalizados del campo tag
+        $emojis = [];
+        if (!empty($object['tag'])) {
+            foreach ($object['tag'] as $tag) {
+                $tagType = $tag['type'] ?? '';
+                if ($tagType === 'Emoji') {
+                    $shortcode = trim($tag['name'] ?? '', ':');
+                    $emojiUrl = '';
+                    if (!empty($tag['icon'])) {
+                        if (is_string($tag['icon'])) {
+                            $emojiUrl = $tag['icon'];
+                        } elseif (is_array($tag['icon'])) {
+                            $emojiUrl = $tag['icon']['url'] ?? '';
+                        }
+                    }
+                    if (!empty($shortcode) && !empty($emojiUrl)) {
+                        $emojis[] = [
+                            'shortcode' => $shortcode,
+                            'url' => $emojiUrl,
+                            'static_url' => $emojiUrl,
+                            'visible_in_picker' => false,
+                            'category' => ''
+                        ];
+                    }
+                }
+            }
+        }
+        $emojisJson = !empty($emojis) ? json_encode($emojis, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
 
         // Procesar in_reply_to_id
         $inReplyToUri = $object['inReplyTo'] ?? null;
@@ -452,8 +519,8 @@ XML;
         }
 
         $stmtIns = $db->prepare("
-            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, emojis)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmtIns->execute([
             $remoteAccount['id'],
@@ -462,14 +529,15 @@ XML;
             $visibility,
             date('Y-m-d H:i:s', strtotime($createdAt)),
             $mediaJson,
-            $inReplyToId
+            $inReplyToId,
+            $emojisJson
         ]);
 
         $newStatusId = (int)$db->lastInsertId();
         \KutSocial\NotificationHelper::fetchAndSaveLinkCard($newStatusId, $content);
         \KutSocial\NotificationHelper::notifyMentionOrReply($newStatusId);
 
-        self::log("handleCreate: Publicación remota '$uri' guardada exitosamente con visibilidad '$visibility'");
+        self::log("handleCreate: Publicación remota '$uri' guardada exitosamente con visibilidad '$visibility'" . ($emojisJson ? " con " . count($emojis) . " emojis" : ""));
     }
 
     /**
@@ -736,22 +804,80 @@ XML;
             $followingCount = self::getCollectionCount($json['following'] ?? null);
             $statusesCount = self::getCollectionCount($json['outbox'] ?? null);
 
+            // Extraer URL canónica del perfil
+            $profileUrl = $json['url'] ?? '';
+            if (is_array($profileUrl)) {
+                // Algunos actores devuelven un array de URLs
+                $profileUrl = $profileUrl[0] ?? '';
+                if (is_array($profileUrl)) {
+                    $profileUrl = $profileUrl['href'] ?? '';
+                }
+            }
+
+            // Extraer campos de perfil (attachment con type PropertyValue)
+            $fields = [];
+            if (!empty($json['attachment'])) {
+                foreach ($json['attachment'] as $attachment) {
+                    $attType = $attachment['type'] ?? '';
+                    if ($attType === 'PropertyValue') {
+                        $fields[] = [
+                            'name' => $attachment['name'] ?? '',
+                            'value' => $attachment['value'] ?? '',
+                            'verified_at' => null
+                        ];
+                    }
+                }
+            }
+            $fieldsJson = !empty($fields) ? json_encode($fields, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+
+            // Extraer emojis personalizados del perfil (tag con type Emoji)
+            $emojis = [];
+            if (!empty($json['tag'])) {
+                foreach ($json['tag'] as $tag) {
+                    $tagType = $tag['type'] ?? '';
+                    if ($tagType === 'Emoji') {
+                        $shortcode = trim($tag['name'] ?? '', ':');
+                        $emojiUrl = '';
+                        if (!empty($tag['icon'])) {
+                            if (is_string($tag['icon'])) {
+                                $emojiUrl = $tag['icon'];
+                            } elseif (is_array($tag['icon'])) {
+                                $emojiUrl = $tag['icon']['url'] ?? '';
+                            }
+                        }
+                        if (!empty($shortcode) && !empty($emojiUrl)) {
+                            $emojis[] = [
+                                'shortcode' => $shortcode,
+                                'url' => $emojiUrl,
+                                'static_url' => $emojiUrl,
+                                'visible_in_picker' => false,
+                                'category' => ''
+                            ];
+                        }
+                    }
+                }
+            }
+            $emojisJson = !empty($emojis) ? json_encode($emojis, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+
             if ($account) {
                 // Actualizar cuenta existente
                 $upd = $db->prepare("
                     UPDATE accounts 
-                    SET display_name = ?, note = ?, avatar = ?, header = ?, inbox_url = ?, public_key = ?, followers_count = ?, following_count = ?, statuses_count = ?, updated_at = datetime('now')
+                    SET display_name = ?, note = ?, avatar = ?, header = ?, inbox_url = ?, public_key = ?, 
+                        followers_count = ?, following_count = ?, statuses_count = ?, 
+                        fields = ?, url = ?, emojis = ?,
+                        updated_at = datetime('now')
                     WHERE id = ?
                 ");
-                $upd->execute([$displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $account['id']]);
+                $upd->execute([$displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $profileUrl, $emojisJson, $account['id']]);
                 self::log("getOrRegisterRemoteActor: Actor remoto id={$account['id']} '$username@$host' actualizado");
             } else {
                 // Insertar nueva cuenta
                 $ins = $db->prepare("
-                    INSERT INTO accounts (username, domain, display_name, note, avatar, header, inbox_url, public_key, followers_count, following_count, statuses_count, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                    INSERT INTO accounts (username, domain, display_name, note, avatar, header, inbox_url, public_key, followers_count, following_count, statuses_count, fields, url, emojis, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                 ");
-                $ins->execute([$username, $host, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount]);
+                $ins->execute([$username, $host, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $profileUrl, $emojisJson]);
                 $newId = $db->lastInsertId();
                 self::log("getOrRegisterRemoteActor: Actor remoto registrado con ID local $newId");
             }

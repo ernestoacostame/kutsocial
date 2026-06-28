@@ -263,6 +263,7 @@ $router->post('/api/v1/accounts/:id/remove_from_followers', [MastodonApiControll
 $router->get('/api/v1/follow_requests', [MastodonApiController::class, 'getFollowRequests']);
 $router->post('/api/v1/follow_requests/:id/authorize', [MastodonApiController::class, 'authorizeFollowRequest']);
 $router->post('/api/v1/follow_requests/:id/reject', [MastodonApiController::class, 'rejectFollowRequest']);
+$router->post('/api/v1/follows/resend_pending', [MastodonApiController::class, 'resendPendingFollows']);
 
 // Marcadores (Bookmarks)
 $router->get('/api/v1/bookmarks', [MastodonApiController::class, 'getBookmarks']);
@@ -307,6 +308,8 @@ $router->get('/@:username', function($params) use ($renderFrontend) {
 $router->get('/api/v1/timelines/home', [MastodonApiController::class, 'getHomeTimeline']);
 $router->get('/api/v1/timelines/public', [MastodonApiController::class, 'getPublicTimeline']);
 $router->post('/api/v1/statuses', [MastodonApiController::class, 'postStatus']);
+$router->get('/api/v1/statuses/resolve', [MastodonApiController::class, 'resolveStatusUrl']);
+$router->get('/api/v1/statuses/:id', [MastodonApiController::class, 'getSingleStatus']);
 $router->get('/api/v1/statuses/:id/context', [MastodonApiController::class, 'getStatusContext']);
 $router->put('/api/v1/statuses/:id', [MastodonApiController::class, 'updateStatus']);
 $router->delete('/api/v1/statuses/:id', [MastodonApiController::class, 'deleteStatus']);
@@ -316,7 +319,6 @@ $router->post('/api/v1/statuses/:id/bookmark', [MastodonApiController::class, 'b
 $router->post('/api/v1/statuses/:id/unbookmark', [MastodonApiController::class, 'unbookmarkStatus']);
 $router->post('/api/v1/statuses/:id/reblog', [MastodonApiController::class, 'reblogStatus']);
 $router->post('/api/v1/statuses/:id/unreblog', [MastodonApiController::class, 'unreblogStatus']);
-$router->get('/api/v1/statuses/resolve', [MastodonApiController::class, 'resolveStatusUrl']);
 $router->get('/api/v1/streaming', [MastodonApiController::class, 'getStreaming']);
 
 // Carga Real de Multimedia (Mastodon compatible)

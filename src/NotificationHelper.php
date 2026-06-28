@@ -179,8 +179,9 @@ class NotificationHelper {
                 if ($user['id'] == $author['id'] || $user['id'] == $recipientId) {
                     continue;
                 }
-                $pattern = '/@' . preg_quote($user['username'], '/') . '\b/i';
-                if (preg_match($pattern, $status['content'])) {
+                $pattern = '/@' . preg_quote($user['username'], '/') . '(?![a-zA-Z0-9_\-])/i';
+                $urlPattern = '/\/users\/' . preg_quote($user['username'], '/') . '(?![a-zA-Z0-9_\-])/i';
+                if (preg_match($pattern, $status['content']) || preg_match($urlPattern, $status['content'])) {
                     self::sendEmailNotification(
                         $user,
                         "[KutSocial] Te han mencionado en una publicación",

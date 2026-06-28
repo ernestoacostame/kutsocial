@@ -1937,6 +1937,42 @@ if (importForm) {
     });
 }
 
+// Re-enviar follows pendientes
+async function resendPendingFollows() {
+    const btn = document.getElementById('resend-pending-btn');
+    const statusMsg = document.getElementById('resend-status-msg');
+    
+    btn.disabled = true;
+    btn.innerText = '⏳ Enviando...';
+    statusMsg.innerText = '';
+    statusMsg.style.color = 'var(--text-muted)';
+    
+    try {
+        const response = await fetch('/api/v1/follows/resend_pending', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            statusMsg.innerText = `✓ ${data.resent} solicitudes re-enviadas de ${data.total_pending} pendientes.`;
+            statusMsg.style.color = 'var(--secondary)';
+        } else {
+            const data = await response.json();
+            statusMsg.innerText = 'Error: ' + (data.error || 'Intenta de nuevo.');
+            statusMsg.style.color = 'var(--error)';
+        }
+    } catch (err) {
+        statusMsg.innerText = 'Error al conectar al servidor.';
+        statusMsg.style.color = 'var(--error)';
+    }
+    
+    btn.disabled = false;
+    btn.innerText = '🔄 Re-enviar Follows Pendientes';
+}
+
 async function loadUsersList(type, accountId) {
     if (!accountId) return;
     showTab('users-list');
@@ -1949,8 +1985,8 @@ async function loadUsersList(type, accountId) {
     
     try {
         const endpoint = type === 'followers' 
-            ? `/api/v1/accounts/${accountId}/followers` 
-            : `/api/v1/accounts/${accountId}/following`;
+            ? `/api/v1/accounts/${accountId}/followers?limit=80` 
+            : `/api/v1/accounts/${accountId}/following?limit=80`;
             
         const res = await fetch(endpoint, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -1964,26 +2000,144 @@ async function loadUsersList(type, accountId) {
             container.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted);">No hay usuarios en esta lista.</div>`;
             return;
         }
+
+        // Obtener relaciones en batch
+        const myId = currentProfileData?.id;
+        let relationshipsMap = {};
+        if (myId) {
+            const ids = users.map(u => u.id).filter(id => String(id) !== String(myId));
+            if (ids.length > 0) {
+                const idsParam = ids.map(id => `id[]=${id}`).join('&');
+                try {
+                    const relRes = await fetch(`/api/v1/relationships?${idsParam}`, {
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                    if (relRes.ok) {
+                        const rels = await relRes.json();
+                        rels.forEach(r => { relationshipsMap[r.id] = r; });
+                    }
+                } catch (e) { /* silenciar error de relaciones */ }
+            }
+        }
         
         users.forEach(user => {
             const item = document.createElement('div');
             item.className = 'user-list-item';
-            item.style.cssText = 'display: flex; gap: 15px; align-items: center; padding: 12px; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(255,255,255,0.01);';
+            item.style.cssText = 'display: flex; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(255,255,255,0.01);';
             
             const avatarSrc = user.avatar || '/assets/default-avatar.png';
+            const isMe = myId && String(user.id) === String(myId);
+            const rel = relationshipsMap[user.id];
+            const following = rel?.following || false;
+            const followedBy = rel?.followed_by || false;
+            const requested = rel?.requested || false;
+            const isMutual = following && followedBy;
+
+            // Badge de relación
+            let badgeHTML = '';
+            if (!isMe && rel) {
+                if (isMutual) {
+                    badgeHTML = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(99,102,241,0.15); color:#818cf8; font-weight:600; white-space:nowrap;">🤝 Mutuo</span>`;
+                } else if (followedBy) {
+                    badgeHTML = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(255,255,255,0.06); color:var(--text-muted); font-weight:500; white-space:nowrap;">Te sigue</span>`;
+                }
+            }
+
+            // Botón de acción
+            let actionHTML = '';
+            if (!isMe) {
+                const btnId = `user-list-follow-btn-${user.id}`;
+                if (following) {
+                    actionHTML = `<button id="${btnId}" onclick="handleUserListFollow('${user.id}', this, false)" style="margin:0; padding:6px 14px; font-size:12px; white-space:nowrap; background:rgba(255,255,255,0.06); border:1px solid var(--border-color); color:var(--text-color); border-radius:8px; cursor:pointer; min-width:100px;">Dejar de seguir</button>`;
+                } else if (requested) {
+                    actionHTML = `<button id="${btnId}" disabled style="margin:0; padding:6px 14px; font-size:12px; white-space:nowrap; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); color:var(--text-muted); border-radius:8px; cursor:default; min-width:100px;">Pendiente</button>`;
+                } else {
+                    actionHTML = `<button id="${btnId}" onclick="handleUserListFollow('${user.id}', this, true)" style="margin:0; padding:6px 14px; font-size:12px; white-space:nowrap; background:var(--primary); border:none; color:white; border-radius:8px; cursor:pointer; min-width:100px;">Seguir</button>`;
+                }
+            }
             
             item.innerHTML = `
-                <img src="${avatarSrc}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer;" onclick="viewProfile('${user.id}')">
-                <div style="flex: 1; min-width: 0;">
-                    <div style="font-weight: 600; cursor: pointer; color: var(--text-color); font-size: 14.5px;" onclick="viewProfile('${user.id}')">${user.display_name}</div>
-                    <div style="color: var(--text-muted); font-size: 13px; cursor: pointer;" onclick="viewProfile('${user.id}')">@${user.acct}</div>
+                <img src="${avatarSrc}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; flex-shrink:0;" onclick="viewProfile('${user.id}')">
+                <div style="flex: 1; min-width: 0; overflow: hidden;">
+                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-weight: 600; cursor: pointer; color: var(--text-color); font-size: 14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" onclick="viewProfile('${user.id}')">${user.display_name}</span>
+                        ${badgeHTML}
+                    </div>
+                    <div style="color: var(--text-muted); font-size: 12.5px; cursor: pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" onclick="viewProfile('${user.id}')">@${user.acct}</div>
                 </div>
+                ${actionHTML}
             `;
             container.appendChild(item);
         });
     } catch (err) {
         container.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar la lista: ${err.message}</div>`;
     }
+}
+
+async function handleUserListFollow(accountId, btn, doFollow) {
+    btn.disabled = true;
+    const originalText = btn.innerText;
+    btn.innerText = doFollow ? 'Siguiendo...' : 'Dejando...';
+    
+    try {
+        const endpoint = doFollow 
+            ? `/api/v1/accounts/${accountId}/follow`
+            : `/api/v1/accounts/${accountId}/unfollow`;
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            const isNowFollowing = data.following;
+            const isRequested = data.requested;
+            
+            if (isNowFollowing) {
+                btn.innerText = 'Dejar de seguir';
+                btn.style.background = 'rgba(255,255,255,0.06)';
+                btn.style.border = '1px solid var(--border-color)';
+                btn.style.color = 'var(--text-color)';
+                btn.onclick = () => handleUserListFollow(accountId, btn, false);
+            } else if (isRequested) {
+                btn.innerText = 'Pendiente';
+                btn.style.background = 'rgba(255,255,255,0.03)';
+                btn.style.border = '1px solid var(--border-color)';
+                btn.style.color = 'var(--text-muted)';
+                btn.onclick = null;
+            } else {
+                btn.innerText = 'Seguir';
+                btn.style.background = 'var(--primary)';
+                btn.style.border = 'none';
+                btn.style.color = 'white';
+                btn.onclick = () => handleUserListFollow(accountId, btn, true);
+            }
+
+            // Actualizar badge de mutualidad
+            const item = btn.closest('.user-list-item');
+            if (item) {
+                const badgeContainer = item.querySelector('div[style*="flex-wrap"]');
+                if (badgeContainer) {
+                    const existingBadge = badgeContainer.querySelector('span[style*="border-radius:20px"]');
+                    const followedBy = data.followed_by;
+                    const isMutual = isNowFollowing && followedBy;
+                    
+                    if (existingBadge) existingBadge.remove();
+                    
+                    if (isMutual) {
+                        badgeContainer.insertAdjacentHTML('beforeend', `<span style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(99,102,241,0.15); color:#818cf8; font-weight:600; white-space:nowrap;">🤝 Mutuo</span>`);
+                    } else if (followedBy) {
+                        badgeContainer.insertAdjacentHTML('beforeend', `<span style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(255,255,255,0.06); color:var(--text-muted); font-weight:500; white-space:nowrap;">Te sigue</span>`);
+                    }
+                }
+            }
+        } else {
+            btn.innerText = originalText;
+        }
+    } catch (e) {
+        btn.innerText = originalText;
+    }
+    btn.disabled = false;
 }
 
 function goBackFromUsersList() {

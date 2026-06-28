@@ -24,6 +24,12 @@ class MastodonApiController {
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         $base = "$proto://$domain";
 
+        // Obtener cuenta del administrador/propietario para contact_account
+        $stmtOwner = $db->prepare("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+        $stmtOwner->execute();
+        $ownerAccount = $stmtOwner->fetch();
+        $contactAccount = $ownerAccount ? self::formatAccount($ownerAccount) : null;
+
         $response = [
             'uri' => $domain,
             'title' => $title,
@@ -46,11 +52,42 @@ class MastodonApiController {
             'approval_required' => false,
             'invites_enabled' => false,
             'configuration' => [
+                'urls' => [
+                    'streaming' => 'wss://' . $domain . '/api/v1/streaming'
+                ],
+                'accounts' => [
+                    'max_featured_tags' => 10
+                ],
                 'statuses' => [
                     'max_characters' => $maxChars,
-                    'max_media_attachments' => 4
+                    'max_media_attachments' => 4,
+                    'characters_reserved_per_url' => 23
+                ],
+                'media_attachments' => [
+                    'supported_mime_types' => [
+                        'image/jpeg', 'image/png', 'image/gif', 'image/heic', 'image/heif',
+                        'image/webp', 'image/avif',
+                        'video/webm', 'video/mp4', 'video/quicktime', 'video/ogg',
+                        'audio/wave', 'audio/wav', 'audio/x-wav', 'audio/x-patchwork-wav',
+                        'audio/aac', 'audio/m4a', 'audio/x-m4a', 'audio/mp4', 'audio/mp3',
+                        'audio/mpeg', 'audio/ogg', 'audio/vorbis', 'audio/vnd.wav',
+                        'audio/flac', 'audio/opus'
+                    ],
+                    'image_size_limit' => 16777216,
+                    'image_matrix_limit' => 33177600,
+                    'video_size_limit' => 103809024,
+                    'video_frame_rate_limit' => 120,
+                    'video_matrix_limit' => 8294400
+                ],
+                'polls' => [
+                    'max_options' => 4,
+                    'max_characters_per_option' => 50,
+                    'min_expiration' => 300,
+                    'max_expiration' => 2629746
                 ]
-            ]
+            ],
+            'contact_account' => $contactAccount,
+            'rules' => []
         ];
 
         Router::json($response);
@@ -72,6 +109,12 @@ class MastodonApiController {
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
 
+        // Obtener cuenta del administrador/propietario para contact.account
+        $stmtOwner = $db->prepare("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+        $stmtOwner->execute();
+        $ownerAccount = $stmtOwner->fetch();
+        $contactAccount = $ownerAccount ? self::formatAccount($ownerAccount) : null;
+
         $response = [
             'domain' => $domain,
             'title' => $title,
@@ -84,13 +127,51 @@ class MastodonApiController {
                 ]
             ],
             'thumbnail' => [
-                'url' => "$proto://$domain/assets/thumbnail.png"
+                'url' => "$proto://$domain/assets/thumbnail.png",
+                'blurhash' => null,
+                'versions' => (object)[]
             ],
             'languages' => ['es'],
             'configuration' => [
+                'urls' => [
+                    'streaming' => 'wss://' . $domain . '/api/v1/streaming'
+                ],
+                'vapid' => [
+                    'public_key' => ''
+                ],
+                'accounts' => [
+                    'max_featured_tags' => 10,
+                    'max_pinned_statuses' => 5
+                ],
                 'statuses' => [
                     'max_characters' => $maxChars,
-                    'max_media_attachments' => 4
+                    'max_media_attachments' => 4,
+                    'characters_reserved_per_url' => 23
+                ],
+                'media_attachments' => [
+                    'supported_mime_types' => [
+                        'image/jpeg', 'image/png', 'image/gif', 'image/heic', 'image/heif',
+                        'image/webp', 'image/avif',
+                        'video/webm', 'video/mp4', 'video/quicktime', 'video/ogg',
+                        'audio/wave', 'audio/wav', 'audio/x-wav', 'audio/x-patchwork-wav',
+                        'audio/aac', 'audio/m4a', 'audio/x-m4a', 'audio/mp4', 'audio/mp3',
+                        'audio/mpeg', 'audio/ogg', 'audio/vorbis', 'audio/vnd.wav',
+                        'audio/flac', 'audio/opus'
+                    ],
+                    'image_size_limit' => 16777216,
+                    'image_matrix_limit' => 33177600,
+                    'video_size_limit' => 103809024,
+                    'video_frame_rate_limit' => 120,
+                    'video_matrix_limit' => 8294400
+                ],
+                'polls' => [
+                    'max_options' => 4,
+                    'max_characters_per_option' => 50,
+                    'min_expiration' => 300,
+                    'max_expiration' => 2629746
+                ],
+                'translation' => [
+                    'enabled' => false
                 ]
             ],
             'registrations' => [
@@ -100,7 +181,7 @@ class MastodonApiController {
             ],
             'contact' => [
                 'email' => 'admin@' . $domain,
-                'account' => null
+                'account' => $contactAccount
             ],
             'rules' => []
         ];
@@ -1003,6 +1084,33 @@ HTML;
         ]);
         $mentionRows = $stmtMentions->fetchAll();
         foreach ($mentionRows as $row) {
+            // Validar que sea mención real (evitar falsos positivos de substrings como @iam vs @iamdavidobrien)
+            $isRealMention = false;
+            
+            // 1. Si es respuesta a un post del usuario
+            if ($row['in_reply_to_id']) {
+                $stmtCheckReply = $db->prepare("SELECT 1 FROM statuses WHERE id = ? AND account_id = ? LIMIT 1");
+                $stmtCheckReply->execute([$row['in_reply_to_id'], $currUserId]);
+                if ($stmtCheckReply->fetchColumn()) {
+                    $isRealMention = true;
+                }
+            }
+            
+            // 2. Si contiene mención real en el texto
+            if (!$isRealMention) {
+                $username = $account['username'];
+                $content = $row['status_content'];
+                $mentionPattern = '/@' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
+                $urlPattern = '/\/users\/' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
+                if (preg_match($mentionPattern, $content) || preg_match($urlPattern, $content)) {
+                    $isRealMention = true;
+                }
+            }
+
+            if (!$isRealMention) {
+                continue; // Falso positivo, ignorar
+            }
+
             $notifications[] = [
                 'id' => 'mention_' . $row['status_id'],
                 'type' => 'mention',
@@ -1436,25 +1544,11 @@ HTML;
         }
 
         // Devolver la bio en el formato adecuado
-        $bio = $account['note'] ?: '';
-        if (!$plainTextBio) {
-            if (!empty($bio)) {
-                if (str_contains($bio, '<p>') || str_contains($bio, '<br')) {
-                    // Mantener original
-                } else {
-                    $paragraphs = preg_split('/\r?\n\r?\n/', $bio);
-                    $formattedParagraphs = [];
-                    foreach ($paragraphs as $p) {
-                        $p = trim($p);
-                        if ($p !== '') {
-                            $formattedParagraphs[] = "<p>" . nl2br(htmlspecialchars($p)) . "</p>";
-                        }
-                    }
-                    $bio = implode("", $formattedParagraphs);
-                }
-            } else {
-                $bio = "<p></p>";
-            }
+        $isRemote = !empty($account['domain']);
+        if ($plainTextBio) {
+            $bio = $account['note'] ?: '';
+        } else {
+            $bio = self::formatAccountNote($account['note'] ?: '', $isRemote);
         }
 
         // Procesar metadatos (campos adicionales)
@@ -1529,7 +1623,7 @@ HTML;
             'group' => false,
             'created_at' => date('c', strtotime($account['created_at'])),
             'note' => $bio,
-            'url' => $account['domain'] ? "https://{$account['domain']}/@{$account['username']}" : "$proto://$domain/@" . $account['username'],
+            'url' => (!empty($account['url']) && !empty($account['domain'])) ? $account['url'] : ($account['domain'] ? "https://{$account['domain']}/@{$account['username']}" : "$proto://$domain/@" . $account['username']),
             'avatar' => $avatarUrl,
             'avatar_static' => $avatarUrl,
             'header' => $headerUrl,
@@ -1538,7 +1632,7 @@ HTML;
             'following_count' => $followingCount,
             'statuses_count' => $statusesCount,
             'last_status_at' => null,
-            'emojis' => [],
+            'emojis' => self::extractAccountEmojis($account),
             'fields' => $fields,
             'role' => [
                 'id' => '1',
@@ -2851,6 +2945,210 @@ HTML;
         return '<p>' . nl2br($escaped) . '</p>';
     }
 
+    /**
+     * Helper: Formatea la nota/bio de una cuenta para la API.
+     * Las bios de cuentas remotas ya vienen en HTML desde ActivityPub y no deben re-escaparse.
+     * Las bios de cuentas locales se formatean como HTML limpio.
+     */
+    private static function formatAccountNote(string $note, bool $isRemote): string {
+        if (empty($note)) {
+            return '<p></p>';
+        }
+        // Si es cuenta remota, la nota ya viene en HTML desde ActivityPub
+        if ($isRemote) {
+            if (str_contains($note, '<p>') || str_contains($note, '<br') || str_contains($note, '<a ') || str_contains($note, '<span')) {
+                return $note;
+            }
+        }
+        // Para cuentas locales o notas sin HTML, formatear
+        if (str_contains($note, '<p>') || str_contains($note, '<br')) {
+            return $note;
+        }
+        $paragraphs = preg_split('/\r?\n\r?\n/', $note);
+        $formattedParagraphs = [];
+        foreach ($paragraphs as $p) {
+            $p = trim($p);
+            if ($p !== '') {
+                $formattedParagraphs[] = "<p>" . nl2br(htmlspecialchars($p)) . "</p>";
+            }
+        }
+        return implode("", $formattedParagraphs) ?: '<p></p>';
+    }
+
+    /**
+     * Endpoint GET /api/v1/statuses/:id
+     * Retorna un status individual por su ID.
+     */
+    public static function getSingleStatus(array $params): void {
+        $id = (int)$params['id'];
+        $db = Database::connect();
+
+        $account = null;
+        $currUserId = null;
+        try {
+            $account = self::getAuthenticatedAccount();
+            if ($account) {
+                $currUserId = (int)$account['id'];
+            }
+        } catch (\Exception $e) {}
+
+        $row = self::fetchStatusRow($db, $id);
+        if (!$row) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        // Verificar permisos de visibilidad
+        $visibility = $row['status_visibility'] ?? 'public';
+        $statusAuthorId = (int)$row['account_id'];
+
+        if ($visibility === 'direct') {
+            if ($currUserId === null) {
+                Router::json(['error' => 'Record not found'], 404);
+                return;
+            }
+            if ($currUserId !== $statusAuthorId) {
+                $username = $account['username'] ?? '';
+                $content = $row['status_content'] ?? '';
+                if (!str_contains($content, "/users/$username") && !preg_match('/@' . preg_quote($username, '/') . '\b/i', $content)) {
+                    Router::json(['error' => 'Record not found'], 404);
+                    return;
+                }
+            }
+        } elseif ($visibility === 'private') {
+            if ($currUserId === null) {
+                Router::json(['error' => 'Record not found'], 404);
+                return;
+            }
+            if ($currUserId !== $statusAuthorId) {
+                $stmtFollow = $db->prepare("SELECT 1 FROM follows WHERE account_id = ? AND target_account_id = ? AND status = 'accepted' LIMIT 1");
+                $stmtFollow->execute([$currUserId, $statusAuthorId]);
+                if (!$stmtFollow->fetchColumn()) {
+                    Router::json(['error' => 'Record not found'], 404);
+                    return;
+                }
+            }
+        }
+
+        Router::json(self::formatStatus($row, $currUserId));
+    }
+
+    /**
+     * Helper: Detecta el tipo de media Mastodon API a partir de un mediaType MIME.
+     */
+    public static function detectMediaType(string $mediaType): string {
+        $mediaType = strtolower(trim($mediaType));
+        if (str_starts_with($mediaType, 'video/')) {
+            return 'video';
+        }
+        if (str_starts_with($mediaType, 'audio/')) {
+            return 'audio';
+        }
+        if ($mediaType === 'image/gif') {
+            return 'gifv';
+        }
+        return 'image';
+    }
+
+    /**
+     * Helper: Detecta el tipo de media a partir de la extensión de URL cuando no hay mediaType.
+     */
+    public static function detectMediaTypeFromUrl(string $url): string {
+        $ext = strtolower(pathinfo(parse_url($url, PHP_URL_PATH) ?: '', PATHINFO_EXTENSION));
+        $videoExts = ['mp4', 'webm', 'mov', 'ogv', 'avi', 'mkv', 'm4v'];
+        $audioExts = ['mp3', 'ogg', 'wav', 'flac', 'aac', 'm4a', 'opus', 'wma'];
+        if (in_array($ext, $videoExts)) {
+            return 'video';
+        }
+        if (in_array($ext, $audioExts)) {
+            return 'audio';
+        }
+        if ($ext === 'gif') {
+            return 'gifv';
+        }
+        return 'image';
+    }
+
+    /**
+     * Helper: Extrae emojis personalizados de una cadena de contenido y de datos almacenados.
+     * Los emojis en Mastodon usan formato :shortcode: en el contenido.
+     * Los emojis remotos se almacenan como JSON en la columna 'emojis' del status.
+     */
+    private static function extractEmojisFromContent(string $content, array $row): array {
+        $emojis = [];
+        $seenShortcodes = [];
+
+        // 1. Primero, extraer emojis almacenados del status (guardados desde ActivityPub)
+        $emojisJson = $row['emojis'] ?? $row['status_emojis'] ?? null;
+        if (!empty($emojisJson) && is_string($emojisJson)) {
+            $storedEmojis = json_decode($emojisJson, true);
+            if (is_array($storedEmojis)) {
+                foreach ($storedEmojis as $emoji) {
+                    $shortcode = $emoji['shortcode'] ?? '';
+                    if (!empty($shortcode) && !isset($seenShortcodes[$shortcode])) {
+                        $seenShortcodes[$shortcode] = true;
+                        $emojis[] = [
+                            'shortcode' => $shortcode,
+                            'url' => $emoji['url'] ?? '',
+                            'static_url' => $emoji['static_url'] ?? $emoji['url'] ?? '',
+                            'visible_in_picker' => $emoji['visible_in_picker'] ?? true,
+                            'category' => $emoji['category'] ?? ''
+                        ];
+                    }
+                }
+            }
+        }
+
+        // 2. Extraer emojis de la cuenta del autor (display_name puede contener emojis)
+        $accountEmojisJson = $row['account_emojis'] ?? null;
+        if (!empty($accountEmojisJson) && is_string($accountEmojisJson)) {
+            $accountEmojis = json_decode($accountEmojisJson, true);
+            if (is_array($accountEmojis)) {
+                foreach ($accountEmojis as $emoji) {
+                    $shortcode = $emoji['shortcode'] ?? '';
+                    if (!empty($shortcode) && !isset($seenShortcodes[$shortcode])) {
+                        $seenShortcodes[$shortcode] = true;
+                        $emojis[] = [
+                            'shortcode' => $shortcode,
+                            'url' => $emoji['url'] ?? '',
+                            'static_url' => $emoji['static_url'] ?? $emoji['url'] ?? '',
+                            'visible_in_picker' => false,
+                            'category' => ''
+                        ];
+                    }
+                }
+            }
+        }
+
+        return $emojis;
+    }
+
+    /**
+     * Helper: Extrae emojis personalizados almacenados de una cuenta.
+     */
+    private static function extractAccountEmojis(array $account): array {
+        $emojis = [];
+        $emojisJson = $account['emojis'] ?? $account['account_emojis'] ?? null;
+        if (!empty($emojisJson) && is_string($emojisJson)) {
+            $stored = json_decode($emojisJson, true);
+            if (is_array($stored)) {
+                foreach ($stored as $emoji) {
+                    $shortcode = $emoji['shortcode'] ?? '';
+                    if (!empty($shortcode)) {
+                        $emojis[] = [
+                            'shortcode' => $shortcode,
+                            'url' => $emoji['url'] ?? '',
+                            'static_url' => $emoji['static_url'] ?? $emoji['url'] ?? '',
+                            'visible_in_picker' => $emoji['visible_in_picker'] ?? false,
+                            'category' => $emoji['category'] ?? ''
+                        ];
+                    }
+                }
+            }
+        }
+        return $emojis;
+    }
+
     private static function formatStatus(array $row, ?int $currentAccountId = null): array {
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -2875,8 +3173,8 @@ HTML;
             'discoverable' => (bool)($row['discoverable'] ?? 1),
             'group' => false,
             'created_at' => date('c', strtotime($row['account_created_at'])),
-            'note' => "<p>" . nl2br(htmlspecialchars($row['note'] ?? '')) . "</p>",
-            'url' => $row['domain'] ? "$proto://{$row['domain']}/users/{$row['username']}" : "$proto://$domain/users/" . $row['username'],
+            'note' => self::formatAccountNote($row['note'] ?? '', !empty($row['domain'])),
+            'url' => (!empty($row['account_url']) && !empty($row['domain'])) ? $row['account_url'] : ($row['domain'] ? "$proto://{$row['domain']}/users/{$row['username']}" : "$proto://$domain/users/" . $row['username']),
             'avatar' => $avatarUrl,
             'avatar_static' => $avatarUrl,
             'header' => $headerUrl,
@@ -2885,7 +3183,7 @@ HTML;
             'following_count' => 0,
             'statuses_count' => 0,
             'last_status_at' => null,
-            'emojis' => [],
+            'emojis' => self::extractAccountEmojis($row),
             'fields' => [],
             'avatar_description' => $row['avatar_description'] ?? '',
             'header_description' => $row['header_description'] ?? ''
@@ -3085,7 +3383,7 @@ HTML;
             'media_attachments' => $attachments,
             'mentions' => [],
             'tags' => [],
-            'emojis' => [],
+            'emojis' => self::extractEmojisFromContent($formattedContent, $row),
             'card' => (function() use ($row, $db) {
                 if (array_key_exists('card', $row)) {
                     return !empty($row['card']) ? json_decode($row['card'], true) : null;
@@ -3224,13 +3522,18 @@ HTML;
             \KutSocial\Queue::triggerAsync($domain);
         }
 
+        // Verificar si la cuenta objetivo nos sigue
+        $stmtFollowedBy = $db->prepare("SELECT status FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtFollowedBy->execute([$targetId, $account['id']]);
+        $followedByStatus = $stmtFollowedBy->fetchColumn();
+
         Router::json([
             'id' => (string)$targetId,
             'following' => ($status === 'accepted' || $status === 'pending'),
             'showing_reblogs' => true,
             'notifying' => false,
             'languages' => null,
-            'followed_by' => false,
+            'followed_by' => ($followedByStatus === 'accepted'),
             'blocking' => false,
             'blocked_by' => false,
             'muting' => false,
@@ -3281,13 +3584,18 @@ HTML;
             \KutSocial\Queue::triggerAsync($domain);
         }
 
+        // Verificar si la cuenta objetivo nos sigue
+        $stmtFollowedBy = $db->prepare("SELECT status FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtFollowedBy->execute([$targetId, $account['id']]);
+        $followedByStatus = $stmtFollowedBy->fetchColumn();
+
         Router::json([
             'id' => (string)$targetId,
             'following' => false,
             'showing_reblogs' => false,
             'notifying' => false,
             'languages' => null,
-            'followed_by' => false,
+            'followed_by' => ($followedByStatus === 'accepted'),
             'blocking' => false,
             'blocked_by' => false,
             'muting' => false,
@@ -3550,7 +3858,6 @@ HTML;
 
         Router::json([
             'ancestors' => $ancestors,
-            'status' => $mainStatus,
             'descendants' => $descendants
         ]);
     }
@@ -3754,8 +4061,10 @@ HTML;
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
                    s.visibility as status_visibility, s.created_at as status_created_at, 
                    s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments, s.reblog_of_id,
+                   s.emojis as status_emojis,
                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
-                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at
+                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                   a.emojis as account_emojis
             FROM statuses s
             JOIN accounts a ON s.account_id = a.id
             WHERE s.id = ?
@@ -3803,11 +4112,14 @@ HTML;
 
     private static function filterStatuses(array $rows): array {
         $db = Database::connect();
-        $blocks = $db->query("SELECT type, target FROM moderation_blocks")->fetchAll();
-        if (empty($blocks)) {
-            return $rows;
-        }
+        
+        $currUser = null;
+        try {
+            $currUser = self::getAuthenticatedAccount();
+        } catch (\Exception $e) {}
 
+        $blocks = $db->query("SELECT type, target FROM moderation_blocks")->fetchAll();
+        
         $blockedDomains = [];
         $blockedAccounts = [];
         $blockedWords = [];
@@ -3834,6 +4146,27 @@ HTML;
 
         $filtered = [];
         foreach ($rows as $row) {
+            // 1. Filtrar visibilidad direct (DMs) para evitar fugas de privacidad
+            $visibility = $row['status_visibility'] ?? $row['visibility'] ?? 'public';
+            if ($visibility === 'direct') {
+                if (!$currUser) {
+                    continue; // Usuarios no autenticados no pueden ver DMs
+                }
+                $authorId = (int)($row['account_id'] ?? $row['id'] ?? 0);
+                if ($authorId !== (int)$currUser['id']) {
+                    $username = $currUser['username'];
+                    $content = $row['status_content'] ?? $row['content'] ?? '';
+                    
+                    $mentionPattern = '/@' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
+                    $urlPattern = '/\/users\/' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
+                    
+                    $isRealMention = preg_match($mentionPattern, $content) || preg_match($urlPattern, $content);
+                    if (!$isRealMention) {
+                        continue; // No es el destinatario
+                    }
+                }
+            }
+
             $domain = strtolower($row['domain'] ?? '');
             if (!empty($domain) && in_array($domain, $blockedDomains)) {
                 continue;
@@ -3845,7 +4178,7 @@ HTML;
                 continue;
             }
 
-            $content = strtolower($row['status_content'] ?? '');
+            $content = strtolower($row['status_content'] ?? $row['content'] ?? '');
             $hasBlockedWord = false;
             foreach ($blockedWords as $word) {
                 if (str_contains($content, $word)) {
@@ -4268,6 +4601,68 @@ HTML;
             $csvRows[] = [$addr, 'true'];
         }
         self::outputCsv('following.csv', ['Account address', 'Show boosts'], $csvRows);
+    }
+
+    /**
+     * Endpoint POST /api/v1/follows/resend_pending
+     * Re-envía actividades Follow para todos los follows salientes en estado 'pending'.
+     * Útil después de reinstalar la instancia para que los servidores remotos re-envíen Accept.
+     */
+    public static function resendPendingFollows(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $localActorUrl = "$proto://$domain/users/{$account['username']}";
+
+        // Obtener todos los follows pendientes salientes a cuentas remotas
+        $stmt = $db->prepare("
+            SELECT f.id as follow_id, a.* FROM follows f
+            JOIN accounts a ON f.target_account_id = a.id
+            WHERE f.account_id = ? AND f.status = 'pending' AND a.domain IS NOT NULL
+        ");
+        $stmt->execute([$account['id']]);
+        $pendingFollows = $stmt->fetchAll();
+
+        $reenqueued = 0;
+        $skipped = 0;
+
+        foreach ($pendingFollows as $target) {
+            if (empty($target['inbox_url'])) {
+                $skipped++;
+                continue;
+            }
+
+            $remoteActorUrl = $target['url'] ?? "https://{$target['domain']}/users/{$target['username']}";
+
+            $followActivity = [
+                '@context' => 'https://www.w3.org/ns/activitystreams',
+                'id' => $localActorUrl . '/activities/follow-' . bin2hex(random_bytes(8)),
+                'type' => 'Follow',
+                'actor' => $localActorUrl,
+                'object' => $remoteActorUrl
+            ];
+
+            \KutSocial\Queue::enqueue('Follow', $followActivity, $target['inbox_url']);
+            $reenqueued++;
+        }
+
+        if ($reenqueued > 0) {
+            \KutSocial\Queue::triggerAsync($domain);
+        }
+
+        Router::json([
+            'success' => true,
+            'resent' => $reenqueued,
+            'skipped' => $skipped,
+            'total_pending' => count($pendingFollows),
+            'message' => "Se re-enviaron $reenqueued solicitudes de Follow. Los servidores remotos responderán con Accept gradualmente."
+        ]);
     }
 
     public static function exportFollowers(): void {

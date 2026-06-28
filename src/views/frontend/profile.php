@@ -118,5 +118,17 @@
             </form>
             <div id="import-status-msg" style="margin-top: 12px; font-size: 13.5px; font-weight: 600; text-align: center;"></div>
         </div>
+
+        <!-- Re-enviar Follows Pendientes -->
+        <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-top: 25px;">
+            <h4 style="font-size: 13.5px; margin-bottom: 8px; color: var(--text-color);">🔄 Re-enviar Follows Pendientes</h4>
+            <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 15px;">
+                Si reinstalaste tu instancia y algunos follows quedaron en "pendiente", usa este botón para re-enviar las solicitudes a los servidores remotos.
+            </p>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <button id="resend-pending-btn" onclick="resendPendingFollows()" style="margin: 0; padding: 12px 24px; font-size: 13px;">🔄 Re-enviar Follows Pendientes</button>
+                <span id="resend-status-msg" style="font-size: 13px; font-weight: 600;"></span>
+            </div>
+        </div>
     </div>
 </div>

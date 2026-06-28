@@ -378,6 +378,11 @@ class Database {
             14 => [
                 "ALTER TABLE statuses ADD COLUMN reblog_of_id INTEGER",
                 "CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_id ON statuses(reblog_of_id)"
+            ],
+            15 => [
+                "ALTER TABLE statuses ADD COLUMN emojis TEXT NULL",
+                "ALTER TABLE accounts ADD COLUMN emojis TEXT NULL",
+                "ALTER TABLE accounts ADD COLUMN url TEXT NULL"
             ]
         ];
     }
