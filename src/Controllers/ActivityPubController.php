@@ -580,20 +580,40 @@ XML;
                 $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
             }
 
+            $objectNote = [
+                'id' => $status['uri'],
+                'type' => 'Note',
+                'content' => $status['content'],
+                'published' => date('c', strtotime($status['created_at'])),
+                'to' => $to,
+                'cc' => $cc
+            ];
+
+            if (!empty($status['media_attachments'])) {
+                $dbMedia = json_decode($status['media_attachments'], true);
+                if (is_array($dbMedia)) {
+                    $attachmentsList = [];
+                    foreach ($dbMedia as $att) {
+                        $attachmentsList[] = [
+                            'type' => 'Document',
+                            'mediaType' => 'image/' . pathinfo($att['url'], PATHINFO_EXTENSION),
+                            'url' => $att['url'],
+                            'name' => !empty($att['description']) ? $att['description'] : null
+                        ];
+                    }
+                    if (!empty($attachmentsList)) {
+                        $objectNote['attachment'] = $attachmentsList;
+                    }
+                }
+            }
+
             $items[] = [
                 'id' => $status['uri'] . '/activity',
                 'type' => 'Create',
                 'actor' => "$proto://$domain/users/$username",
                 'to' => $to,
                 'cc' => $cc,
-                'object' => [
-                    'id' => $status['uri'],
-                    'type' => 'Note',
-                    'content' => $status['content'],
-                    'published' => date('c', strtotime($status['created_at'])),
-                    'to' => $to,
-                    'cc' => $cc
-                ]
+                'object' => $objectNote
             ];
         }
 
@@ -1534,8 +1554,7 @@ XML;
             $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
         }
 
-        header('Content-Type: application/activity+json; charset=utf-8');
-        echo json_encode([
+        $note = [
             '@context' => 'https://www.w3.org/ns/activitystreams',
             'id' => $status['uri'],
             'type' => 'Note',
@@ -1544,7 +1563,28 @@ XML;
             'published' => date('c', strtotime($status['created_at'])),
             'to' => $to,
             'cc' => $cc
-        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        ];
+
+        if (!empty($status['media_attachments'])) {
+            $dbMedia = json_decode($status['media_attachments'], true);
+            if (is_array($dbMedia)) {
+                $attachmentsList = [];
+                foreach ($dbMedia as $att) {
+                    $attachmentsList[] = [
+                        'type' => 'Document',
+                        'mediaType' => 'image/' . pathinfo($att['url'], PATHINFO_EXTENSION),
+                        'url' => $att['url'],
+                        'name' => !empty($att['description']) ? $att['description'] : null
+                    ];
+                }
+                if (!empty($attachmentsList)) {
+                    $note['attachment'] = $attachmentsList;
+                }
+            }
+        }
+
+        header('Content-Type: application/activity+json; charset=utf-8');
+        echo json_encode($note, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         exit;
     }
 

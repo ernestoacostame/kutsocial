@@ -2756,7 +2756,7 @@ HTML;
                         'type' => 'Document',
                         'mediaType' => 'image/' . pathinfo($att['url'], PATHINFO_EXTENSION),
                         'url' => $att['url'],
-                        'name' => null
+                        'name' => !empty($att['description']) ? $att['description'] : null
                     ];
                 }
                 $noteObject['attachment'] = $attachmentsList;
