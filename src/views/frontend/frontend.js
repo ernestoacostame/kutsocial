@@ -69,11 +69,23 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
     errDiv.style.display = 'none';
 
+    // Verificamos si existe el campo OTP
+    const otpInput = document.getElementById('login-otp');
+    let otpVal = '';
+    if (otpInput) {
+        otpVal = otpInput.value;
+    }
+
     try {
+        let body = `grant_type=password&username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`;
+        if (otpVal) {
+            body += `&otp=${encodeURIComponent(otpVal)}`;
+        }
+
         const response = await fetch('/oauth/token', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: `grant_type=password&username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`
+            body: body
         });
         
         const data = await response.json();
@@ -81,6 +93,22 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
             token = data.access_token;
             localStorage.setItem('kutsocial_token', token);
             window.location.reload();
+        } else if (data.error === 'two_factor_required') {
+            // Mostrar campo OTP si no existe ya
+            if (!otpInput) {
+                const form = document.getElementById('login-form');
+                const otpGroup = document.createElement('div');
+                otpGroup.className = 'form-group';
+                otpGroup.innerHTML = `
+                    <label for="login-otp">Código de Dos Factores (2FA)</label>
+                    <input type="text" id="login-otp" required placeholder="123456" pattern="\\d{6}" maxlength="6" style="text-align:center; font-size:18px; letter-spacing:5px;">
+                `;
+                // Insertar antes del botón
+                const button = form.querySelector('button');
+                form.insertBefore(otpGroup, button);
+            }
+            errDiv.innerText = 'Por favor, introduce el código 2FA de tu app de autenticación.';
+            errDiv.style.display = 'block';
         } else {
             errDiv.innerText = data.error_description || data.error || 'Fallo de acceso';
             errDiv.style.display = 'block';
