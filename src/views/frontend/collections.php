@@ -11,8 +11,9 @@
                 <div style="font-size: 13px; color: var(--text-muted); padding: 10px 0;">No tienes colecciones.</div>
             <?php else: ?>
                 <?php foreach ($userCollections as $col): ?>
-                    <button class="collection-nav-btn" data-collection-id="<?= $col['id'] ?>" onclick="selectCollection(<?= $col['id'] ?>)" style="background: none; border: none; text-align: left; padding: 8px 12px; border-radius: 8px; color: var(--text-color); cursor: pointer; transition: all 0.2s; font-size: 13.5px; width: 100%; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; font-weight: normal;">
+                    <button class="list-nav-btn" data-collection-id="<?= $col['id'] ?>" onclick="selectCollection(<?= $col['id'] ?>)">
                         <span>📁 <?= htmlspecialchars($col['title']) ?></span>
+                        <span class="material-icons-outlined" style="font-size: 14px; opacity: 0.5;">chevron_right</span>
                     </button>
                 <?php endforeach; ?>
             <?php endif; ?>
@@ -22,9 +23,11 @@
                 Selecciona o crea una colección para ver sus cuentas asociadas.
             </div>
             <div id="collection-detail-view" style="display: none;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                    <h3 id="selected-collection-title" style="font-size: 18px; margin: 0; color: var(--primary);"></h3>
-                    <button id="btn-delete-collection" class="btn-publish" style="padding: 4px 10px; font-size: 12px; margin: 0; background: var(--error); border: none;" onclick="deleteSelectedCollection()">Eliminar</button>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; min-width: 0; gap: 15px;">
+                    <h3 id="selected-collection-title" style="font-size: 18px; margin: 0; color: var(--primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;"></h3>
+                    <button id="btn-delete-collection" class="btn-delete-item" title="Eliminar Colección" onclick="deleteSelectedCollection()">
+                        <span class="material-icons-outlined" style="font-size: 18px;">delete</span>
+                    </button>
                 </div>
                 <p id="selected-collection-desc" style="font-size: 13px; color: var(--text-muted); margin-bottom: 15px;"></p>
                 <h4 style="font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 10px; font-weight: bold; letter-spacing: 0.5px;">Cuentas Curadas</h4>

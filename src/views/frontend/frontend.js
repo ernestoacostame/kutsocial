@@ -3589,16 +3589,18 @@ function loadListMembersView() {
         }
         accounts.forEach(acc => {
             const div = document.createElement('div');
-            div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; background: rgba(255,255,255,0.02);";
+            div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; background: rgba(255,255,255,0.02); min-width: 0; gap: 15px;";
             div.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px; cursor: pointer;" onclick="viewProfile('${acc.id}')">
-                    <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
-                    <div>
-                        <div style="font-weight:600; font-size:14px; color:var(--text-color);">${escapeHTML(acc.display_name || acc.username)}</div>
-                        <div style="font-size:12px; color:var(--text-muted);">@${escapeHTML(acc.acct)}</div>
+                <div style="display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; flex: 1;" onclick="viewProfile('${acc.id}')">
+                    <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">
+                    <div class="user-info">
+                        <div class="user-name" style="font-size: 14px;">${escapeHTML(acc.display_name || acc.username)}</div>
+                        <div class="user-handle">@${escapeHTML(acc.acct)}</div>
                     </div>
                 </div>
-                <button class="btn-publish" style="width:auto; padding: 4px 10px; font-size: 11px; margin: 0; background: var(--error);" onclick="removeFromList('${acc.id}', this)">Eliminar</button>
+                <button class="btn-delete-item" onclick="removeFromList('${acc.id}', this)" title="Eliminar miembro de la lista">
+                    <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
+                </button>
             `;
             membersContainer.appendChild(div);
         });
@@ -3609,7 +3611,8 @@ function loadListMembersView() {
 }
 
 async function removeFromList(accountId, btn) {
-    btn.innerText = 'Quitando...';
+    btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px; animation: spin 1s linear infinite;">sync</span>';
+    btn.disabled = true;
     try {
         const res = await fetch(`/api/v1/lists/${selectedListId}/accounts`, {
             method: 'DELETE',
@@ -3622,10 +3625,12 @@ async function removeFromList(accountId, btn) {
         if (res.ok) {
             loadListMembersView();
         } else {
-            btn.innerText = 'Eliminar';
+            btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px;">delete</span>';
+            btn.disabled = false;
         }
     } catch (e) {
-        btn.innerText = 'Eliminar';
+        btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px;">delete</span>';
+        btn.disabled = false;
     }
 }
 
@@ -3765,16 +3770,18 @@ function loadCollectionAccounts() {
         }
         accounts.forEach(acc => {
             const div = document.createElement('div');
-            div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; background: rgba(255,255,255,0.02);";
+            div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; background: rgba(255,255,255,0.02); min-width: 0; gap: 15px;";
             div.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px; cursor: pointer;" onclick="viewProfile('${acc.id}')">
-                    <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
-                    <div>
-                        <div style="font-weight:600; font-size:14px; color:var(--text-color);">${escapeHTML(acc.display_name || acc.username)}</div>
-                        <div style="font-size:12px; color:var(--text-muted);">@${escapeHTML(acc.acct)}</div>
+                <div style="display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; flex: 1;" onclick="viewProfile('${acc.id}')">
+                    <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">
+                    <div class="user-info">
+                        <div class="user-name" style="font-size: 14px;">${escapeHTML(acc.display_name || acc.username)}</div>
+                        <div class="user-handle">@${escapeHTML(acc.acct)}</div>
                     </div>
                 </div>
-                <button class="btn-publish" style="width:auto; padding: 4px 10px; font-size: 11px; margin: 0; background: var(--error);" onclick="removeFromCollection('${acc.id}', this)">Eliminar</button>
+                <button class="btn-delete-item" onclick="removeFromCollection('${acc.id}', this)" title="Eliminar cuenta de la colección">
+                    <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
+                </button>
             `;
             container.appendChild(div);
         });
@@ -3785,7 +3792,8 @@ function loadCollectionAccounts() {
 }
 
 async function removeFromCollection(accountId, btn) {
-    btn.innerText = 'Quitando...';
+    btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px; animation: spin 1s linear infinite;">sync</span>';
+    btn.disabled = true;
     try {
         const res = await fetch(`/api/v1/collections/${selectedCollectionId}/items`, {
             method: 'DELETE',
@@ -3798,10 +3806,12 @@ async function removeFromCollection(accountId, btn) {
         if (res.ok) {
             loadCollectionAccounts();
         } else {
-            btn.innerText = 'Eliminar';
+            btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px;">delete</span>';
+            btn.disabled = false;
         }
     } catch (e) {
-        btn.innerText = 'Eliminar';
+        btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px;">delete</span>';
+        btn.disabled = false;
     }
 }
 
@@ -3869,13 +3879,30 @@ async function loadFollowedHashtags() {
         window.location.href = '/followed-hashtags';
         return;
     }
-    if (window.KUTSOCIAL_USER_HASHTAGS) {
-        followedTags = window.KUTSOCIAL_USER_HASHTAGS;
-    } else {
-        followedTags = [];
-    }
     
     const container = document.getElementById('followed-hashtags-container');
+    if (!container) return;
+    
+    if (container.children.length === 0) {
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--text-muted);">Cargando...</div>';
+    }
+    
+    try {
+        const res = await fetch('/api/v1/followed_tags', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            followedTags = data.map(tagObj => tagObj.name);
+            window.KUTSOCIAL_USER_HASHTAGS = followedTags;
+        } else {
+            followedTags = window.KUTSOCIAL_USER_HASHTAGS || [];
+        }
+    } catch (e) {
+        console.error("Error al cargar hashtags seguidos:", e);
+        followedTags = window.KUTSOCIAL_USER_HASHTAGS || [];
+    }
+    
     container.innerHTML = '';
     
     if (followedTags.length === 0) {
@@ -3932,8 +3959,15 @@ async function followHashtag(name) {
     return false;
 }
 
-async function unfollowHashtag(name, btn) {
-    if (btn) btn.innerText = 'Dejando...';
+async function unfollowHashtag(name, cardElement) {
+    let btn = null;
+    if (cardElement) {
+        btn = cardElement.tagName === 'BUTTON' ? cardElement : cardElement.querySelector('button');
+        if (btn) {
+            btn.innerText = 'Dejando...';
+            btn.disabled = true;
+        }
+    }
     try {
         const res = await fetch(`/api/v1/tags/${encodeURIComponent(name)}/unfollow`, {
             method: 'POST',
@@ -3943,9 +3977,13 @@ async function unfollowHashtag(name, btn) {
             loadFollowedHashtags();
         } else if (btn) {
             btn.innerText = 'Dejar de seguir';
+            btn.disabled = false;
         }
     } catch (e) {
-        if (btn) btn.innerText = 'Dejar de seguir';
+        if (btn) {
+            btn.innerText = 'Dejar de seguir';
+            btn.disabled = false;
+        }
     }
 }
 

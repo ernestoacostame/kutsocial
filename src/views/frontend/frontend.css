@@ -430,6 +430,8 @@ button:hover {
     font-size: 16px;
     line-height: 1.6;
     color: var(--text-color);
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .toot-content p {
@@ -1167,3 +1169,35 @@ button:hover {
     transform: none !important;
     box-shadow: none !important;
 }
+
+/* Estilos para el botón de eliminar items (papelera) */
+.btn-delete-item {
+    background: rgba(239, 68, 68, 0.08) !important;
+    border: 1px solid rgba(239, 68, 68, 0.2) !important;
+    color: var(--error) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 50% !important;
+    cursor: pointer !important;
+    transition: all 0.2s !important;
+    flex-shrink: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+}
+
+.btn-delete-item:hover {
+    background: rgba(239, 68, 68, 0.18) !important;
+    border-color: rgba(239, 68, 68, 0.4) !important;
+    color: var(--error) !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
