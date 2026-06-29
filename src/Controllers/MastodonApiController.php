@@ -1561,20 +1561,14 @@ HTML;
                     $name = $f['name'] ?? '';
                     $val = $f['value'] ?? '';
                     
-                    // Si el valor contiene un enlace HTML o es una URL pura, formatearlo de forma limpia sin clases
+                    // Si el valor contiene un enlace HTML o es una URL pura, formatearlo con estructura de Mastodon
                     if (str_contains($val, '<a ')) {
                         $val = preg_replace_callback('/<a\s+[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/i', function($matches) {
                             $href = $matches[1];
-                            $innerHtml = $matches[2];
-                            $cleanText = strip_tags($innerHtml);
-                            if (empty($cleanText)) {
-                                $cleanText = preg_replace('/^https?:\/\/(www\.)?/', '', $href);
-                            }
-                            return sprintf('<a href="%s" rel="me nofollow noopener noreferrer" target="_blank">%s</a>', htmlspecialchars($href), htmlspecialchars($cleanText));
+                            return self::formatUrlToMastodonHtml($href, true);
                         }, $val);
                     } elseif (filter_var($val, FILTER_VALIDATE_URL)) {
-                        $label = preg_replace('/^https?:\/\/(www\.)?/', '', $val);
-                        $val = sprintf('<a href="%s" rel="me nofollow noopener noreferrer" target="_blank">%s</a>', htmlspecialchars($val), htmlspecialchars($label));
+                        $val = self::formatUrlToMastodonHtml($val, true);
                     }
 
                     $fields[] = [
@@ -2990,9 +2984,7 @@ HTML;
             $rawUrl = htmlspecialchars_decode($m[0], ENT_NOQUOTES);
             $cleanRawUrl = rtrim($rawUrl, '.,;:!?)-');
             $trailingRaw = substr($rawUrl, strlen($cleanRawUrl));
-            $cleanVisibleUrl = htmlspecialchars($cleanRawUrl, ENT_NOQUOTES, 'UTF-8');
-            $trailingVisible = htmlspecialchars($trailingRaw, ENT_NOQUOTES, 'UTF-8');
-            return '<a href="' . htmlspecialchars($cleanRawUrl, ENT_COMPAT, 'UTF-8') . '" target="_blank" rel="nofollow noopener noreferrer">' . $cleanVisibleUrl . '</a>' . $trailingVisible;
+            return self::formatUrlToMastodonHtml($cleanRawUrl, false) . htmlspecialchars($trailingRaw, ENT_NOQUOTES, 'UTF-8');
         }, $escaped);
 
         // 4. Convertir menciones en enlaces
@@ -3074,9 +3066,7 @@ HTML;
                         $rawUrl = htmlspecialchars_decode($m[0], ENT_NOQUOTES);
                         $cleanRawUrl = rtrim($rawUrl, '.,;:!?)-');
                         $trailingRaw = substr($rawUrl, strlen($cleanRawUrl));
-                        $cleanVisibleUrl = htmlspecialchars($cleanRawUrl, ENT_NOQUOTES, 'UTF-8');
-                        $trailingVisible = htmlspecialchars($trailingRaw, ENT_NOQUOTES, 'UTF-8');
-                        return '<a href="' . htmlspecialchars($cleanRawUrl, ENT_COMPAT, 'UTF-8') . '" target="_blank" rel="nofollow noopener noreferrer">' . $cleanVisibleUrl . '</a>' . $trailingVisible;
+                        return self::formatUrlToMastodonHtml($cleanRawUrl, false) . htmlspecialchars($trailingRaw, ENT_NOQUOTES, 'UTF-8');
                     }, $escaped);
 
                     // 2. Convertir menciones en enlaces
@@ -3207,6 +3197,44 @@ HTML;
         }
 
         return $mentions;
+    }
+
+    /**
+     * Formatea una URL al estándar HTML de Mastodon con spans invisible y ellipsis.
+     * Esto es crucial para que clientes móviles estrictos como Mona (iOS)
+     * puedan parsear los enlaces y no los oculten.
+     */
+    public static function formatUrlToMastodonHtml(string $url, bool $isMe = false): string {
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return htmlspecialchars($url, ENT_NOQUOTES, 'UTF-8');
+        }
+
+        $parsed = parse_url($url);
+        $scheme = ($parsed['scheme'] ?? 'https') . '://';
+        $urlWithoutScheme = substr($url, strlen($scheme));
+
+        $maxLen = 30;
+        if (strlen($urlWithoutScheme) > $maxLen) {
+            $visible = substr($urlWithoutScheme, 0, $maxLen);
+            $invisible = substr($urlWithoutScheme, $maxLen);
+            $class = 'class="ellipsis"';
+        } else {
+            $visible = $urlWithoutScheme;
+            $invisible = '';
+            $class = '';
+        }
+
+        $rel = $isMe ? 'rel="me nofollow noopener noreferrer"' : 'rel="nofollow noopener noreferrer"';
+
+        return sprintf(
+            '<a href="%s" %s target="_blank"><span class="invisible">%s</span><span %s>%s</span><span class="invisible">%s</span></a>',
+            htmlspecialchars($url, ENT_COMPAT, 'UTF-8'),
+            $rel,
+            htmlspecialchars($scheme, ENT_NOQUOTES, 'UTF-8'),
+            $class,
+            htmlspecialchars($visible, ENT_NOQUOTES, 'UTF-8'),
+            htmlspecialchars($invisible, ENT_NOQUOTES, 'UTF-8')
+        );
     }
 
     /**
@@ -3449,46 +3477,55 @@ HTML;
     }
 
     public static function formatStatus(array $row, ?int $currentAccountId = null): array {
-        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
- 
-        $avatarUrl = $row['avatar'] ?: "$proto://$domain/assets/default-avatar.png";
-        $headerUrl = $row['header'] ?: "$proto://$domain/assets/default-header.png";
- 
-        if (!filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
-            $avatarUrl = $proto . '://' . $domain . $avatarUrl;
-        }
-        if (!filter_var($headerUrl, FILTER_VALIDATE_URL)) {
-            $headerUrl = $proto . '://' . $domain . $headerUrl;
-        }
- 
-        $account = [
-            'id' => (string)$row['account_id'],
-            'username' => $row['username'],
-            'acct' => $row['domain'] ? $row['username'] . '@' . $row['domain'] : $row['username'],
-            'display_name' => $row['display_name'] ?: $row['username'],
-            'locked' => (bool)($row['locked'] ?? 0),
-            'bot' => false,
-            'discoverable' => (bool)($row['discoverable'] ?? 1),
-            'group' => false,
-            'created_at' => date('c', strtotime($row['account_created_at'] ?? $row['created_at'] ?? 'now')),
-            'note' => self::formatAccountNote($row['note'] ?? '', !empty($row['domain'])),
-            'url' => (!empty($row['account_url']) && !empty($row['domain'])) ? $row['account_url'] : ($row['domain'] ? "$proto://{$row['domain']}/users/{$row['username']}" : "$proto://$domain/users/" . $row['username']),
-            'avatar' => $avatarUrl,
-            'avatar_static' => $avatarUrl,
-            'header' => $headerUrl,
-            'header_static' => $headerUrl,
-            'followers_count' => 0,
-            'following_count' => 0,
-            'statuses_count' => 0,
-            'last_status_at' => null,
-            'emojis' => self::extractAccountEmojis($row),
-            'fields' => [],
-            'avatar_description' => $row['avatar_description'] ?? '',
-            'header_description' => $row['header_description'] ?? ''
-        ];
- 
+        static $accountCache = [];
         $db = Database::connect();
+
+        $authorId = (int)$row['account_id'];
+        if (!isset($accountCache[$authorId])) {
+            $stmtAcc = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+            $stmtAcc->execute([$authorId]);
+            $accData = $stmtAcc->fetch();
+            if ($accData) {
+                $accountCache[$authorId] = self::formatAccount($accData);
+            } else {
+                $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+                $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $avatarUrl = $row['avatar'] ?: "$proto://$domain/assets/default-avatar.png";
+                $headerUrl = $row['header'] ?: "$proto://$domain/assets/default-header.png";
+                if (!filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
+                    $avatarUrl = $proto . '://' . $domain . $avatarUrl;
+                }
+                if (!filter_var($headerUrl, FILTER_VALIDATE_URL)) {
+                    $headerUrl = $proto . '://' . $domain . $headerUrl;
+                }
+                $accountCache[$authorId] = [
+                    'id' => (string)$row['account_id'],
+                    'username' => $row['username'],
+                    'acct' => $row['domain'] ? $row['username'] . '@' . $row['domain'] : $row['username'],
+                    'display_name' => $row['display_name'] ?: $row['username'],
+                    'locked' => (bool)($row['locked'] ?? 0),
+                    'bot' => false,
+                    'discoverable' => (bool)($row['discoverable'] ?? 1),
+                    'group' => false,
+                    'created_at' => date('c', strtotime($row['account_created_at'] ?? $row['created_at'] ?? 'now')),
+                    'note' => self::formatAccountNote($row['note'] ?? '', !empty($row['domain'])),
+                    'url' => (!empty($row['account_url']) && !empty($row['domain'])) ? $row['account_url'] : ($row['domain'] ? "$proto://{$row['domain']}/users/{$row['username']}" : "$proto://$domain/users/" . $row['username']),
+                    'avatar' => $avatarUrl,
+                    'avatar_static' => $avatarUrl,
+                    'header' => $headerUrl,
+                    'header_static' => $headerUrl,
+                    'followers_count' => 0,
+                    'following_count' => 0,
+                    'statuses_count' => 0,
+                    'last_status_at' => null,
+                    'emojis' => self::extractAccountEmojis($row),
+                    'fields' => [],
+                    'avatar_description' => $row['avatar_description'] ?? '',
+                    'header_description' => $row['header_description'] ?? ''
+                ];
+            }
+        }
+        $account = $accountCache[$authorId];
  
         $showSource = true;
         try {
