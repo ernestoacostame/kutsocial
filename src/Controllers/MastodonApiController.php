@@ -3107,6 +3107,71 @@ HTML;
         Router::json(self::formatStatus($row, $currUserId));
     }
 
+    public static function getMultipleStatuses(): void {
+        $ids = $_GET['id'] ?? [];
+        if (!is_array($ids)) {
+            $ids = [$ids];
+        }
+        $ids = array_map('intval', $ids);
+        $ids = array_filter($ids);
+
+        if (empty($ids)) {
+            Router::json([]);
+            return;
+        }
+
+        $account = null;
+        $currUserId = null;
+        try {
+            $account = self::getAuthenticatedAccount();
+            if ($account) {
+                $currUserId = (int)$account['id'];
+            }
+        } catch (\Exception $e) {}
+
+        $db = Database::connect();
+        $statuses = [];
+
+        foreach ($ids as $id) {
+            $row = self::fetchStatusRow($db, $id);
+            if (!$row) {
+                continue;
+            }
+
+            // Verificar permisos de visibilidad
+            $visibility = $row['status_visibility'] ?? 'public';
+            $statusAuthorId = (int)$row['account_id'];
+
+            if ($visibility === 'direct') {
+                if ($currUserId === null) {
+                    continue;
+                }
+                if ($currUserId !== $statusAuthorId) {
+                    $username = $account['username'] ?? '';
+                    $content = $row['status_content'] ?? '';
+                    if (!str_contains($content, "/users/$username") && !preg_match('/@' . preg_quote($username, '/') . '\b/i', $content)) {
+                        continue;
+                    }
+                }
+            } elseif ($visibility === 'private') {
+                if ($currUserId === null) {
+                    continue;
+                }
+                if ($currUserId !== $statusAuthorId) {
+                    $stmtFollow = $db->prepare("SELECT 1 FROM follows WHERE account_id = ? AND target_account_id = ? AND status = 'accepted' LIMIT 1");
+                    $stmtFollow->execute([$currUserId, $statusAuthorId]);
+                    if (!$stmtFollow->fetchColumn()) {
+                        continue;
+                    }
+                }
+            }
+
+            $statuses[] = self::formatStatus($row, $currUserId);
+        }
+
+        Router::json($statuses);
+    }
+
     /**
      * Helper: Detecta el tipo de media Mastodon API a partir de un mediaType MIME.
      */
