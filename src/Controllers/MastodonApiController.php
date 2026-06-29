@@ -3039,7 +3039,7 @@ HTML;
      * Las bios de cuentas remotas ya vienen en HTML desde ActivityPub y no deben re-escaparse.
      * Las bios de cuentas locales se formatean como HTML limpio.
      */
-    private static function formatAccountNote(string $note, bool $isRemote): string {
+    private static function formatAccountNote(string $note, bool $isRemote, ?string $domain = null, ?\PDO $db = null, ?string $proto = null): string {
         if (empty($note)) {
             return '<p></p>';
         }
@@ -3049,6 +3049,13 @@ HTML;
                 return $note;
             }
         }
+        // Si no se pasaron las dependencias y es local, inicializarlas
+        if (!$isRemote) {
+            $proto = $proto ?? ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http');
+            $domain = $domain ?? ($_SERVER['HTTP_HOST'] ?? 'localhost');
+            $db = $db ?? Database::connect();
+        }
+
         // Para cuentas locales o notas sin HTML, formatear
         if (str_contains($note, '<p>') || str_contains($note, '<br')) {
             return $note;
@@ -3058,7 +3065,53 @@ HTML;
         foreach ($paragraphs as $p) {
             $p = trim($p);
             if ($p !== '') {
-                $formattedParagraphs[] = "<p>" . nl2br(htmlspecialchars($p)) . "</p>";
+                // Escapar primero para HTML
+                $escaped = htmlspecialchars($p, ENT_NOQUOTES, 'UTF-8');
+                
+                if (!$isRemote) {
+                    // 1. Linkificar URLs
+                    $escaped = preg_replace_callback('/\bhttps?:\/\/[^\s<>\'\"]+/i', function($m) {
+                        $rawUrl = htmlspecialchars_decode($m[0], ENT_NOQUOTES);
+                        $cleanRawUrl = rtrim($rawUrl, '.,;:!?)-');
+                        $trailingRaw = substr($rawUrl, strlen($cleanRawUrl));
+                        $cleanVisibleUrl = htmlspecialchars($cleanRawUrl, ENT_NOQUOTES, 'UTF-8');
+                        $trailingVisible = htmlspecialchars($trailingRaw, ENT_NOQUOTES, 'UTF-8');
+                        return '<a href="' . htmlspecialchars($cleanRawUrl, ENT_COMPAT, 'UTF-8') . '" target="_blank" rel="nofollow noopener noreferrer">' . $cleanVisibleUrl . '</a>' . $trailingVisible;
+                    }, $escaped);
+
+                    // 2. Convertir menciones en enlaces
+                    $escaped = preg_replace_callback('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', function($matches) use ($domain, $db, $proto) {
+                        $mUsername = $matches[1];
+                        $mDomain = isset($matches[2]) && !empty($matches[2]) ? strtolower($matches[2]) : null;
+                        
+                        if ($mDomain !== null && (strcasecmp($mDomain, $domain) === 0)) {
+                            $mDomain = null;
+                        }
+                        
+                        $mAcc = null;
+                        if ($mDomain === null) {
+                            $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+                            $stmtM->execute([$mUsername]);
+                            $mAcc = $stmtM->fetch();
+                        } else {
+                            $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                            $stmtM->execute([$mUsername, $mDomain]);
+                            $mAcc = $stmtM->fetch();
+                        }
+                        
+                        if ($mAcc) {
+                            $mActorUrl = $mAcc['domain'] 
+                                ? "https://{$mAcc['domain']}/users/{$mAcc['username']}"
+                                : "$proto://$domain/users/{$mAcc['username']}";
+                            
+                            return '<span class="h-card"><a href="' . htmlspecialchars($mActorUrl) . '" class="u-url mention">@<span>' . htmlspecialchars($mUsername) . '</span></a></span>';
+                        }
+                        
+                        return $matches[0];
+                    }, $escaped);
+                }
+
+                $formattedParagraphs[] = "<p>" . nl2br($escaped) . "</p>";
             }
         }
         return implode("", $formattedParagraphs) ?: '<p></p>';
