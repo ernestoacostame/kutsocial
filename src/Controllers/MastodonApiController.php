@@ -1526,7 +1526,7 @@ HTML;
         ]);
     }
 
-    public static function formatAccount(array $account, bool $plainTextBio = false): array {
+    public static function formatAccount(array $account, bool $plainTextBio = false, bool $includeStats = true): array {
         // En consultas de notificaciones a veces 'id' representa la relación y 'account_id' la cuenta
         $accountId = $account['account_id'] ?? $account['id'] ?? null;
         
@@ -1583,25 +1583,31 @@ HTML;
         // Consultar estadísticas en tiempo real en SQLite
         $db = Database::connect();
         
-        if (!empty($account['domain'])) {
-            $followersCount = (int)($account['followers_count'] ?? 0);
-            $followingCount = (int)($account['following_count'] ?? 0);
-            $statusesCount = (int)($account['statuses_count'] ?? 0);
+        if (!$includeStats) {
+            $followersCount = 0;
+            $followingCount = 0;
+            $statusesCount = 0;
         } else {
-            // Contar seguidores recibidos
-            $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'accepted'");
-            $stmtFollowers->execute([$accountId]);
-            $followersCount = (int)$stmtFollowers->fetchColumn();
+            if (!empty($account['domain'])) {
+                $followersCount = (int)($account['followers_count'] ?? 0);
+                $followingCount = (int)($account['following_count'] ?? 0);
+                $statusesCount = (int)($account['statuses_count'] ?? 0);
+            } else {
+                // Contar seguidores recibidos
+                $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'accepted'");
+                $stmtFollowers->execute([$accountId]);
+                $followersCount = (int)$stmtFollowers->fetchColumn();
 
-            // Contar seguidos realizados
-            $stmtFollowing = $db->prepare("SELECT COUNT(*) FROM follows WHERE account_id = ? AND status = 'accepted'");
-            $stmtFollowing->execute([$accountId]);
-            $followingCount = (int)$stmtFollowing->fetchColumn();
+                // Contar seguidos realizados
+                $stmtFollowing = $db->prepare("SELECT COUNT(*) FROM follows WHERE account_id = ? AND status = 'accepted'");
+                $stmtFollowing->execute([$accountId]);
+                $followingCount = (int)$stmtFollowing->fetchColumn();
 
-            // Contar toots creados
-            $stmtStatuses = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
-            $stmtStatuses->execute([$accountId]);
-            $statusesCount = (int)$stmtStatuses->fetchColumn();
+                // Contar toots creados
+                $stmtStatuses = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
+                $stmtStatuses->execute([$accountId]);
+                $statusesCount = (int)$stmtStatuses->fetchColumn();
+            }
         }
 
         return [
@@ -3486,7 +3492,7 @@ HTML;
             $stmtAcc->execute([$authorId]);
             $accData = $stmtAcc->fetch();
             if ($accData) {
-                $accountCache[$authorId] = self::formatAccount($accData);
+                $accountCache[$authorId] = self::formatAccount($accData, false, false);
             } else {
                 $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
                 $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
