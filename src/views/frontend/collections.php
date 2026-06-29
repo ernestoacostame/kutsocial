@@ -5,7 +5,7 @@
         </h2>
         <button onclick="showCreateCollectionModal()" class="btn-publish" style="width: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0; box-shadow: none;">+ Nueva Colección</button>
     </div>
-    <div id="collections-layout" style="display: grid; grid-template-columns: 200px 1fr; gap: 20px;">
+    <div id="collections-layout" style="display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 20px;">
         <div id="collections-sidebar" style="border-right: 1px solid var(--border-color); padding-right: 15px; display: flex; flex-direction: column; gap: 8px; min-height: 200px;">
             <?php if (empty($userCollections)): ?>
                 <div style="font-size: 13px; color: var(--text-muted); padding: 10px 0;">No tienes colecciones.</div>
@@ -18,7 +18,7 @@
                 <?php endforeach; ?>
             <?php endif; ?>
         </div>
-        <div id="collection-content-area">
+        <div id="collection-content-area" style="min-width: 0;">
             <div id="collection-no-selection" style="text-align: center; padding: 40px; color: var(--text-muted);">
                 Selecciona o crea una colección para ver sus cuentas asociadas.
             </div>

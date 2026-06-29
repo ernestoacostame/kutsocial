@@ -5,7 +5,7 @@
         </h2>
         <button onclick="showCreateListModal()" class="btn-publish" style="width: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0; box-shadow: none;">+ Nueva Lista</button>
     </div>
-    <div id="lists-layout" style="display: grid; grid-template-columns: 200px 1fr; gap: 20px;">
+    <div id="lists-layout" style="display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 20px;">
         <div id="lists-sidebar" style="border-right: 1px solid var(--border-color); padding-right: 15px; display: flex; flex-direction: column; gap: 8px; min-height: 200px;">
             <?php if (empty($userLists)): ?>
                 <div style="font-size: 13px; color: var(--text-muted); padding: 10px 0;">No tienes listas.</div>
@@ -18,7 +18,7 @@
                 <?php endforeach; ?>
             <?php endif; ?>
         </div>
-        <div id="list-content-area">
+        <div id="list-content-area" style="min-width: 0;">
             <div id="list-no-selection" style="text-align: center; padding: 40px; color: var(--text-muted);">
                 Selecciona o crea una lista para ver sus miembros y publicaciones.
             </div>
