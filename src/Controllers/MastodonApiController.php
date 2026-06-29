@@ -1526,7 +1526,7 @@ HTML;
         ]);
     }
 
-    public static function formatAccount(array $account, bool $plainTextBio = false, bool $includeStats = true): array {
+    public static function formatAccount(array $account, bool $plainTextBio = false): array {
         // En consultas de notificaciones a veces 'id' representa la relación y 'account_id' la cuenta
         $accountId = $account['account_id'] ?? $account['id'] ?? null;
         
@@ -1561,14 +1561,20 @@ HTML;
                     $name = $f['name'] ?? '';
                     $val = $f['value'] ?? '';
                     
-                    // Si el valor contiene un enlace HTML o es una URL pura, formatearlo con estructura de Mastodon
+                    // Si el valor contiene un enlace HTML o es una URL pura, formatearlo de forma limpia sin clases
                     if (str_contains($val, '<a ')) {
                         $val = preg_replace_callback('/<a\s+[^>]*href="([^"]+)"[^>]*>(.*?)<\/a>/i', function($matches) {
                             $href = $matches[1];
-                            return self::formatUrlToMastodonHtml($href, true);
+                            $innerHtml = $matches[2];
+                            $cleanText = strip_tags($innerHtml);
+                            if (empty($cleanText)) {
+                                $cleanText = preg_replace('/^https?:\/\/(www\.)?/', '', $href);
+                            }
+                            return sprintf('<a href="%s" rel="me nofollow noopener noreferrer" target="_blank">%s</a>', htmlspecialchars($href), htmlspecialchars($cleanText));
                         }, $val);
                     } elseif (filter_var($val, FILTER_VALIDATE_URL)) {
-                        $val = self::formatUrlToMastodonHtml($val, true);
+                        $label = preg_replace('/^https?:\/\/(www\.)?/', '', $val);
+                        $val = sprintf('<a href="%s" rel="me nofollow noopener noreferrer" target="_blank">%s</a>', htmlspecialchars($val), htmlspecialchars($label));
                     }
 
                     $fields[] = [
@@ -1583,31 +1589,25 @@ HTML;
         // Consultar estadísticas en tiempo real en SQLite
         $db = Database::connect();
         
-        if (!$includeStats) {
-            $followersCount = 0;
-            $followingCount = 0;
-            $statusesCount = 0;
+        if (!empty($account['domain'])) {
+            $followersCount = (int)($account['followers_count'] ?? 0);
+            $followingCount = (int)($account['following_count'] ?? 0);
+            $statusesCount = (int)($account['statuses_count'] ?? 0);
         } else {
-            if (!empty($account['domain'])) {
-                $followersCount = (int)($account['followers_count'] ?? 0);
-                $followingCount = (int)($account['following_count'] ?? 0);
-                $statusesCount = (int)($account['statuses_count'] ?? 0);
-            } else {
-                // Contar seguidores recibidos
-                $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'accepted'");
-                $stmtFollowers->execute([$accountId]);
-                $followersCount = (int)$stmtFollowers->fetchColumn();
+            // Contar seguidores recibidos
+            $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'accepted'");
+            $stmtFollowers->execute([$accountId]);
+            $followersCount = (int)$stmtFollowers->fetchColumn();
 
-                // Contar seguidos realizados
-                $stmtFollowing = $db->prepare("SELECT COUNT(*) FROM follows WHERE account_id = ? AND status = 'accepted'");
-                $stmtFollowing->execute([$accountId]);
-                $followingCount = (int)$stmtFollowing->fetchColumn();
+            // Contar seguidos realizados
+            $stmtFollowing = $db->prepare("SELECT COUNT(*) FROM follows WHERE account_id = ? AND status = 'accepted'");
+            $stmtFollowing->execute([$accountId]);
+            $followingCount = (int)$stmtFollowing->fetchColumn();
 
-                // Contar toots creados
-                $stmtStatuses = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
-                $stmtStatuses->execute([$accountId]);
-                $statusesCount = (int)$stmtStatuses->fetchColumn();
-            }
+            // Contar toots creados
+            $stmtStatuses = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
+            $stmtStatuses->execute([$accountId]);
+            $statusesCount = (int)$stmtStatuses->fetchColumn();
         }
 
         return [
@@ -1641,8 +1641,8 @@ HTML;
                 'color' => '',
                 'permissions' => '0'
             ],
-            'avatar_description' => $account['avatar_description'] ?? 'Imagen de perfil de ' . $account['username'],
-            'header_description' => $account['header_description'] ?? 'Banner de perfil de ' . $account['username'],
+            'avatar_description' => $account['avatar_description'] ?? '',
+            'header_description' => $account['header_description'] ?? ''
         ];
     }
 
@@ -1664,13 +1664,9 @@ HTML;
             $fieldsArr = json_decode($account['fields'], true);
             if (is_array($fieldsArr)) {
                 foreach ($fieldsArr as $f) {
-                    // source.fields debe devolver texto plano (sin HTML)
-                    // Los clientes como Mona esperan el valor raw para edición
-                    $rawValue = $f['value'] ?? '';
-                    $rawValue = strip_tags($rawValue);
                     $rawFields[] = [
                         'name' => $f['name'] ?? '',
-                        'value' => $rawValue,
+                        'value' => $f['value'] ?? '',
                         'verified_at' => $f['verified_at'] ?? null
                     ];
                 }
@@ -2990,7 +2986,9 @@ HTML;
             $rawUrl = htmlspecialchars_decode($m[0], ENT_NOQUOTES);
             $cleanRawUrl = rtrim($rawUrl, '.,;:!?)-');
             $trailingRaw = substr($rawUrl, strlen($cleanRawUrl));
-            return self::formatUrlToMastodonHtml($cleanRawUrl, false) . htmlspecialchars($trailingRaw, ENT_NOQUOTES, 'UTF-8');
+            $cleanVisibleUrl = htmlspecialchars($cleanRawUrl, ENT_NOQUOTES, 'UTF-8');
+            $trailingVisible = htmlspecialchars($trailingRaw, ENT_NOQUOTES, 'UTF-8');
+            return '<a href="' . htmlspecialchars($cleanRawUrl, ENT_COMPAT, 'UTF-8') . '" target="_blank" rel="nofollow noopener noreferrer">' . $cleanVisibleUrl . '</a>' . $trailingVisible;
         }, $escaped);
 
         // 4. Convertir menciones en enlaces
@@ -3037,7 +3035,7 @@ HTML;
      * Las bios de cuentas remotas ya vienen en HTML desde ActivityPub y no deben re-escaparse.
      * Las bios de cuentas locales se formatean como HTML limpio.
      */
-    private static function formatAccountNote(string $note, bool $isRemote, ?string $domain = null, ?\PDO $db = null, ?string $proto = null): string {
+    private static function formatAccountNote(string $note, bool $isRemote): string {
         if (empty($note)) {
             return '<p></p>';
         }
@@ -3047,13 +3045,6 @@ HTML;
                 return $note;
             }
         }
-        // Si no se pasaron las dependencias y es local, inicializarlas
-        if (!$isRemote) {
-            $proto = $proto ?? ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http');
-            $domain = $domain ?? ($_SERVER['HTTP_HOST'] ?? 'localhost');
-            $db = $db ?? Database::connect();
-        }
-
         // Para cuentas locales o notas sin HTML, formatear
         if (str_contains($note, '<p>') || str_contains($note, '<br')) {
             return $note;
@@ -3063,184 +3054,10 @@ HTML;
         foreach ($paragraphs as $p) {
             $p = trim($p);
             if ($p !== '') {
-                // Escapar primero para HTML
-                $escaped = htmlspecialchars($p, ENT_NOQUOTES, 'UTF-8');
-                
-                if (!$isRemote) {
-                    // 1. Linkificar URLs
-                    $escaped = preg_replace_callback('/\bhttps?:\/\/[^\s<>\'\"]+/i', function($m) {
-                        $rawUrl = htmlspecialchars_decode($m[0], ENT_NOQUOTES);
-                        $cleanRawUrl = rtrim($rawUrl, '.,;:!?)-');
-                        $trailingRaw = substr($rawUrl, strlen($cleanRawUrl));
-                        return self::formatUrlToMastodonHtml($cleanRawUrl, false) . htmlspecialchars($trailingRaw, ENT_NOQUOTES, 'UTF-8');
-                    }, $escaped);
-
-                    // 2. Convertir menciones en enlaces
-                    $escaped = preg_replace_callback('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', function($matches) use ($domain, $db, $proto) {
-                        $mUsername = $matches[1];
-                        $mDomain = isset($matches[2]) && !empty($matches[2]) ? strtolower($matches[2]) : null;
-                        
-                        if ($mDomain !== null && (strcasecmp($mDomain, $domain) === 0)) {
-                            $mDomain = null;
-                        }
-                        
-                        $mAcc = null;
-                        if ($mDomain === null) {
-                            $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
-                            $stmtM->execute([$mUsername]);
-                            $mAcc = $stmtM->fetch();
-                        } else {
-                            $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
-                            $stmtM->execute([$mUsername, $mDomain]);
-                            $mAcc = $stmtM->fetch();
-                        }
-                        
-                        if ($mAcc) {
-                            $mActorUrl = $mAcc['domain'] 
-                                ? "https://{$mAcc['domain']}/users/{$mAcc['username']}"
-                                : "$proto://$domain/users/{$mAcc['username']}";
-                            
-                            return '<span class="h-card"><a href="' . htmlspecialchars($mActorUrl) . '" class="u-url mention">@<span>' . htmlspecialchars($mUsername) . '</span></a></span>';
-                        }
-                        
-                        return $matches[0];
-                    }, $escaped);
-                }
-
-                $formattedParagraphs[] = "<p>" . nl2br($escaped) . "</p>";
+                $formattedParagraphs[] = "<p>" . nl2br(htmlspecialchars($p)) . "</p>";
             }
         }
         return implode("", $formattedParagraphs) ?: '<p></p>';
-    }
-
-    /**
-     * Extrae menciones del contenido de un status y devuelve un array de objetos Mention
-     * compatibles con la API de Mastodon (id, username, url, acct).
-     */
-    private static function extractMentionsFromContent(string $content, \PDO $db, string $domain, string $proto): array {
-        $mentions = [];
-        $seenIds = [];
-
-        // 1. Parsear menciones del HTML: <a href="..." class="... mention">@<span>user</span></a>
-        if (preg_match_all('/<a\s+[^>]*href="([^"]+)"[^>]*class="[^"]*mention[^"]*"[^>]*>.*?<\/a>/i', $content, $htmlMatches, PREG_SET_ORDER)) {
-            foreach ($htmlMatches as $m) {
-                $href = $m[1];
-                // Extraer username del href (formato: https://domain/users/username o https://domain/@username)
-                if (preg_match('/\/(?:users\/|@)([a-zA-Z0-9_-]+)\/?$/', $href, $userMatch)) {
-                    $mUsername = $userMatch[1];
-                    $parsedUrl = parse_url($href);
-                    $mHost = $parsedUrl['host'] ?? null;
-                    $mDomain = ($mHost && strcasecmp($mHost, $domain) !== 0) ? $mHost : null;
-
-                    $mAcc = null;
-                    if ($mDomain === null) {
-                        $stmt = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
-                        $stmt->execute([$mUsername]);
-                        $mAcc = $stmt->fetch();
-                    } else {
-                        $stmt = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
-                        $stmt->execute([$mUsername, $mDomain]);
-                        $mAcc = $stmt->fetch();
-                    }
-
-                    if ($mAcc && !isset($seenIds[$mAcc['id']])) {
-                        $seenIds[$mAcc['id']] = true;
-                        $mentionUrl = !empty($mAcc['url']) && !empty($mAcc['domain'])
-                            ? $mAcc['url']
-                            : ($mAcc['domain']
-                                ? "https://{$mAcc['domain']}/@{$mAcc['username']}"
-                                : "$proto://$domain/@{$mAcc['username']}");
-                        $mentions[] = [
-                            'id' => (string)$mAcc['id'],
-                            'username' => $mAcc['username'],
-                            'url' => $mentionUrl,
-                            'acct' => $mAcc['domain']
-                                ? $mAcc['username'] . '@' . $mAcc['domain']
-                                : $mAcc['username']
-                        ];
-                    }
-                }
-            }
-        }
-
-        // 2. Parsear menciones de texto plano: @user o @user@domain
-        if (preg_match_all('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/', strip_tags($content), $textMatches, PREG_SET_ORDER)) {
-            foreach ($textMatches as $m) {
-                $mUsername = $m[1];
-                $mDomain = isset($m[2]) && !empty($m[2]) ? strtolower($m[2]) : null;
-                if ($mDomain !== null && strcasecmp($mDomain, $domain) === 0) {
-                    $mDomain = null;
-                }
-
-                $mAcc = null;
-                if ($mDomain === null) {
-                    $stmt = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
-                    $stmt->execute([$mUsername]);
-                    $mAcc = $stmt->fetch();
-                } else {
-                    $stmt = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
-                    $stmt->execute([$mUsername, $mDomain]);
-                    $mAcc = $stmt->fetch();
-                }
-
-                if ($mAcc && !isset($seenIds[$mAcc['id']])) {
-                    $seenIds[$mAcc['id']] = true;
-                    $mentionUrl = !empty($mAcc['url']) && !empty($mAcc['domain'])
-                        ? $mAcc['url']
-                        : ($mAcc['domain']
-                            ? "https://{$mAcc['domain']}/@{$mAcc['username']}"
-                            : "$proto://$domain/@{$mAcc['username']}");
-                    $mentions[] = [
-                        'id' => (string)$mAcc['id'],
-                        'username' => $mAcc['username'],
-                        'url' => $mentionUrl,
-                        'acct' => $mAcc['domain']
-                            ? $mAcc['username'] . '@' . $mAcc['domain']
-                            : $mAcc['username']
-                    ];
-                }
-            }
-        }
-
-        return $mentions;
-    }
-
-    /**
-     * Formatea una URL al estándar HTML de Mastodon con spans invisible y ellipsis.
-     * Esto es crucial para que clientes móviles estrictos como Mona (iOS)
-     * puedan parsear los enlaces y no los oculten.
-     */
-    public static function formatUrlToMastodonHtml(string $url, bool $isMe = false): string {
-        if (!filter_var($url, FILTER_VALIDATE_URL)) {
-            return htmlspecialchars($url, ENT_NOQUOTES, 'UTF-8');
-        }
-
-        $parsed = parse_url($url);
-        $scheme = ($parsed['scheme'] ?? 'https') . '://';
-        $urlWithoutScheme = substr($url, strlen($scheme));
-
-        $maxLen = 30;
-        if (strlen($urlWithoutScheme) > $maxLen) {
-            $visible = substr($urlWithoutScheme, 0, $maxLen);
-            $invisible = substr($urlWithoutScheme, $maxLen);
-            $class = 'class="ellipsis"';
-        } else {
-            $visible = $urlWithoutScheme;
-            $invisible = '';
-            $class = '';
-        }
-
-        $rel = $isMe ? 'rel="me nofollow noopener noreferrer"' : 'rel="nofollow noopener noreferrer"';
-
-        return sprintf(
-            '<a href="%s" %s target="_blank"><span class="invisible">%s</span><span %s>%s</span><span class="invisible">%s</span></a>',
-            htmlspecialchars($url, ENT_COMPAT, 'UTF-8'),
-            $rel,
-            htmlspecialchars($scheme, ENT_NOQUOTES, 'UTF-8'),
-            $class,
-            htmlspecialchars($visible, ENT_NOQUOTES, 'UTF-8'),
-            htmlspecialchars($invisible, ENT_NOQUOTES, 'UTF-8')
-        );
     }
 
     /**
@@ -3483,55 +3300,46 @@ HTML;
     }
 
     public static function formatStatus(array $row, ?int $currentAccountId = null): array {
-        static $accountCache = [];
-        $db = Database::connect();
-
-        $authorId = (int)$row['account_id'];
-        if (!isset($accountCache[$authorId])) {
-            $stmtAcc = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-            $stmtAcc->execute([$authorId]);
-            $accData = $stmtAcc->fetch();
-            if ($accData) {
-                $accountCache[$authorId] = self::formatAccount($accData, false, false);
-            } else {
-                $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-                $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                $avatarUrl = $row['avatar'] ?: "$proto://$domain/assets/default-avatar.png";
-                $headerUrl = $row['header'] ?: "$proto://$domain/assets/default-header.png";
-                if (!filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
-                    $avatarUrl = $proto . '://' . $domain . $avatarUrl;
-                }
-                if (!filter_var($headerUrl, FILTER_VALIDATE_URL)) {
-                    $headerUrl = $proto . '://' . $domain . $headerUrl;
-                }
-                $accountCache[$authorId] = [
-                    'id' => (string)$row['account_id'],
-                    'username' => $row['username'],
-                    'acct' => $row['domain'] ? $row['username'] . '@' . $row['domain'] : $row['username'],
-                    'display_name' => $row['display_name'] ?: $row['username'],
-                    'locked' => (bool)($row['locked'] ?? 0),
-                    'bot' => false,
-                    'discoverable' => (bool)($row['discoverable'] ?? 1),
-                    'group' => false,
-                    'created_at' => date('c', strtotime($row['account_created_at'] ?? $row['created_at'] ?? 'now')),
-                    'note' => self::formatAccountNote($row['note'] ?? '', !empty($row['domain'])),
-                    'url' => (!empty($row['account_url']) && !empty($row['domain'])) ? $row['account_url'] : ($row['domain'] ? "$proto://{$row['domain']}/users/{$row['username']}" : "$proto://$domain/users/" . $row['username']),
-                    'avatar' => $avatarUrl,
-                    'avatar_static' => $avatarUrl,
-                    'header' => $headerUrl,
-                    'header_static' => $headerUrl,
-                    'followers_count' => 0,
-                    'following_count' => 0,
-                    'statuses_count' => 0,
-                    'last_status_at' => null,
-                    'emojis' => self::extractAccountEmojis($row),
-                    'fields' => [],
-                    'avatar_description' => $row['avatar_description'] ?? '',
-                    'header_description' => $row['header_description'] ?? ''
-                ];
-            }
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+  
+        $avatarUrl = $row['avatar'] ?: "$proto://$domain/assets/default-avatar.png";
+        $headerUrl = $row['header'] ?: "$proto://$domain/assets/default-header.png";
+  
+        if (!filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
+            $avatarUrl = $proto . '://' . $domain . $avatarUrl;
         }
-        $account = $accountCache[$authorId];
+        if (!filter_var($headerUrl, FILTER_VALIDATE_URL)) {
+            $headerUrl = $proto . '://' . $domain . $headerUrl;
+        }
+  
+        $account = [
+            'id' => (string)$row['account_id'],
+            'username' => $row['username'],
+            'acct' => $row['domain'] ? $row['username'] . '@' . $row['domain'] : $row['username'],
+            'display_name' => $row['display_name'] ?: $row['username'],
+            'locked' => (bool)($row['locked'] ?? 0),
+            'bot' => false,
+            'discoverable' => (bool)($row['discoverable'] ?? 1),
+            'group' => false,
+            'created_at' => date('c', strtotime($row['account_created_at'] ?? $row['created_at'] ?? 'now')),
+            'note' => self::formatAccountNote($row['note'] ?? '', !empty($row['domain'])),
+            'url' => (!empty($row['account_url']) && !empty($row['domain'])) ? $row['account_url'] : ($row['domain'] ? "$proto://{$row['domain']}/users/{$row['username']}" : "$proto://$domain/users/" . $row['username']),
+            'avatar' => $avatarUrl,
+            'avatar_static' => $avatarUrl,
+            'header' => $headerUrl,
+            'header_static' => $headerUrl,
+            'followers_count' => 0,
+            'following_count' => 0,
+            'statuses_count' => 0,
+            'last_status_at' => null,
+            'emojis' => self::extractAccountEmojis($row),
+            'fields' => [],
+            'avatar_description' => $row['avatar_description'] ?? '',
+            'header_description' => $row['header_description'] ?? ''
+        ];
+ 
+        $db = Database::connect();
  
         $showSource = true;
         try {
@@ -3544,7 +3352,7 @@ HTML;
         } catch (\Exception $e) {
             // Ignorar
         }
- 
+  
         $application = null;
         if ($showSource) {
             $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
@@ -3572,31 +3380,31 @@ HTML;
             ];
         }
         $statusId = (int)$row['status_id'];
- 
+  
         // Favourites count
         $stmtFav = $db->prepare("SELECT COUNT(*) FROM favourites WHERE status_id = ?");
         $stmtFav->execute([$statusId]);
         $favCount = (int)$stmtFav->fetchColumn();
- 
+  
         // Replies count
         $stmtRep = $db->prepare("SELECT COUNT(*) FROM statuses WHERE in_reply_to_id = ?");
         $stmtRep->execute([$statusId]);
         $repCount = (int)$stmtRep->fetchColumn();
- 
+  
         // Checks de interacción para usuario logueado
         $favourited = false;
         $bookmarked = false;
- 
+  
         if ($currentAccountId !== null) {
             $stmtFavCheck = $db->prepare("SELECT 1 FROM favourites WHERE account_id = ? AND status_id = ? LIMIT 1");
             $stmtFavCheck->execute([$currentAccountId, $statusId]);
             $favourited = (bool)$stmtFavCheck->fetchColumn();
- 
+  
             $stmtBookCheck = $db->prepare("SELECT 1 FROM bookmarks WHERE account_id = ? AND status_id = ? LIMIT 1");
             $stmtBookCheck->execute([$currentAccountId, $statusId]);
             $bookmarked = (bool)$stmtBookCheck->fetchColumn();
         }
- 
+  
         // Cargar attachments guardados
         $attachments = [];
         if (!empty($row['media_attachments'])) {
@@ -3618,7 +3426,7 @@ HTML;
                 $attachments = [];
             }
         }
- 
+  
         // Cargar encuesta si existe
         $poll = null;
         $stmtPoll = $db->prepare("SELECT * FROM polls WHERE status_id = ? LIMIT 1");
@@ -3643,7 +3451,7 @@ HTML;
                 }
                 $totalVotes += $qty;
             }
- 
+  
             $voted = false;
             $ownVote = null;
             if ($currentAccountId !== null) {
@@ -3655,7 +3463,7 @@ HTML;
                     $ownVote = (int)$voteVal['choice_index'];
                 }
             }
- 
+  
             $formattedOptions = [];
             foreach ($options as $idx => $title) {
                 $formattedOptions[] = [
@@ -3663,9 +3471,9 @@ HTML;
                     'votes_count' => $votesCount[$idx]
                 ];
             }
- 
+  
             $expired = (strtotime($pollRow['expires_at']) <= time());
- 
+  
             $poll = [
                 'id' => (string)$pollRow['id'],
                 'expires_at' => date('c', strtotime($pollRow['expires_at'])),
@@ -3678,12 +3486,12 @@ HTML;
                 'voters_count' => $totalVotes
             ];
         }
-
+ 
         // Reblogs count
         $stmtReb = $db->prepare("SELECT COUNT(*) FROM statuses WHERE reblog_of_id = ? AND content = ''");
         $stmtReb->execute([$statusId]);
         $reblogsCount = (int)$stmtReb->fetchColumn();
-
+ 
         // Reblogged check
         $reblogged = false;
         if ($currentAccountId !== null) {
@@ -3691,7 +3499,7 @@ HTML;
             $stmtRebCheck->execute([$currentAccountId, $statusId]);
             $reblogged = (bool)$stmtRebCheck->fetchColumn();
         }
-
+ 
         // Cargar reblogged status o quote status
         $reblog = null;
         $quote = null;
@@ -3703,7 +3511,7 @@ HTML;
             $stmtRebOf->execute([$statusId]);
             $reblogOfId = $stmtRebOf->fetchColumn() ?: null;
         }
-
+ 
         $hasOwnContent = !empty(trim($row['status_content'] ?? $row['content'] ?? ''));
         if ($reblogOfId) {
             if (!$hasOwnContent) {
@@ -3720,11 +3528,11 @@ HTML;
                 }
             }
         }
-
+ 
         $formattedContent = (!empty($row['domain']) || str_contains($row['status_content'], '<p>')) 
             ? $row['status_content'] 
             : self::formatLocalContentToHtml($row['status_content'], $domain, $db, $proto);
-
+ 
         $inReplyToAccountId = null;
         if (!empty($row['in_reply_to_id'])) {
             $stmtPar = $db->prepare("SELECT account_id FROM statuses WHERE id = ? LIMIT 1");
@@ -3732,40 +3540,6 @@ HTML;
             $inReplyToAccountId = $stmtPar->fetchColumn() ?: null;
             if ($inReplyToAccountId) {
                 $inReplyToAccountId = (string)$inReplyToAccountId;
-            }
-        }
-
-        // Construir array de mentions parseando el contenido del status
-        $mentions = self::extractMentionsFromContent($row['status_content'], $db, $domain, $proto);
-
-        // Si es un reply, asegurar que el autor del post padre esté en mentions
-        if ($inReplyToAccountId) {
-            $parentInMentions = false;
-            foreach ($mentions as $m) {
-                if ($m['id'] === $inReplyToAccountId) {
-                    $parentInMentions = true;
-                    break;
-                }
-            }
-            if (!$parentInMentions) {
-                $stmtParentAcc = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE id = ? LIMIT 1");
-                $stmtParentAcc->execute([$inReplyToAccountId]);
-                $parentAcc = $stmtParentAcc->fetch();
-                if ($parentAcc) {
-                    $parentUrl = !empty($parentAcc['url']) && !empty($parentAcc['domain'])
-                        ? $parentAcc['url']
-                        : ($parentAcc['domain']
-                            ? "https://{$parentAcc['domain']}/@{$parentAcc['username']}"
-                            : "$proto://$domain/@{$parentAcc['username']}");
-                    array_unshift($mentions, [
-                        'id' => (string)$parentAcc['id'],
-                        'username' => $parentAcc['username'],
-                        'url' => $parentUrl,
-                        'acct' => $parentAcc['domain']
-                            ? $parentAcc['username'] . '@' . $parentAcc['domain']
-                            : $parentAcc['username']
-                    ]);
-                }
             }
         }
  
@@ -3796,7 +3570,7 @@ HTML;
             'text' => $row['status_content'],
             'account' => $account,
             'media_attachments' => $attachments,
-            'mentions' => $mentions,
+            'mentions' => [],
             'tags' => [],
             'emojis' => self::extractEmojisFromContent($formattedContent, $row),
             'card' => (function() use ($row, $db) {

@@ -170,16 +170,13 @@ class NotificationHelper {
                     }
 
                     // Dispatch Push Notification for reply
-                    $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-                    $localDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                    $avatarUrl = !empty($author['avatar']) ? "$proto://$localDomain/data/uploads/{$author['avatar']}" : '';
+                    $statusRow = \KutSocial\Controllers\MastodonApiController::fetchStatusRow($db, $statusId);
                     $notificationPayload = [
-                        'notification_id' => 'mention_' . $statusId,
-                        'notification_type' => 'mention',
-                        'title' => $authorName . ' te respondió',
-                        'body' => mb_substr(strip_tags($status['content']), 0, 140),
-                        'icon' => $avatarUrl,
-                        'preferred_locale' => 'es',
+                        'id' => 'mention_' . $statusId,
+                        'type' => 'mention',
+                        'created_at' => date('c'),
+                        'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($author),
+                        'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $parentUser['id'])
                     ];
                     self::dispatchPushNotification($parentUser['id'], 'mention', $notificationPayload);
 
@@ -212,16 +209,13 @@ class NotificationHelper {
                     }
 
                     // Dispatch Push Notification for mention
-                    $proto = $proto ?? ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http');
-                    $localDomain = $localDomain ?? ($_SERVER['HTTP_HOST'] ?? 'localhost');
-                    $avatarUrl = !empty($author['avatar']) ? "$proto://$localDomain/data/uploads/{$author['avatar']}" : '';
+                    $statusRow = \KutSocial\Controllers\MastodonApiController::fetchStatusRow($db, $statusId);
                     $notificationPayload = [
-                        'notification_id' => 'mention_' . $statusId . '_' . $user['id'],
-                        'notification_type' => 'mention',
-                        'title' => $authorName . ' te mencionó',
-                        'body' => mb_substr(strip_tags($status['content']), 0, 140),
-                        'icon' => $avatarUrl,
-                        'preferred_locale' => 'es',
+                        'id' => 'mention_' . $statusId . '_' . $user['id'],
+                        'type' => 'mention',
+                        'created_at' => date('c'),
+                        'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($author),
+                        'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $user['id'])
                     ];
                     self::dispatchPushNotification($user['id'], 'mention', $notificationPayload);
                 }
@@ -262,17 +256,11 @@ class NotificationHelper {
             }
 
             // Dispatch Push Notification
-            $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-            $localDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $avatarUrl = !empty($follower['avatar']) ? "$proto://$localDomain/data/uploads/{$follower['avatar']}" : '';
-            $followerName = $follower['display_name'] ?: $follower['username'];
             $notificationPayload = [
-                'notification_id' => 'follow_' . $followerAccountId . '_' . time(),
-                'notification_type' => 'follow',
-                'title' => $followerName . ' te ha seguido',
-                'body' => '@' . $follower['username'] . ($follower['domain'] ? '@' . $follower['domain'] : ''),
-                'icon' => $avatarUrl,
-                'preferred_locale' => 'es',
+                'id' => 'follow_' . $followerAccountId . '_' . time(),
+                'type' => 'follow',
+                'created_at' => date('c'),
+                'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($follower)
             ];
             self::dispatchPushNotification($localAccountId, 'follow', $notificationPayload);
         } catch (Exception $e) {
@@ -415,10 +403,6 @@ class NotificationHelper {
                 return;
             }
 
-            // Generar access_token para que el cliente pueda recuperar la notificación completa
-            $accessToken = \KutSocial\Controllers\MastodonApiController::generateTokenForUser($recipientId);
-            $notificationPayload['access_token'] = $accessToken;
-
             foreach ($subs as $sub) {
                 $alerts = json_decode($sub['alerts'], true) ?: [];
                 if (!isset($alerts[$type]) || !$alerts[$type]) {
@@ -457,17 +441,12 @@ class NotificationHelper {
             $trigger = $stmtTrigger->fetch();
             if (!$trigger) return;
 
-            $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-            $localDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $avatarUrl = !empty($trigger['avatar']) ? "$proto://$localDomain/data/uploads/{$trigger['avatar']}" : '';
-            $triggerName = $trigger['display_name'] ?: $trigger['username'];
             $notificationPayload = [
-                'notification_id' => 'favourite_' . $statusId . '_' . $favoritedByAccountId,
-                'notification_type' => 'favourite',
-                'title' => $triggerName . ' marcó como favorito tu publicación',
-                'body' => mb_substr(strip_tags($statusRow['status_content'] ?? ''), 0, 140),
-                'icon' => $avatarUrl,
-                'preferred_locale' => 'es',
+                'id' => 'favourite_' . $statusId . '_' . $favoritedByAccountId,
+                'type' => 'favourite',
+                'created_at' => date('c'),
+                'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($trigger),
+                'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $author['account_id'])
             ];
             self::dispatchPushNotification($author['account_id'], 'favourite', $notificationPayload);
         } catch (\Throwable $e) {
@@ -500,17 +479,12 @@ class NotificationHelper {
             $trigger = $stmtTrigger->fetch();
             if (!$trigger) return;
 
-            $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-            $localDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            $avatarUrl = !empty($trigger['avatar']) ? "$proto://$localDomain/data/uploads/{$trigger['avatar']}" : '';
-            $triggerName = $trigger['display_name'] ?: $trigger['username'];
             $notificationPayload = [
-                'notification_id' => 'reblog_' . $statusId . '_' . $rebloggedByAccountId,
-                'notification_type' => 'reblog',
-                'title' => $triggerName . ' compartió tu publicación',
-                'body' => mb_substr(strip_tags($statusRow['status_content'] ?? ''), 0, 140),
-                'icon' => $avatarUrl,
-                'preferred_locale' => 'es',
+                'id' => 'reblog_' . $statusId . '_' . $rebloggedByAccountId,
+                'type' => 'reblog',
+                'created_at' => date('c'),
+                'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($trigger),
+                'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $author['account_id'])
             ];
             self::dispatchPushNotification($author['account_id'], 'reblog', $notificationPayload);
         } catch (\Throwable $e) {
