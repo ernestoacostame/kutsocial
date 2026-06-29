@@ -2428,6 +2428,14 @@ HTML;
         }
 
         $db = Database::connect();
+
+        if ($inReplyToId !== null) {
+            $stmtCheckParent = $db->prepare("SELECT id FROM statuses WHERE id = ? LIMIT 1");
+            $stmtCheckParent->execute([$inReplyToId]);
+            if (!$stmtCheckParent->fetchColumn()) {
+                $inReplyToId = null;
+            }
+        }
         
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
