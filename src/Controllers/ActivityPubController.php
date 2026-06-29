@@ -1234,6 +1234,8 @@ XML;
             $stmtFav = $db->prepare("INSERT OR IGNORE INTO favourites (account_id, status_id) VALUES (?, ?)");
             $stmtFav->execute([$remoteAccount['id'], $statusId]);
             self::log("handleLike: Registrada interacción Like de actor {$remoteAccount['username']} en post {$statusId}");
+
+            \KutSocial\NotificationHelper::notifyFavourite((int)$statusId, (int)$remoteAccount['id']);
         }
     }
 
@@ -1266,6 +1268,8 @@ XML;
         ");
         $stmtIns->execute([$remoteAccount['id'], $uri, $origStatusId]);
         self::log("handleAnnounce: Registrada actividad de Announce de actor {$remoteAccount['username']} para post {$origStatusId}");
+
+        \KutSocial\NotificationHelper::notifyReblog((int)$origStatusId, (int)$remoteAccount['id']);
     }
 
     public static function fetchAndRegisterRemoteStatus(string $url): ?int {

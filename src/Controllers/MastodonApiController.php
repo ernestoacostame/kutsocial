@@ -30,6 +30,10 @@ class MastodonApiController {
         $ownerAccount = $stmtOwner->fetch();
         $contactAccount = $ownerAccount ? self::formatAccount($ownerAccount) : null;
 
+        $vapidKeys = \KutSocial\WebPushHelper::getVapidKeys();
+        $vapidPublicPoint = \KutSocial\WebPushHelper::pemToUncompressedEcPoint($vapidKeys['vapid_public_key']);
+        $vapidPublicKeyBase64 = \KutSocial\WebPushHelper::base64url_encode($vapidPublicPoint);
+
         $response = [
             'uri' => $domain,
             'title' => $title,
@@ -54,6 +58,9 @@ class MastodonApiController {
             'configuration' => [
                 'urls' => [
                     'streaming' => 'wss://' . $domain . '/api/v1/streaming'
+                ],
+                'vapid' => [
+                    'public_key' => $vapidPublicKeyBase64
                 ],
                 'accounts' => [
                     'max_featured_tags' => 10
@@ -115,6 +122,10 @@ class MastodonApiController {
         $ownerAccount = $stmtOwner->fetch();
         $contactAccount = $ownerAccount ? self::formatAccount($ownerAccount) : null;
 
+        $vapidKeys = \KutSocial\WebPushHelper::getVapidKeys();
+        $vapidPublicPoint = \KutSocial\WebPushHelper::pemToUncompressedEcPoint($vapidKeys['vapid_public_key']);
+        $vapidPublicKeyBase64 = \KutSocial\WebPushHelper::base64url_encode($vapidPublicPoint);
+
         $response = [
             'domain' => $domain,
             'title' => $title,
@@ -137,7 +148,7 @@ class MastodonApiController {
                     'streaming' => 'wss://' . $domain . '/api/v1/streaming'
                 ],
                 'vapid' => [
-                    'public_key' => ''
+                    'public_key' => $vapidPublicKeyBase64
                 ],
                 'accounts' => [
                     'max_featured_tags' => 10,
@@ -1515,7 +1526,7 @@ HTML;
         ]);
     }
 
-    private static function formatAccount(array $account, bool $plainTextBio = false): array {
+    public static function formatAccount(array $account, bool $plainTextBio = false): array {
         // En consultas de notificaciones a veces 'id' representa la relación y 'account_id' la cuenta
         $accountId = $account['account_id'] ?? $account['id'] ?? null;
         
@@ -3288,7 +3299,7 @@ HTML;
         return $emojis;
     }
 
-    private static function formatStatus(array $row, ?int $currentAccountId = null): array {
+    public static function formatStatus(array $row, ?int $currentAccountId = null): array {
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
  
@@ -4155,11 +4166,7 @@ HTML;
         ");
         $stmt->execute([$account['id'], $id]);
 
-        $stmt = $db->prepare("
-            INSERT OR IGNORE INTO favourites (account_id, status_id)
-            VALUES (?, ?)
-        ");
-        $stmt->execute([$account['id'], $id]);
+        \KutSocial\NotificationHelper::notifyFavourite((int)$id, (int)$account['id']);
 
         $row = self::fetchStatusRow($db, $id);
         Router::json(self::formatStatus($row, (int)$account['id']));
@@ -4235,7 +4242,7 @@ HTML;
         Router::json(self::formatStatus($row, (int)$account['id']));
     }
 
-    private static function fetchStatusRow(PDO $db, int $id): ?array {
+    public static function fetchStatusRow(PDO $db, int $id): ?array {
         $stmt = $db->prepare("
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
                    s.visibility as status_visibility, s.created_at as status_created_at, 
@@ -6009,6 +6016,8 @@ HTML;
             ");
             $stmtIns->execute([$account['id'], $uri, $orig['visibility'], $id]);
             $newId = $db->lastInsertId();
+
+            \KutSocial\NotificationHelper::notifyReblog((int)$id, (int)$account['id']);
         }
 
         $row = self::fetchStatusRow($db, (int)$newId);
@@ -6079,4 +6088,164 @@ HTML;
         $peers = $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
         Router::json($peers);
     }
+
+    /**
+     * Endpoint POST /api/v1/push/subscription
+     */
+    public static function createPushSubscription(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $body = Router::getRequestBody();
+        $subscription = $body['subscription'] ?? null;
+        if (!$subscription || empty($subscription['endpoint'])) {
+            Router::json(['error' => 'Missing subscription data'], 400);
+            return;
+        }
+
+        $endpoint = $subscription['endpoint'];
+        $keys = $subscription['keys'] ?? [];
+        $p256dh = $keys['p256dh'] ?? '';
+        $auth = $keys['auth'] ?? '';
+
+        // Extract alerts
+        $data = $body['data'] ?? [];
+        $alerts = $data['alerts'] ?? [
+            'mention' => true,
+            'status' => true,
+            'reblog' => true,
+            'follow' => true,
+            'follow_request' => true,
+            'favourite' => true,
+            'poll' => true,
+            'update' => true,
+            'admin.sign_up' => false,
+            'admin.report' => false
+        ];
+        $alertsJson = json_encode($alerts);
+
+        $db = Database::connect();
+        $stmt = $db->prepare("
+            INSERT OR REPLACE INTO web_push_subscriptions (account_id, endpoint, key_p256dh, key_auth, alerts)
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([$account['id'], $endpoint, $p256dh, $auth, $alertsJson]);
+        $subId = $db->lastInsertId();
+
+        $vapid = \KutSocial\WebPushHelper::getVapidKeys();
+        $vapidPublic = \KutSocial\WebPushHelper::pemToUncompressedEcPoint($vapid['vapid_public_key']);
+        $serverKey = \KutSocial\WebPushHelper::base64url_encode($vapidPublic);
+
+        Router::json([
+            'id' => (string)$subId,
+            'endpoint' => $endpoint,
+            'alerts' => $alerts,
+            'server_key' => $serverKey
+        ]);
+    }
+
+    /**
+     * Endpoint GET /api/v1/push/subscription
+     */
+    public static function getPushSubscription(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT * FROM web_push_subscriptions WHERE account_id = ? ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$account['id']]);
+        $sub = $stmt->fetch();
+
+        if (!$sub) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        $vapid = \KutSocial\WebPushHelper::getVapidKeys();
+        $vapidPublic = \KutSocial\WebPushHelper::pemToUncompressedEcPoint($vapid['vapid_public_key']);
+        $serverKey = \KutSocial\WebPushHelper::base64url_encode($vapidPublic);
+
+        Router::json([
+            'id' => (string)$sub['id'],
+            'endpoint' => $sub['endpoint'],
+            'alerts' => json_decode($sub['alerts'], true),
+            'server_key' => $serverKey
+        ]);
+    }
+
+    /**
+     * Endpoint PUT /api/v1/push/subscription
+     */
+    public static function updatePushSubscription(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $body = Router::getRequestBody();
+        $data = $body['data'] ?? [];
+        $alerts = $data['alerts'] ?? null;
+        if (!$alerts) {
+            Router::json(['error' => 'Missing alerts data'], 400);
+            return;
+        }
+        $alertsJson = json_encode($alerts);
+
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT * FROM web_push_subscriptions WHERE account_id = ? ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$account['id']]);
+        $sub = $stmt->fetch();
+
+        if (!$sub) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        $stmtUpdate = $db->prepare("UPDATE web_push_subscriptions SET alerts = ? WHERE id = ?");
+        $stmtUpdate->execute([$alertsJson, $sub['id']]);
+
+        $vapid = \KutSocial\WebPushHelper::getVapidKeys();
+        $vapidPublic = \KutSocial\WebPushHelper::pemToUncompressedEcPoint($vapid['vapid_public_key']);
+        $serverKey = \KutSocial\WebPushHelper::base64url_encode($vapidPublic);
+
+        Router::json([
+            'id' => (string)$sub['id'],
+            'endpoint' => $sub['endpoint'],
+            'alerts' => $alerts,
+            'server_key' => $serverKey
+        ]);
+    }
+
+    /**
+     * Endpoint DELETE /api/v1/push/subscription
+     */
+    public static function deletePushSubscription(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $body = Router::getRequestBody();
+        $endpoint = $body['endpoint'] ?? $_POST['endpoint'] ?? $_GET['endpoint'] ?? '';
+
+        $db = Database::connect();
+        if ($endpoint) {
+            $stmt = $db->prepare("DELETE FROM web_push_subscriptions WHERE account_id = ? AND endpoint = ?");
+            $stmt->execute([$account['id'], $endpoint]);
+        } else {
+            $stmt = $db->prepare("DELETE FROM web_push_subscriptions WHERE account_id = ?");
+            $stmt->execute([$account['id']]);
+        }
+
+        Router::json([]);
+    }
 }
+

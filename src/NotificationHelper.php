@@ -127,8 +127,7 @@ class NotificationHelper {
 
     /**
      * Notify about a mention or reply.
-     */
-    public static function notifyMentionOrReply(int $statusId): void {
+     */    public static function notifyMentionOrReply(int $statusId): void {
         try {
             $db = Database::connect();
             $stmt = $db->prepare("SELECT * FROM statuses WHERE id = ? LIMIT 1");
@@ -149,7 +148,7 @@ class NotificationHelper {
             // 1. Si es respuesta, notificar al autor del post padre
             if ($status['in_reply_to_id']) {
                 $stmtParent = $db->prepare("
-                    SELECT a.id, a.email, a.email_notifications, a.smtp_host, a.smtp_port, a.smtp_user, a.smtp_pass, a.smtp_from, a.username 
+                    SELECT a.*
                     FROM statuses s
                     JOIN accounts a ON s.account_id = a.id
                     WHERE s.id = ? AND a.domain IS NULL LIMIT 1
@@ -157,22 +156,36 @@ class NotificationHelper {
                 $stmtParent->execute([$status['in_reply_to_id']]);
                 $parentUser = $stmtParent->fetch();
                 if ($parentUser && $parentUser['id'] != $author['id']) {
-                    self::sendEmailNotification(
-                        $parentUser,
-                        "[KutSocial] Nueva respuesta de $authorName",
-                        "<h3>¡Hola @{$parentUser['username']}!</h3>
-                         <p><strong>$authorName</strong> ($authorHandle) ha respondido a tu publicación:</p>
-                         <div style='border-left: 4px solid #6366f1; padding-left: 12px; margin: 15px 0; color: #cbd5e1; font-style: italic; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;'>
-                             {$status['content']}
-                         </div>
-                         <p>Puedes verla en tu panel de KutSocial.</p>"
-                    );
+                    if ($parentUser['email_notifications']) {
+                        self::sendEmailNotification(
+                            $parentUser,
+                            "[KutSocial] Nueva respuesta de $authorName",
+                            "<h3>¡Hola @{$parentUser['username']}!</h3>
+                             <p><strong>$authorName</strong> ($authorHandle) ha respondido a tu publicación:</p>
+                             <div style='border-left: 4px solid #6366f1; padding-left: 12px; margin: 15px 0; color: #cbd5e1; font-style: italic; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;'>
+                                 {$status['content']}
+                             </div>
+                             <p>Puedes verla en tu panel de KutSocial.</p>"
+                        );
+                    }
+
+                    // Dispatch Push Notification for reply
+                    $statusRow = \KutSocial\Controllers\MastodonApiController::fetchStatusRow($db, $statusId);
+                    $notificationPayload = [
+                        'id' => 'mention_' . $statusId,
+                        'type' => 'mention',
+                        'created_at' => date('c'),
+                        'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($author),
+                        'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $parentUser['id'])
+                    ];
+                    self::dispatchPushNotification($parentUser['id'], 'mention', $notificationPayload);
+
                     $recipientId = $parentUser['id'];
                 }
             }
 
             // 2. Buscar menciones en el contenido del post
-            $stmtLocal = $db->prepare("SELECT * FROM accounts WHERE domain IS NULL AND email_notifications = 1");
+            $stmtLocal = $db->prepare("SELECT * FROM accounts WHERE domain IS NULL");
             $stmtLocal->execute();
             $localUsers = $stmtLocal->fetchAll();
             foreach ($localUsers as $user) {
@@ -182,16 +195,29 @@ class NotificationHelper {
                 $pattern = '/@' . preg_quote($user['username'], '/') . '(?![a-zA-Z0-9_\-])/i';
                 $urlPattern = '/\/users\/' . preg_quote($user['username'], '/') . '(?![a-zA-Z0-9_\-])/i';
                 if (preg_match($pattern, $status['content']) || preg_match($urlPattern, $status['content'])) {
-                    self::sendEmailNotification(
-                        $user,
-                        "[KutSocial] Te han mencionado en una publicación",
-                        "<h3>¡Hola @{$user['username']}!</h3>
-                         <p><strong>$authorName</strong> ($authorHandle) te ha mencionado en una publicación:</p>
-                         <div style='border-left: 4px solid #6366f1; padding-left: 12px; margin: 15px 0; color: #cbd5e1; font-style: italic; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;'>
-                             {$status['content']}
-                         </div>
-                         <p>Puedes verla en tu panel de KutSocial.</p>"
-                    );
+                    if ($user['email_notifications']) {
+                        self::sendEmailNotification(
+                            $user,
+                            "[KutSocial] Te han mencionado en una publicación",
+                            "<h3>¡Hola @{$user['username']}!</h3>
+                             <p><strong>$authorName</strong> ($authorHandle) te ha mencionado en una publicación:</p>
+                             <div style='border-left: 4px solid #6366f1; padding-left: 12px; margin: 15px 0; color: #cbd5e1; font-style: italic; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px;'>
+                                 {$status['content']}
+                             </div>
+                             <p>Puedes verla en tu panel de KutSocial.</p>"
+                        );
+                    }
+
+                    // Dispatch Push Notification for mention
+                    $statusRow = \KutSocial\Controllers\MastodonApiController::fetchStatusRow($db, $statusId);
+                    $notificationPayload = [
+                        'id' => 'mention_' . $statusId . '_' . $user['id'],
+                        'type' => 'mention',
+                        'created_at' => date('c'),
+                        'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($author),
+                        'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $user['id'])
+                    ];
+                    self::dispatchPushNotification($user['id'], 'mention', $notificationPayload);
                 }
             }
         } catch (Exception $e) {
@@ -199,9 +225,6 @@ class NotificationHelper {
         }
     }
 
-    /**
-     * Notify about a new follow.
-     */
     public static function notifyFollow(int $localAccountId, int $followerAccountId): void {
         try {
             $db = Database::connect();
@@ -209,7 +232,7 @@ class NotificationHelper {
             $stmtRecipient = $db->prepare("SELECT * FROM accounts WHERE id = ? AND domain IS NULL LIMIT 1");
             $stmtRecipient->execute([$localAccountId]);
             $recipient = $stmtRecipient->fetch();
-            if (!$recipient || !$recipient['email_notifications']) {
+            if (!$recipient) {
                 return;
             }
 
@@ -218,16 +241,28 @@ class NotificationHelper {
             $follower = $stmtFollower->fetch();
             if (!$follower) return;
 
-            $followerHandle = $follower['domain'] ? '@' . $follower['username'] . '@' . $follower['domain'] : '@' . $follower['username'];
-            $followerName = $follower['display_name'] ?: $follower['username'];
+            // Enviar email si está activo
+            if ($recipient['email_notifications']) {
+                $followerHandle = $follower['domain'] ? '@' . $follower['username'] . '@' . $follower['domain'] : '@' . $follower['username'];
+                $followerName = $follower['display_name'] ?: $follower['username'];
 
-            self::sendEmailNotification(
-                $recipient,
-                "[KutSocial] @{$follower['username']} te ha seguido",
-                "<h3>¡Hola @{$recipient['username']}!</h3>
-                 <p><strong>$followerName</strong> ($followerHandle) te ha seguido en KutSocial.</p>
-                 <p>Puedes ver su perfil en tu panel de KutSocial.</p>"
-            );
+                self::sendEmailNotification(
+                    $recipient,
+                    "[KutSocial] @{$follower['username']} te ha seguido",
+                    "<h3>¡Hola @{$recipient['username']}!</h3>
+                     <p><strong>$followerName</strong> ($followerHandle) te ha seguido en KutSocial.</p>
+                     <p>Puedes ver su perfil en tu panel de KutSocial.</p>"
+                );
+            }
+
+            // Dispatch Push Notification
+            $notificationPayload = [
+                'id' => 'follow_' . $followerAccountId . '_' . time(),
+                'type' => 'follow',
+                'created_at' => date('c'),
+                'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($follower)
+            ];
+            self::dispatchPushNotification($localAccountId, 'follow', $notificationPayload);
         } catch (Exception $e) {
             error_log("Failed to process notifyFollow: " . $e->getMessage());
         }
@@ -354,4 +389,107 @@ class NotificationHelper {
             }
         }
     }
+
+    /**
+     * Dispatch push notifications to all active subscriptions of an account.
+     */
+    public static function dispatchPushNotification(int $recipientId, string $type, array $notificationPayload): void {
+        try {
+            $db = Database::connect();
+            $stmt = $db->prepare("SELECT * FROM web_push_subscriptions WHERE account_id = ?");
+            $stmt->execute([$recipientId]);
+            $subs = $stmt->fetchAll();
+            if (empty($subs)) {
+                return;
+            }
+
+            foreach ($subs as $sub) {
+                $alerts = json_decode($sub['alerts'], true) ?: [];
+                if (!isset($alerts[$type]) || !$alerts[$type]) {
+                    continue;
+                }
+
+                WebPushHelper::sendPush($sub['endpoint'], $sub['key_p256dh'], $sub['key_auth'], $notificationPayload);
+            }
+        } catch (\Throwable $e) {
+            error_log("Failed to dispatch push notification: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Notify about a favourite event via push notification.
+     */
+    public static function notifyFavourite(int $statusId, int $favoritedByAccountId): void {
+        try {
+            $db = Database::connect();
+            $stmt = $db->prepare("
+                SELECT s.account_id, a.domain
+                FROM statuses s
+                JOIN accounts a ON s.account_id = a.id
+                WHERE s.id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$statusId]);
+            $author = $stmt->fetch();
+            if (!$author || $author['domain'] !== null) {
+                return; // Only notify local authors
+            }
+
+            $statusRow = \KutSocial\Controllers\MastodonApiController::fetchStatusRow($db, $statusId);
+            $stmtTrigger = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+            $stmtTrigger->execute([$favoritedByAccountId]);
+            $trigger = $stmtTrigger->fetch();
+            if (!$trigger) return;
+
+            $notificationPayload = [
+                'id' => 'favourite_' . $statusId . '_' . $favoritedByAccountId,
+                'type' => 'favourite',
+                'created_at' => date('c'),
+                'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($trigger),
+                'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $author['account_id'])
+            ];
+            self::dispatchPushNotification($author['account_id'], 'favourite', $notificationPayload);
+        } catch (\Throwable $e) {
+            error_log("Failed to process notifyFavourite: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Notify about a reblog event via push notification.
+     */
+    public static function notifyReblog(int $statusId, int $rebloggedByAccountId): void {
+        try {
+            $db = Database::connect();
+            $stmt = $db->prepare("
+                SELECT s.account_id, a.domain
+                FROM statuses s
+                JOIN accounts a ON s.account_id = a.id
+                WHERE s.id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$statusId]);
+            $author = $stmt->fetch();
+            if (!$author || $author['domain'] !== null) {
+                return; // Only notify local authors
+            }
+
+            $statusRow = \KutSocial\Controllers\MastodonApiController::fetchStatusRow($db, $statusId);
+            $stmtTrigger = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+            $stmtTrigger->execute([$rebloggedByAccountId]);
+            $trigger = $stmtTrigger->fetch();
+            if (!$trigger) return;
+
+            $notificationPayload = [
+                'id' => 'reblog_' . $statusId . '_' . $rebloggedByAccountId,
+                'type' => 'reblog',
+                'created_at' => date('c'),
+                'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($trigger),
+                'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $author['account_id'])
+            ];
+            self::dispatchPushNotification($author['account_id'], 'reblog', $notificationPayload);
+        } catch (\Throwable $e) {
+            error_log("Failed to process notifyReblog: " . $e->getMessage());
+        }
+    }
 }
+

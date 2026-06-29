@@ -275,6 +275,13 @@ $router->get('/api/v1/notifications', [MastodonApiController::class, 'getNotific
 $router->post('/api/v1/notifications/:id/dismiss', [MastodonApiController::class, 'dismissNotification']);
 $router->post('/api/v1/notifications/clear', [MastodonApiController::class, 'clearNotifications']);
 
+// Notificaciones Push (Web Push / VAPID)
+$router->post('/api/v1/push/subscription', [MastodonApiController::class, 'createPushSubscription']);
+$router->get('/api/v1/push/subscription', [MastodonApiController::class, 'getPushSubscription']);
+$router->put('/api/v1/push/subscription', [MastodonApiController::class, 'updatePushSubscription']);
+$router->delete('/api/v1/push/subscription', [MastodonApiController::class, 'deletePushSubscription']);
+
+
 // Búsqueda (Search API v1 & v2)
 $router->get('/api/v1/search', [MastodonApiController::class, 'search']);
 $router->get('/api/v2/search', [MastodonApiController::class, 'search']);

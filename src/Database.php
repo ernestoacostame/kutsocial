@@ -386,6 +386,19 @@ class Database {
             ],
             16 => [
                 "ALTER TABLE accounts ADD COLUMN notifications_read_at TEXT NULL"
+            ],
+            17 => [
+                "CREATE TABLE IF NOT EXISTS web_push_subscriptions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    endpoint TEXT NOT NULL,
+                    key_p256dh TEXT NOT NULL,
+                    key_auth TEXT NOT NULL,
+                    alerts TEXT NOT NULL,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    UNIQUE(account_id, endpoint)
+                )",
+                "CREATE INDEX IF NOT EXISTS idx_web_push_subscriptions_account_id ON web_push_subscriptions(account_id)"
             ]
         ];
     }
