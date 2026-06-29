@@ -270,6 +270,7 @@ class WebPushHelper {
             curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
             curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
             curl_setopt($ch, CURLOPT_TIMEOUT, 8);
+            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 5);
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, \KutSocial\Database::verifySsl());
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, \KutSocial\Database::verifySsl() ? 2 : 0);
 

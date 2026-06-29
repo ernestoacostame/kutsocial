@@ -1293,7 +1293,7 @@ HTML;
         return $secret;
     }
 
-    private static function generateTokenForUser(int $userId): string {
+    public static function generateTokenForUser(int $userId): string {
         $secret = self::getSigningSecret();
         $hash = hash_hmac('sha256', $userId, $secret);
         return "token_" . $userId . "_" . $hash;
@@ -1664,9 +1664,13 @@ HTML;
             $fieldsArr = json_decode($account['fields'], true);
             if (is_array($fieldsArr)) {
                 foreach ($fieldsArr as $f) {
+                    // source.fields debe devolver texto plano (sin HTML)
+                    // Los clientes como Mona esperan el valor raw para edición
+                    $rawValue = $f['value'] ?? '';
+                    $rawValue = strip_tags($rawValue);
                     $rawFields[] = [
                         'name' => $f['name'] ?? '',
-                        'value' => $f['value'] ?? '',
+                        'value' => $rawValue,
                         'verified_at' => $f['verified_at'] ?? null
                     ];
                 }
@@ -3061,6 +3065,98 @@ HTML;
     }
 
     /**
+     * Extrae menciones del contenido de un status y devuelve un array de objetos Mention
+     * compatibles con la API de Mastodon (id, username, url, acct).
+     */
+    private static function extractMentionsFromContent(string $content, \PDO $db, string $domain, string $proto): array {
+        $mentions = [];
+        $seenIds = [];
+
+        // 1. Parsear menciones del HTML: <a href="..." class="... mention">@<span>user</span></a>
+        if (preg_match_all('/<a\s+[^>]*href="([^"]+)"[^>]*class="[^"]*mention[^"]*"[^>]*>.*?<\/a>/i', $content, $htmlMatches, PREG_SET_ORDER)) {
+            foreach ($htmlMatches as $m) {
+                $href = $m[1];
+                // Extraer username del href (formato: https://domain/users/username o https://domain/@username)
+                if (preg_match('/\/(?:users\/|@)([a-zA-Z0-9_-]+)\/?$/', $href, $userMatch)) {
+                    $mUsername = $userMatch[1];
+                    $parsedUrl = parse_url($href);
+                    $mHost = $parsedUrl['host'] ?? null;
+                    $mDomain = ($mHost && strcasecmp($mHost, $domain) !== 0) ? $mHost : null;
+
+                    $mAcc = null;
+                    if ($mDomain === null) {
+                        $stmt = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+                        $stmt->execute([$mUsername]);
+                        $mAcc = $stmt->fetch();
+                    } else {
+                        $stmt = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                        $stmt->execute([$mUsername, $mDomain]);
+                        $mAcc = $stmt->fetch();
+                    }
+
+                    if ($mAcc && !isset($seenIds[$mAcc['id']])) {
+                        $seenIds[$mAcc['id']] = true;
+                        $mentionUrl = !empty($mAcc['url']) && !empty($mAcc['domain'])
+                            ? $mAcc['url']
+                            : ($mAcc['domain']
+                                ? "https://{$mAcc['domain']}/@{$mAcc['username']}"
+                                : "$proto://$domain/@{$mAcc['username']}");
+                        $mentions[] = [
+                            'id' => (string)$mAcc['id'],
+                            'username' => $mAcc['username'],
+                            'url' => $mentionUrl,
+                            'acct' => $mAcc['domain']
+                                ? $mAcc['username'] . '@' . $mAcc['domain']
+                                : $mAcc['username']
+                        ];
+                    }
+                }
+            }
+        }
+
+        // 2. Parsear menciones de texto plano: @user o @user@domain
+        if (preg_match_all('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/', strip_tags($content), $textMatches, PREG_SET_ORDER)) {
+            foreach ($textMatches as $m) {
+                $mUsername = $m[1];
+                $mDomain = isset($m[2]) && !empty($m[2]) ? strtolower($m[2]) : null;
+                if ($mDomain !== null && strcasecmp($mDomain, $domain) === 0) {
+                    $mDomain = null;
+                }
+
+                $mAcc = null;
+                if ($mDomain === null) {
+                    $stmt = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+                    $stmt->execute([$mUsername]);
+                    $mAcc = $stmt->fetch();
+                } else {
+                    $stmt = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                    $stmt->execute([$mUsername, $mDomain]);
+                    $mAcc = $stmt->fetch();
+                }
+
+                if ($mAcc && !isset($seenIds[$mAcc['id']])) {
+                    $seenIds[$mAcc['id']] = true;
+                    $mentionUrl = !empty($mAcc['url']) && !empty($mAcc['domain'])
+                        ? $mAcc['url']
+                        : ($mAcc['domain']
+                            ? "https://{$mAcc['domain']}/@{$mAcc['username']}"
+                            : "$proto://$domain/@{$mAcc['username']}");
+                    $mentions[] = [
+                        'id' => (string)$mAcc['id'],
+                        'username' => $mAcc['username'],
+                        'url' => $mentionUrl,
+                        'acct' => $mAcc['domain']
+                            ? $mAcc['username'] . '@' . $mAcc['domain']
+                            : $mAcc['username']
+                    ];
+                }
+            }
+        }
+
+        return $mentions;
+    }
+
+    /**
      * Endpoint GET /api/v1/statuses/:id
      * Retorna un status individual por su ID.
      */
@@ -3542,6 +3638,40 @@ HTML;
                 $inReplyToAccountId = (string)$inReplyToAccountId;
             }
         }
+
+        // Construir array de mentions parseando el contenido del status
+        $mentions = self::extractMentionsFromContent($row['status_content'], $db, $domain, $proto);
+
+        // Si es un reply, asegurar que el autor del post padre esté en mentions
+        if ($inReplyToAccountId) {
+            $parentInMentions = false;
+            foreach ($mentions as $m) {
+                if ($m['id'] === $inReplyToAccountId) {
+                    $parentInMentions = true;
+                    break;
+                }
+            }
+            if (!$parentInMentions) {
+                $stmtParentAcc = $db->prepare("SELECT id, username, domain, url FROM accounts WHERE id = ? LIMIT 1");
+                $stmtParentAcc->execute([$inReplyToAccountId]);
+                $parentAcc = $stmtParentAcc->fetch();
+                if ($parentAcc) {
+                    $parentUrl = !empty($parentAcc['url']) && !empty($parentAcc['domain'])
+                        ? $parentAcc['url']
+                        : ($parentAcc['domain']
+                            ? "https://{$parentAcc['domain']}/@{$parentAcc['username']}"
+                            : "$proto://$domain/@{$parentAcc['username']}");
+                    array_unshift($mentions, [
+                        'id' => (string)$parentAcc['id'],
+                        'username' => $parentAcc['username'],
+                        'url' => $parentUrl,
+                        'acct' => $parentAcc['domain']
+                            ? $parentAcc['username'] . '@' . $parentAcc['domain']
+                            : $parentAcc['username']
+                    ]);
+                }
+            }
+        }
  
         return [
             'id' => (string)$row['status_id'],
@@ -3570,7 +3700,7 @@ HTML;
             'text' => $row['status_content'],
             'account' => $account,
             'media_attachments' => $attachments,
-            'mentions' => [],
+            'mentions' => $mentions,
             'tags' => [],
             'emojis' => self::extractEmojisFromContent($formattedContent, $row),
             'card' => (function() use ($row, $db) {
