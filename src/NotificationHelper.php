@@ -171,12 +171,27 @@ class NotificationHelper {
 
                     // Dispatch Push Notification for reply
                     $statusRow = \KutSocial\Controllers\MastodonApiController::fetchStatusRow($db, $statusId);
+                    $displayName = $author['display_name'] ?: $author['username'];
+                    $bodyText = html_entity_decode(strip_tags($status['content']), ENT_QUOTES, 'UTF-8');
+                    $token = \KutSocial\Controllers\MastodonApiController::generateTokenForUser((int)$parentUser['id']);
+                    $formattedAuthor = \KutSocial\Controllers\MastodonApiController::formatAccount($author);
+                    $iconUrl = $formattedAuthor['avatar'] ?? '';
+
                     $notificationPayload = [
                         'id' => 'mention_' . $statusId,
                         'type' => 'mention',
                         'created_at' => date('c'),
-                        'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($author),
-                        'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $parentUser['id'])
+                        'account' => $formattedAuthor,
+                        'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $parentUser['id']),
+
+                        // New fields for mobile push clients
+                        'notification_id' => 'mention_' . $statusId,
+                        'notification_type' => 'mention',
+                        'access_token' => $token,
+                        'preferred_locale' => 'es',
+                        'icon' => $iconUrl,
+                        'title' => 'Nueva respuesta',
+                        'body' => $displayName . ': ' . $bodyText,
                     ];
                     self::dispatchPushNotification($parentUser['id'], 'mention', $notificationPayload);
 
@@ -210,12 +225,27 @@ class NotificationHelper {
 
                     // Dispatch Push Notification for mention
                     $statusRow = \KutSocial\Controllers\MastodonApiController::fetchStatusRow($db, $statusId);
+                    $displayName = $author['display_name'] ?: $author['username'];
+                    $bodyText = html_entity_decode(strip_tags($status['content']), ENT_QUOTES, 'UTF-8');
+                    $token = \KutSocial\Controllers\MastodonApiController::generateTokenForUser((int)$user['id']);
+                    $formattedAuthor = \KutSocial\Controllers\MastodonApiController::formatAccount($author);
+                    $iconUrl = $formattedAuthor['avatar'] ?? '';
+
                     $notificationPayload = [
                         'id' => 'mention_' . $statusId . '_' . $user['id'],
                         'type' => 'mention',
                         'created_at' => date('c'),
-                        'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($author),
-                        'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $user['id'])
+                        'account' => $formattedAuthor,
+                        'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $user['id']),
+
+                        // New fields for mobile push clients
+                        'notification_id' => 'mention_' . $statusId . '_' . $user['id'],
+                        'notification_type' => 'mention',
+                        'access_token' => $token,
+                        'preferred_locale' => 'es',
+                        'icon' => $iconUrl,
+                        'title' => 'Nueva mención',
+                        'body' => $displayName . ': ' . $bodyText,
                     ];
                     self::dispatchPushNotification($user['id'], 'mention', $notificationPayload);
                 }
@@ -256,11 +286,35 @@ class NotificationHelper {
             }
 
             // Dispatch Push Notification
+            $followId = null;
+            try {
+                $stmtFollowId = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+                $stmtFollowId->execute([$followerAccountId, $localAccountId]);
+                $followId = $stmtFollowId->fetchColumn();
+            } catch (\Exception $e) {
+                // Ignorar
+            }
+            $notifId = $followId ? 'follow_' . $followId : 'follow_' . $followerAccountId . '_' . time();
+
+            $displayName = $follower['display_name'] ?: $follower['username'];
+            $token = \KutSocial\Controllers\MastodonApiController::generateTokenForUser((int)$localAccountId);
+            $formattedFollower = \KutSocial\Controllers\MastodonApiController::formatAccount($follower);
+            $iconUrl = $formattedFollower['avatar'] ?? '';
+
             $notificationPayload = [
-                'id' => 'follow_' . $followerAccountId . '_' . time(),
+                'id' => $notifId,
                 'type' => 'follow',
                 'created_at' => date('c'),
-                'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($follower)
+                'account' => $formattedFollower,
+
+                // New fields for mobile push clients
+                'notification_id' => $notifId,
+                'notification_type' => 'follow',
+                'access_token' => $token,
+                'preferred_locale' => 'es',
+                'icon' => $iconUrl,
+                'title' => 'Nuevo seguidor',
+                'body' => $displayName . ' te ha seguido',
             ];
             self::dispatchPushNotification($localAccountId, 'follow', $notificationPayload);
         } catch (Exception $e) {
@@ -441,12 +495,40 @@ class NotificationHelper {
             $trigger = $stmtTrigger->fetch();
             if (!$trigger) return;
 
+            $favId = null;
+            try {
+                $stmtFavId = $db->prepare("SELECT id FROM favourites WHERE status_id = ? AND account_id = ? LIMIT 1");
+                $stmtFavId->execute([$statusId, $favoritedByAccountId]);
+                $favId = $stmtFavId->fetchColumn();
+            } catch (\Exception $e) {
+                // Ignorar
+            }
+            $notifId = $favId ? 'favourite_' . $favId : 'favourite_' . $statusId . '_' . $favoritedByAccountId;
+
+            $displayName = $trigger['display_name'] ?: $trigger['username'];
+            $bodyText = html_entity_decode(strip_tags($statusRow['status_content']), ENT_QUOTES, 'UTF-8');
+            if (mb_strlen($bodyText) > 60) {
+                $bodyText = mb_substr($bodyText, 0, 57) . '...';
+            }
+            $token = \KutSocial\Controllers\MastodonApiController::generateTokenForUser((int)$author['account_id']);
+            $formattedTrigger = \KutSocial\Controllers\MastodonApiController::formatAccount($trigger);
+            $iconUrl = $formattedTrigger['avatar'] ?? '';
+
             $notificationPayload = [
-                'id' => 'favourite_' . $statusId . '_' . $favoritedByAccountId,
+                'id' => $notifId,
                 'type' => 'favourite',
                 'created_at' => date('c'),
-                'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($trigger),
-                'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $author['account_id'])
+                'account' => $formattedTrigger,
+                'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $author['account_id']),
+
+                // New fields for mobile push clients
+                'notification_id' => $notifId,
+                'notification_type' => 'favourite',
+                'access_token' => $token,
+                'preferred_locale' => 'es',
+                'icon' => $iconUrl,
+                'title' => 'Nuevo me gusta',
+                'body' => $displayName . ' le dio me gusta a tu publicación: "' . $bodyText . '"',
             ];
             self::dispatchPushNotification($author['account_id'], 'favourite', $notificationPayload);
         } catch (\Throwable $e) {
@@ -479,12 +561,40 @@ class NotificationHelper {
             $trigger = $stmtTrigger->fetch();
             if (!$trigger) return;
 
+            $reblogStatusId = null;
+            try {
+                $stmtReblogId = $db->prepare("SELECT id FROM statuses WHERE reblog_of_id = ? AND account_id = ? LIMIT 1");
+                $stmtReblogId->execute([$statusId, $rebloggedByAccountId]);
+                $reblogStatusId = $stmtReblogId->fetchColumn();
+            } catch (\Exception $e) {
+                // Ignorar
+            }
+            $notifId = $reblogStatusId ? 'reblog_' . $reblogStatusId : 'reblog_' . $statusId . '_' . $rebloggedByAccountId;
+
+            $displayName = $trigger['display_name'] ?: $trigger['username'];
+            $bodyText = html_entity_decode(strip_tags($statusRow['status_content']), ENT_QUOTES, 'UTF-8');
+            if (mb_strlen($bodyText) > 60) {
+                $bodyText = mb_substr($bodyText, 0, 57) . '...';
+            }
+            $token = \KutSocial\Controllers\MastodonApiController::generateTokenForUser((int)$author['account_id']);
+            $formattedTrigger = \KutSocial\Controllers\MastodonApiController::formatAccount($trigger);
+            $iconUrl = $formattedTrigger['avatar'] ?? '';
+
             $notificationPayload = [
-                'id' => 'reblog_' . $statusId . '_' . $rebloggedByAccountId,
+                'id' => $notifId,
                 'type' => 'reblog',
                 'created_at' => date('c'),
-                'account' => \KutSocial\Controllers\MastodonApiController::formatAccount($trigger),
-                'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $author['account_id'])
+                'account' => $formattedTrigger,
+                'status' => \KutSocial\Controllers\MastodonApiController::formatStatus($statusRow, $author['account_id']),
+
+                // New fields for mobile push clients
+                'notification_id' => $notifId,
+                'notification_type' => 'reblog',
+                'access_token' => $token,
+                'preferred_locale' => 'es',
+                'icon' => $iconUrl,
+                'title' => 'Nueva publicación compartida',
+                'body' => $displayName . ' compartió tu publicación: "' . $bodyText . '"',
             ];
             self::dispatchPushNotification($author['account_id'], 'reblog', $notificationPayload);
         } catch (\Throwable $e) {

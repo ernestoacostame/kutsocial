@@ -3224,12 +3224,33 @@ HTML;
      * Los emojis en Mastodon usan formato :shortcode: en el contenido.
      * Los emojis remotos se almacenan como JSON en la columna 'emojis' del status.
      */
+    private static $emojisCache = ['accounts' => [], 'statuses' => []];
+
     private static function extractEmojisFromContent(string $content, array $row): array {
+        $statusId = $row['status_id'] ?? $row['id'] ?? null;
+        $emojisJson = $row['emojis'] ?? $row['status_emojis'] ?? null;
+
+        if ($emojisJson === null && $statusId !== null) {
+            $statusId = (int)$statusId;
+            if (isset(self::$emojisCache['statuses'][$statusId])) {
+                $emojisJson = self::$emojisCache['statuses'][$statusId];
+            } else {
+                try {
+                    $db = Database::connect();
+                    $stmt = $db->prepare("SELECT emojis FROM statuses WHERE id = ? LIMIT 1");
+                    $stmt->execute([$statusId]);
+                    $emojisJson = $stmt->fetchColumn() ?: '';
+                    self::$emojisCache['statuses'][$statusId] = $emojisJson;
+                } catch (\Exception $e) {
+                    $emojisJson = '';
+                }
+            }
+        }
+
         $emojis = [];
         $seenShortcodes = [];
 
         // 1. Primero, extraer emojis almacenados del status (guardados desde ActivityPub)
-        $emojisJson = $row['emojis'] ?? $row['status_emojis'] ?? null;
         if (!empty($emojisJson) && is_string($emojisJson)) {
             $storedEmojis = json_decode($emojisJson, true);
             if (is_array($storedEmojis)) {
@@ -3251,6 +3272,26 @@ HTML;
 
         // 2. Extraer emojis de la cuenta del autor (display_name puede contener emojis)
         $accountEmojisJson = $row['account_emojis'] ?? null;
+        if ($accountEmojisJson === null) {
+            $accountId = $row['account_id'] ?? $row['id'] ?? null;
+            if ($accountId !== null) {
+                $accountId = (int)$accountId;
+                if (isset(self::$emojisCache['accounts'][$accountId])) {
+                    $accountEmojisJson = self::$emojisCache['accounts'][$accountId];
+                } else {
+                    try {
+                        $db = Database::connect();
+                        $stmt = $db->prepare("SELECT emojis FROM accounts WHERE id = ? LIMIT 1");
+                        $stmt->execute([$accountId]);
+                        $accountEmojisJson = $stmt->fetchColumn() ?: '';
+                        self::$emojisCache['accounts'][$accountId] = $accountEmojisJson;
+                    } catch (\Exception $e) {
+                        $accountEmojisJson = '';
+                    }
+                }
+            }
+        }
+
         if (!empty($accountEmojisJson) && is_string($accountEmojisJson)) {
             $accountEmojis = json_decode($accountEmojisJson, true);
             if (is_array($accountEmojis)) {
@@ -3277,8 +3318,27 @@ HTML;
      * Helper: Extrae emojis personalizados almacenados de una cuenta.
      */
     private static function extractAccountEmojis(array $account): array {
-        $emojis = [];
+        $accountId = $account['account_id'] ?? $account['id'] ?? null;
         $emojisJson = $account['emojis'] ?? $account['account_emojis'] ?? null;
+
+        if ($emojisJson === null && $accountId !== null) {
+            $accountId = (int)$accountId;
+            if (isset(self::$emojisCache['accounts'][$accountId])) {
+                $emojisJson = self::$emojisCache['accounts'][$accountId];
+            } else {
+                try {
+                    $db = Database::connect();
+                    $stmt = $db->prepare("SELECT emojis FROM accounts WHERE id = ? LIMIT 1");
+                    $stmt->execute([$accountId]);
+                    $emojisJson = $stmt->fetchColumn() ?: '';
+                    self::$emojisCache['accounts'][$accountId] = $emojisJson;
+                } catch (\Exception $e) {
+                    $emojisJson = '';
+                }
+            }
+        }
+
+        $emojis = [];
         if (!empty($emojisJson) && is_string($emojisJson)) {
             $stored = json_decode($emojisJson, true);
             if (is_array($stored)) {
@@ -3355,29 +3415,34 @@ HTML;
   
         $application = null;
         if ($showSource) {
-            $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
-            $appName = 'Web';
-            $appUrl = null;
-            if (stripos($ua, 'Tusky') !== false) {
-                $appName = 'Tusky';
-                $appUrl = 'https://tusky.app';
-            } elseif (stripos($ua, 'Fedilab') !== false) {
-                $appName = 'Fedilab';
-                $appUrl = 'https://fedilab.app';
-            } elseif (stripos($ua, 'KutPod') !== false) {
-                $appName = 'KutPod';
-            } elseif (stripos($ua, 'SubwayTooter') !== false) {
-                $appName = 'SubwayTooter';
-            } elseif (stripos($ua, 'Mastodon') !== false) {
-                $appName = 'Mastodon Client';
+            $isRemote = !empty($row['domain']);
+            if ($isRemote) {
+                $application = null;
             } else {
-                $appName = 'KutSocial';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $appName = 'Web';
+                $appUrl = null;
+                if (stripos($ua, 'Tusky') !== false) {
+                    $appName = 'Tusky';
+                    $appUrl = 'https://tusky.app';
+                } elseif (stripos($ua, 'Fedilab') !== false) {
+                    $appName = 'Fedilab';
+                    $appUrl = 'https://fedilab.app';
+                } elseif (stripos($ua, 'KutPod') !== false) {
+                    $appName = 'KutPod';
+                } elseif (stripos($ua, 'SubwayTooter') !== false) {
+                    $appName = 'SubwayTooter';
+                } elseif (stripos($ua, 'Mastodon') !== false) {
+                    $appName = 'Mastodon Client';
+                } else {
+                    $appName = 'KutSocial';
+                }
+                
+                $application = [
+                    'name' => $appName,
+                    'website' => $appUrl
+                ];
             }
-            
-            $application = [
-                'name' => $appName,
-                'website' => $appUrl
-            ];
         }
         $statusId = (int)$row['status_id'];
   
