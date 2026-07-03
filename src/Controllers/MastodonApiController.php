@@ -2122,6 +2122,45 @@ HTML;
     }
 
     /**
+     * Endpoint GET /api/v1/accounts
+     * Obtiene información sobre varias cuentas especificadas por ID (como array)
+     */
+    public static function getAccounts(): void {
+        $ids = $_GET['id'] ?? [];
+        if (!is_array($ids)) {
+            $ids = [$ids];
+        }
+
+        $ids = array_filter(array_map('intval', $ids));
+        if (empty($ids)) {
+            Router::json([]);
+            return;
+        }
+
+        $db = Database::connect();
+        
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE id IN ($placeholders)");
+        $stmt->execute($ids);
+        $rows = $stmt->fetchAll();
+
+        $byId = [];
+        foreach ($rows as $row) {
+            $byId[(int)$row['id']] = $row;
+        }
+
+        $formatted = [];
+        foreach ($ids as $id) {
+            if (isset($byId[$id])) {
+                $formatted[] = self::formatAccount($byId[$id]);
+            }
+        }
+
+        Router::json($formatted);
+    }
+
+    /**
      * Endpoint GET /api/v1/accounts/:id
      * Obtiene el perfil de cualquier cuenta por su ID
      */
