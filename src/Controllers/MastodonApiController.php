@@ -3280,7 +3280,16 @@ HTML;
             $escaped = strtr($escaped, $placeholders);
         }
         
-        return '<p>' . nl2br($escaped) . '</p>';
+        // Dividir el contenido por saltos de párrafo dobles y envolver cada uno en <p>
+        $paragraphs = preg_split('/\r?\n\s*\r?\n/', $escaped);
+        $htmlParagraphs = [];
+        foreach ($paragraphs as $p) {
+            $p = trim($p);
+            if ($p !== '') {
+                $htmlParagraphs[] = '<p>' . nl2br($p) . '</p>';
+            }
+        }
+        return implode('', $htmlParagraphs);
     }
 
     /**

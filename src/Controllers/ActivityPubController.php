@@ -750,13 +750,27 @@ XML;
     private static function getOrRegisterRemoteActor(string $actorUrl): ?array {
         $db = Database::connect();
 
-        // Verificar si ya existe
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
         $host = parse_url($actorUrl, PHP_URL_HOST);
         $pathParts = explode('/', parse_url($actorUrl, PHP_URL_PATH));
-        $username = end($pathParts);
+        $usernameCandidate = end($pathParts);
+        $usernameCandidate = ltrim($usernameCandidate, "@");
 
-        $stmt->execute([$username, $host]);
+        // Buscar por URL (que almacena el actorUrl) o inbox_url o (username y dominio)
+        $stmt = $db->prepare("
+            SELECT * FROM accounts 
+            WHERE (username = ? AND domain = ?) 
+               OR url = ? 
+               OR inbox_url = ? 
+               OR inbox_url = ?
+            LIMIT 1
+        ");
+        $stmt->execute([
+            $usernameCandidate,
+            $host,
+            $actorUrl,
+            $actorUrl . '/inbox',
+            $actorUrl
+        ]);
         $account = $stmt->fetch();
 
         if ($account) {
@@ -800,7 +814,8 @@ XML;
                 return $account ?: null;
             }
 
-            $displayName = $json['name'] ?? $username;
+            $preferredUsername = $json['preferredUsername'] ?? $usernameCandidate;
+            $displayName = $json['name'] ?? $preferredUsername;
             $note = $json['summary'] ?? '';
             $inbox = $json['inbox'] ?? '';
             $publicKeyPem = $json['publicKey']['publicKeyPem'] ?? '';
@@ -892,28 +907,29 @@ XML;
                 // Actualizar cuenta existente
                 $upd = $db->prepare("
                     UPDATE accounts 
-                    SET display_name = ?, note = ?, avatar = ?, header = ?, inbox_url = ?, public_key = ?, 
+                    SET username = ?, display_name = ?, note = ?, avatar = ?, header = ?, inbox_url = ?, public_key = ?, 
                         followers_count = ?, following_count = ?, statuses_count = ?, 
                         fields = ?, url = ?, emojis = ?,
                         updated_at = datetime('now')
                     WHERE id = ?
                 ");
-                $upd->execute([$displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $profileUrl, $emojisJson, $account['id']]);
-                self::log("getOrRegisterRemoteActor: Actor remoto id={$account['id']} '$username@$host' actualizado");
+                $upd->execute([$preferredUsername, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $actorUrl, $emojisJson, $account['id']]);
+                self::log("getOrRegisterRemoteActor: Actor remoto id={$account['id']} '$preferredUsername@$host' actualizado");
             } else {
                 // Insertar nueva cuenta
                 $ins = $db->prepare("
                     INSERT INTO accounts (username, domain, display_name, note, avatar, header, inbox_url, public_key, followers_count, following_count, statuses_count, fields, url, emojis, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
                 ");
-                $ins->execute([$username, $host, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $profileUrl, $emojisJson]);
+                $ins->execute([$preferredUsername, $host, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $actorUrl, $emojisJson]);
                 $newId = $db->lastInsertId();
                 self::log("getOrRegisterRemoteActor: Actor remoto registrado con ID local $newId");
             }
 
             // Recargar registro
-            $stmt->execute([$username, $host]);
-            return $stmt->fetch();
+            $stmtReload = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+            $stmtReload->execute([$account ? $account['id'] : $newId]);
+            return $stmtReload->fetch();
         } catch (\Exception $e) {
             self::log("getOrRegisterRemoteActor: Excepción al resolver actor remoto: " . $e->getMessage());
             return $account ?: null;
@@ -1028,8 +1044,25 @@ XML;
                 if (str_contains($usernameCandidate, '#')) {
                     $usernameCandidate = explode('#', $usernameCandidate)[0];
                 }
-                $stmt = $db->prepare("SELECT public_key FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
-                $stmt->execute([strtolower($usernameCandidate), strtolower($host)]);
+                $actorUrlCandidate = $keyId;
+                if (str_contains($actorUrlCandidate, '#')) {
+                    $actorUrlCandidate = explode('#', $actorUrlCandidate)[0];
+                }
+                $stmt = $db->prepare("
+                    SELECT public_key FROM accounts 
+                    WHERE (username = ? AND domain = ?) 
+                       OR url = ? 
+                       OR inbox_url = ? 
+                       OR inbox_url = ?
+                    LIMIT 1
+                ");
+                $stmt->execute([
+                    strtolower($usernameCandidate), 
+                    strtolower($host), 
+                    $actorUrlCandidate, 
+                    $actorUrlCandidate . '/inbox', 
+                    $actorUrlCandidate
+                ]);
                 $publicKey = $stmt->fetchColumn();
                 if ($publicKey) {
                     self::log("fetchRemotePublicKey: Clave pública remota recuperada de la BD para '{$usernameCandidate}@{$host}'");

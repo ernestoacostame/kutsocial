@@ -713,6 +713,9 @@ function createThreadTootElement(toot, isMain = false) {
     const bookmarkClass = toot.bookmarked ? 'active-bookmark' : '';
 
     let sanitizedContent = sanitizeHTML(toot.content);
+    if (toot.emojis) {
+        sanitizedContent = replaceCustomEmojis(sanitizedContent, toot.emojis);
+    }
     
     let quotePlaceholderHTML = '';
     const statusUrlRegex = /(\/(users|@)[a-zA-Z0-9_\-\.]+\/(statuses\/)?[a-zA-Z0-9]+)|(\/(notice|objects|display)\/[a-zA-Z0-9_\-\.]+)/i;
@@ -956,12 +959,23 @@ function createThreadTootElement(toot, isMain = false) {
 
     let reblogHeaderHTML = '';
     if (isReblog) {
+        const rebloggedByDisplayName = rebloggedBy.display_name || rebloggedBy.username;
+        let rebloggedByHTML = escapeHTML(rebloggedByDisplayName);
+        if (rebloggedBy.emojis) {
+            rebloggedByHTML = replaceCustomEmojis(rebloggedByHTML, rebloggedBy.emojis);
+        }
         reblogHeaderHTML = `
             <div class="toot-reblog-header" style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; margin-left: 36px;">
                 <span class="material-icons" style="font-size: 16px; color: #10b981;">repeat</span>
-                <span><strong>${escapeHTML(rebloggedBy.display_name || rebloggedBy.username)}</strong> ha re-tooteado</span>
+                <span><strong>${rebloggedByHTML}</strong> ha re-tooteado</span>
             </div>
         `;
+    }
+
+    const authorDisplayName = toot.account.display_name || toot.account.username;
+    let displayNameHTML = escapeHTML(authorDisplayName);
+    if (toot.account.emojis) {
+        displayNameHTML = replaceCustomEmojis(displayNameHTML, toot.account.emojis);
     }
 
     card.innerHTML = `
@@ -971,7 +985,7 @@ function createThreadTootElement(toot, isMain = false) {
             <div style="flex-grow: 1; min-width: 0;">
                 <div class="toot-header">
                     <a href="/@${toot.account.acct}" class="toot-author-details clickable-actor" style="text-decoration: none; color: inherit;">
-                        <span class="toot-author-name">${toot.account.display_name}</span>
+                        <span class="toot-author-name">${displayNameHTML}</span>
                         <span class="toot-author-handle">@${toot.account.acct}</span>
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
@@ -1206,11 +1220,19 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
     container.onmouseout = () => container.style.background = 'rgba(255,255,255,0.02)';
 
     let cleanContent = sanitizeHTML(quotedToot.content);
+    if (quotedToot.emojis) {
+        cleanContent = replaceCustomEmojis(cleanContent, quotedToot.emojis);
+    }
+    const quoteAuthorDisplayName = quotedToot.account.display_name || quotedToot.account.username;
+    let quoteAuthorHTML = escapeHTML(quoteAuthorDisplayName);
+    if (quotedToot.account.emojis) {
+        quoteAuthorHTML = replaceCustomEmojis(quoteAuthorHTML, quotedToot.account.emojis);
+    }
 
     container.innerHTML = `
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
             <img src="${proxyUrl(quotedToot.account.avatar)}" style="width:20px; height:20px; border-radius:50%;" alt="Avatar">
-            <span style="font-weight:600; font-size:12.5px; color:var(--text-color);">${escapeHTML(quotedToot.account.display_name || quotedToot.account.username)}</span>
+            <span style="font-weight:600; font-size:12.5px; color:var(--text-color);">${quoteAuthorHTML}</span>
             <span style="font-size:11.5px; color:var(--text-muted);">@${quotedToot.account.acct}</span>
             <span style="font-size:11.5px; color:var(--text-muted); margin-left:auto;" title="${absoluteDate}">${relativeTime}</span>
         </div>
@@ -1476,6 +1498,8 @@ async function publishToot() {
                         lastId = idInt;
                     }
                     prependToot(newToot, true);
+                } else if (currentTimeline === 'thread-view' && activeThreadId) {
+                    viewTootThread(activeThreadId);
                 } else {
                     loadTimeline(false);
                 }
@@ -1913,11 +1937,17 @@ async function loadNotifications() {
                     const dateTooltip = new Date(notif.created_at).toLocaleDateString('es-ES', { hour: '2-digit', minute: '2-digit' });
                     const dateDisplay = formatRelativeTime(notif.created_at);
 
+                    const notifDisplayName1 = notif.account.display_name || notif.account.username;
+                    let notifAuthorHTML1 = escapeHTML(notifDisplayName1);
+                    if (notif.account.emojis) {
+                        notifAuthorHTML1 = replaceCustomEmojis(notifAuthorHTML1, notif.account.emojis);
+                    }
+
                     div.innerHTML = `
                         <div style="display: flex; align-items: center; gap: 8px; padding: 10px 15px; background: rgba(217, 119, 6, ${isUnread ? '0.1' : '0.04'}); border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-muted);">
                             <span class="material-icons-outlined" style="font-size: 18px; color: #d97706; opacity: ${isUnread ? '1' : '0.6'};">chat_bubble_outline</span>
                             <span>
-                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name || notif.account.username)}</strong>
+                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${notifAuthorHTML1}</strong>
                                 te ha mencionado
                             </span>
                             <div style="flex-grow: 1;"></div>
@@ -1955,12 +1985,18 @@ async function loadNotifications() {
                         actionIcon = `<span class="material-icons-outlined" style="font-size: 20px; color: #10b981; opacity: ${isUnread ? '1' : '0.6'};">person_add</span>`;
                     }
                     
+                    const notifDisplayName2 = notif.account.display_name || notif.account.username;
+                    let notifAuthorHTML2 = escapeHTML(notifDisplayName2);
+                    if (notif.account.emojis) {
+                        notifAuthorHTML2 = replaceCustomEmojis(notifAuthorHTML2, notif.account.emojis);
+                    }
+
                     div.innerHTML = `
                         <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">${actionIcon}</div>
                         <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${proxyUrl(notif.account.avatar)}" alt="Avatar" style="width: 36px; height: 36px; flex-shrink: 0;">
                         <div style="flex-grow: 1; min-width: 0;">
                             <div style="font-size: 14px;">
-                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${escapeHTML(notif.account.display_name || notif.account.username)}</strong> 
+                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${notifAuthorHTML2}</strong> 
                                 <span style="color: var(--text-muted);">@${escapeHTML(notif.account.acct)}</span>
                                 ${actionText}
                             </div>
@@ -4131,6 +4167,23 @@ function closeOrganizeModal() {
 function escapeHTML(str) {
     if (!str) return '';
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function replaceCustomEmojis(text, emojis) {
+    if (!text || !emojis || emojis.length === 0) {
+        return text;
+    }
+    let result = text;
+    emojis.forEach(emoji => {
+        const shortcode = emoji.shortcode;
+        const url = emoji.url;
+        if (shortcode && url) {
+            const escapedShortcode = shortcode.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const regex = new RegExp(':' + escapedShortcode + ':', 'g');
+            result = result.replace(regex, `<img class="custom-emoji" src="${proxyUrl(url)}" alt=":${shortcode}:" title=":${shortcode}:" style="height: 1.2em; vertical-align: middle; max-height: 20px;">`);
+        }
+    });
+    return result;
 }
 
 function escapeJSString(str) {
