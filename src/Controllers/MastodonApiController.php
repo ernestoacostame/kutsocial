@@ -2459,6 +2459,28 @@ HTML;
             }
         }
 
+        // Filtros según especificación de Mastodon para pestañas del perfil
+        $pinned = isset($_GET['pinned']) && ($_GET['pinned'] === 'true' || $_GET['pinned'] === '1' || $_GET['pinned'] === true);
+        if ($pinned) {
+            Router::json([]);
+            return;
+        }
+
+        $excludeReplies = isset($_GET['exclude_replies']) && ($_GET['exclude_replies'] === 'true' || $_GET['exclude_replies'] === '1' || $_GET['exclude_replies'] === true);
+        if ($excludeReplies) {
+            $whereClauses[] = "(s.in_reply_to_id IS NULL OR s.in_reply_to_id = '')";
+        }
+
+        $excludeReblogs = isset($_GET['exclude_reblogs']) && ($_GET['exclude_reblogs'] === 'true' || $_GET['exclude_reblogs'] === '1' || $_GET['exclude_reblogs'] === true);
+        if ($excludeReblogs) {
+            $whereClauses[] = "(s.reblog_of_id IS NULL OR s.reblog_of_id = '')";
+        }
+
+        $onlyMedia = isset($_GET['only_media']) && ($_GET['only_media'] === 'true' || $_GET['only_media'] === '1' || $_GET['only_media'] === true);
+        if ($onlyMedia) {
+            $whereClauses[] = "(s.media_attachments IS NOT NULL AND s.media_attachments != '' AND s.media_attachments != '[]')";
+        }
+
         if ($maxId !== null) {
             $whereClauses[] = "s.id < ?";
             $queryParams[] = $maxId;
