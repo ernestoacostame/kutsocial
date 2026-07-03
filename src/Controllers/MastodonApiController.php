@@ -263,6 +263,10 @@ class MastodonApiController {
         $clientId = bin2hex(random_bytes(16));
         $clientSecret = bin2hex(random_bytes(32));
 
+        $vapidKeys = \KutSocial\WebPushHelper::getVapidKeys();
+        $vapidPublicPoint = \KutSocial\WebPushHelper::pemToUncompressedEcPoint($vapidKeys['vapid_public_key']);
+        $vapidPublicKeyBase64 = \KutSocial\WebPushHelper::base64url_encode($vapidPublicPoint);
+
         Router::json([
             'id' => '1',
             'name' => $clientName,
@@ -270,7 +274,7 @@ class MastodonApiController {
             'redirect_uri' => $redirectUris,
             'client_id' => $clientId,
             'client_secret' => $clientSecret,
-            'vapid_key' => 'BC1234567890...'
+            'vapid_key' => $vapidPublicKeyBase64
         ]);
     }
 
@@ -1827,7 +1831,8 @@ HTML;
                 'id' => '1',
                 'name' => $account['role'] ?? 'user',
                 'color' => '',
-                'permissions' => '0'
+                'permissions' => '0',
+                'highlighted' => false
             ],
             'avatar_description' => $account['avatar_description'] ?? '',
             'header_description' => $account['header_description'] ?? ''
@@ -1844,8 +1849,6 @@ HTML;
         $stmtPending = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'requested'");
         $stmtPending->execute([$account['id']]);
         $followRequestsCount = (int)$stmtPending->fetchColumn();
-        
-        $formatted['follow_requests_count'] = $followRequestsCount;
         
         $rawFields = [];
         if (!empty($account['fields'])) {
@@ -1866,7 +1869,8 @@ HTML;
             'sensitive' => false,
             'language' => 'es',
             'note' => $account['note'] ?: '',
-            'fields' => $rawFields
+            'fields' => $rawFields,
+            'follow_requests_count' => $followRequestsCount
         ];
 
         return $formatted;

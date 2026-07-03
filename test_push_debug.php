@@ -7,7 +7,11 @@ if (($_GET['token'] ?? '') !== 'kutsocial_dev') {
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/src/Database.php';
+require_once __DIR__ . '/src/Router.php';
 require_once __DIR__ . '/src/WebPushHelper.php';
+require_once __DIR__ . '/src/NotificationHelper.php';
+require_once __DIR__ . '/src/Controllers/ActivityPubController.php';
+require_once __DIR__ . '/src/Controllers/MastodonApiController.php';
 
 use KutSocial\Database;
 use KutSocial\WebPushHelper;
@@ -40,6 +44,20 @@ try {
         }
     }
 
+    echo "To test the verify_credentials format, add `&check_verify=1` to the URL.\n\n";
+
+    if (isset($_GET['check_verify'])) {
+        echo "=== VERIFY CREDENTIALS FORMAT ===\n";
+        $stmt = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+        $account = $stmt->fetch();
+        if (!$account) {
+            echo "No local accounts found to format.\n";
+        } else {
+            $formatted = \KutSocial\Controllers\MastodonApiController::formatCredentialAccount($account);
+            echo json_encode($formatted, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
+        }
+    }
+
     if (isset($_GET['send_test_sub_id'])) {
         $subId = (int)$_GET['send_test_sub_id'];
         echo "\n=== SENDING TEST PUSH TO SUBSCRIPTION ID $subId ===\n";
@@ -63,7 +81,6 @@ try {
             
             echo "Payload: " . json_encode($payload) . "\n";
             
-            // Re-implementing sendPush here with verbose logging
             $payloadStr = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
             $encrypted = WebPushHelper::encryptPayload($payloadStr, $sub['key_p256dh'], $sub['key_auth']);
             
@@ -98,7 +115,6 @@ try {
             curl_setopt($ch, CURLOPT_TIMEOUT, 12);
             curl_setopt($ch, CURLOPT_VERBOSE, true);
             
-            // Catch verbose output
             $verbose = fopen('php://temp', 'w+');
             curl_setopt($ch, CURLOPT_STDERR, $verbose);
             
