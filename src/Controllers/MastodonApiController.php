@@ -1217,6 +1217,194 @@ HTML;
     }
 
     /**
+     * Endpoint GET /api/v1/notifications/:id
+     */
+    public static function getNotification(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $id = $params['id'] ?? '';
+        if (empty($id)) {
+            Router::json(['error' => 'Bad Request'], 400);
+            return;
+        }
+
+        $db = Database::connect();
+        $currUserId = (int)$account['id'];
+
+        if (str_starts_with($id, 'test_push_')) {
+            $notification = [
+                'id' => $id,
+                'type' => 'mention',
+                'created_at' => date('c'),
+                'account' => self::formatAccount($account),
+                'status' => [
+                    'id' => '1',
+                    'created_at' => date('c'),
+                    'in_reply_to_id' => null,
+                    'in_reply_to_account_id' => null,
+                    'sensitive' => false,
+                    'spoiler_text' => '',
+                    'visibility' => 'public',
+                    'language' => 'es',
+                    'uri' => 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/statuses/1',
+                    'url' => 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/statuses/1',
+                    'replies_count' => 0,
+                    'reblogs_count' => 0,
+                    'favourites_count' => 0,
+                    'content' => '<p>¡Esta es la notificación de prueba que esperabas ver en la app!</p>',
+                    'account' => self::formatAccount($account),
+                    'media_attachments' => [],
+                    'mentions' => [],
+                    'tags' => [],
+                    'emojis' => [],
+                    'card' => null,
+                    'poll' => null
+                ]
+            ];
+            Router::json($notification);
+            return;
+        } elseif (str_starts_with($id, 'follow_')) {
+            $followId = (int)substr($id, 7);
+            $stmt = $db->prepare("
+                SELECT f.id, f.created_at, 
+                       a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                       a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                       a.locked, a.discoverable, a.fields
+                FROM follows f
+                JOIN accounts a ON f.account_id = a.id
+                WHERE f.id = ? AND f.target_account_id = ? LIMIT 1
+            ");
+            $stmt->execute([$followId, $currUserId]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $notification = [
+                    'id' => 'follow_' . $row['id'],
+                    'type' => 'follow',
+                    'created_at' => date('c', strtotime($row['created_at'])),
+                    'account' => self::formatAccount($row)
+                ];
+                Router::json($notification);
+                return;
+            }
+        } elseif (str_starts_with($id, 'favourite_')) {
+            $favId = (int)substr($id, 10);
+            $stmt = $db->prepare("
+                SELECT f.id, f.created_at, f.status_id,
+                       a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                       a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                       a.locked, a.discoverable, a.fields
+                FROM favourites f
+                JOIN accounts a ON f.account_id = a.id
+                JOIN statuses s ON f.status_id = s.id
+                WHERE f.id = ? AND s.account_id = ? LIMIT 1
+            ");
+            $stmt->execute([$favId, $currUserId]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $statusRow = self::fetchStatusRow($db, (int)$row['status_id']);
+                $notification = [
+                    'id' => 'favourite_' . $row['id'],
+                    'type' => 'favourite',
+                    'created_at' => date('c', strtotime($row['created_at'])),
+                    'account' => self::formatAccount($row),
+                    'status' => self::formatStatus($statusRow, $currUserId)
+                ];
+                Router::json($notification);
+                return;
+            }
+        } elseif (str_starts_with($id, 'reblog_')) {
+            $reblogId = (int)substr($id, 7);
+            $stmt = $db->prepare("
+                SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                       s.visibility as status_visibility, s.created_at as status_created_at, 
+                       s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                       s.reblog_of_id,
+                       a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                       a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                       a.locked, a.discoverable, a.fields
+                FROM statuses s
+                JOIN accounts a ON s.account_id = a.id
+                WHERE s.id = ? LIMIT 1
+            ");
+            $stmt->execute([$reblogId]);
+            $row = $stmt->fetch();
+            if ($row && $row['reblog_of_id']) {
+                $origStatusId = (int)$row['reblog_of_id'];
+                $stmtCheck = $db->prepare("SELECT account_id FROM statuses WHERE id = ? LIMIT 1");
+                $stmtCheck->execute([$origStatusId]);
+                $origOwnerId = $stmtCheck->fetchColumn();
+                if ((int)$origOwnerId === $currUserId) {
+                    $origRow = self::fetchStatusRow($db, $origStatusId);
+                    $notification = [
+                        'id' => 'reblog_' . $row['status_id'],
+                        'type' => 'reblog',
+                        'created_at' => date('c', strtotime($row['status_created_at'])),
+                        'account' => self::formatAccount($row),
+                        'status' => self::formatStatus($origRow, $currUserId)
+                    ];
+                    Router::json($notification);
+                    return;
+                }
+            }
+        } elseif (str_starts_with($id, 'mention_')) {
+            $parts = explode('_', $id);
+            $statusId = isset($parts[1]) ? (int)$parts[1] : 0;
+            
+            $stmt = $db->prepare("
+                SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                       s.visibility as status_visibility, s.created_at as status_created_at, 
+                       s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                       a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                       a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                       a.locked, a.discoverable, a.fields
+                FROM statuses s
+                JOIN accounts a ON s.account_id = a.id
+                WHERE s.id = ? LIMIT 1
+            ");
+            $stmt->execute([$statusId]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $isRealMention = false;
+                if ($row['in_reply_to_id']) {
+                    $stmtCheckReply = $db->prepare("SELECT 1 FROM statuses WHERE id = ? AND account_id = ? LIMIT 1");
+                    $stmtCheckReply->execute([$row['in_reply_to_id'], $currUserId]);
+                    if ($stmtCheckReply->fetchColumn()) {
+                        $isRealMention = true;
+                    }
+                }
+                if (!$isRealMention) {
+                    $username = $account['username'];
+                    $content = $row['status_content'];
+                    $mentionPattern = '/@' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
+                    $urlPattern = '/\/users\/' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
+                    if (preg_match($mentionPattern, $content) || preg_match($urlPattern, $content)) {
+                        $isRealMention = true;
+                    }
+                }
+                
+                if ($isRealMention) {
+                    $notification = [
+                        'id' => $id,
+                        'type' => 'mention',
+                        'created_at' => date('c', strtotime($row['status_created_at'])),
+                        'account' => self::formatAccount($row),
+                        'status' => self::formatStatus($row, $currUserId)
+                    ];
+                    Router::json($notification);
+                    return;
+                }
+            }
+        }
+
+        Router::json(['error' => 'Record not found'], 404);
+    }
+
+
+    /**
      * Endpoint POST /api/v1/notifications/:id/dismiss
      */
     public static function dismissNotification(array $params): void {

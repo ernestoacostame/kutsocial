@@ -272,6 +272,7 @@ $router->get('/api/proxy', [MastodonApiController::class, 'proxyMedia']);
 
 // Notificaciones con fallback
 $router->get('/api/v1/notifications', [MastodonApiController::class, 'getNotifications']);
+$router->get('/api/v1/notifications/:id', [MastodonApiController::class, 'getNotification']);
 $router->post('/api/v1/notifications/:id/dismiss', [MastodonApiController::class, 'dismissNotification']);
 $router->post('/api/v1/notifications/clear', [MastodonApiController::class, 'clearNotifications']);
 
