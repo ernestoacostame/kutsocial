@@ -856,7 +856,7 @@ function createThreadTootElement(toot, isMain = false) {
 
                 const mediaTag = isVideo 
                     ? `<video src="${media.url}" poster="${proxyUrl(media.preview_url || '')}" controls loop playsinline style="${videoStyle}"></video>`
-                    : `<img src="${url}" alt="${altText}" title="${altText}" style="${imgStyle}" onclick="openImageViewerModal('${url}')">`;
+                    : `<img src="${url}" alt="${altText}" title="${altText}" style="${imgStyle}" onclick="event.stopPropagation(); openImageViewerModal(this.src)">`;
 
                 const cardStyle = isMultiMedia
                     ? 'position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; aspect-ratio: 1.5; display: flex; flex-direction: column;'
@@ -1242,7 +1242,7 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
             const type = (media.type || '').toLowerCase();
             const url = type === 'audio' ? '' : proxyUrl(media.url);
             if (url) {
-                mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onclick="event.stopPropagation(); openImageViewerModal('${url}')">`;
+                mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onclick="event.stopPropagation(); openImageViewerModal(this.src)">`;
             }
         });
         mediaHTML += `</div>`;
