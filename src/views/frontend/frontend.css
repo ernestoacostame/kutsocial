@@ -293,6 +293,12 @@ button:hover {
 }
 
 /* Caja para publicar (Composer) */
+#tab-feed > .composer-card {
+    position: sticky;
+    top: 20px;
+    z-index: 100;
+}
+
 .composer-card {
     background: var(--card-bg);
     backdrop-filter: blur(10px);
