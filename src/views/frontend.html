@@ -241,6 +241,12 @@
                 <button class="modal-btn-confirm" onclick="saveCollectionModal()">Guardar</button>
             </div>
         </div>
+    <!-- Modal: Visor de Imágenes -->
+    <div id="modal-image-viewer" class="modal-overlay" style="display: none; background: rgba(0, 0, 0, 0.85); z-index: 3000; padding: 20px;" onclick="closeImageViewerModal(event)">
+        <div style="position: relative; max-width: 90vw; max-height: 90vh; display: flex; justify-content: center; align-items: center;">
+            <span id="image-viewer-close" style="position: absolute; top: -45px; right: 0; font-size: 35px; color: #fff; cursor: pointer; user-select: none; transition: color 0.2s;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='#fff'">&times;</span>
+            <img id="image-viewer-img" src="" style="max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
+        </div>
     </div>
 
     <script>

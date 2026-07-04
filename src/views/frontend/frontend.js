@@ -814,7 +814,20 @@ function createThreadTootElement(toot, isMain = false) {
     // Renderizar Multimedia subida si existe
     let mediaHTML = '';
     if (toot.media_attachments && toot.media_attachments.length > 0) {
-        mediaHTML = `<div style="display: flex; flex-direction: column; gap: 12px; margin-top: 10px; width: 100%;">`;
+        // Filtrar adjuntos visuales para aplicar grid si hay más de uno
+        const visualMedia = toot.media_attachments.filter(media => {
+            const type = (media.type || '').toLowerCase();
+            const url = media.url || '';
+            const isAudio = type === 'audio' || url.endsWith('.mp3') || url.endsWith('.ogg') || url.endsWith('.wav') || url.endsWith('.m4a') || url.endsWith('.aac');
+            return !isAudio;
+        });
+        
+        const isMultiMedia = visualMedia.length > 1;
+        const gridStyle = isMultiMedia 
+            ? 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; width: 100%;'
+            : 'display: flex; flex-direction: column; gap: 12px; margin-top: 10px; width: 100%;';
+            
+        mediaHTML = `<div style="${gridStyle}">`;
         toot.media_attachments.forEach(media => {
             const type = (media.type || '').toLowerCase();
             let url = media.url || '';
@@ -833,12 +846,36 @@ function createThreadTootElement(toot, isMain = false) {
                 `;
             } else {
                 // Para Imagen, Video, Gifv
+                const imgStyle = isMultiMedia
+                    ? 'width: 100%; height: 100%; object-fit: cover; cursor: pointer; display: block; border-radius: 4px;'
+                    : 'max-width: 100%; max-height: 450px; object-fit: contain; cursor: pointer; display: block; margin: 0 auto; border-radius: 4px;';
+                
+                const videoStyle = isMultiMedia
+                    ? 'width: 100%; height: 100%; object-fit: cover; background: #000; display: block; border-radius: 4px;'
+                    : 'width: 100%; max-height: 380px; background: #000; display: block; margin: 0 auto; border-radius: 4px;';
+
                 const mediaTag = isVideo 
-                    ? `<video src="${media.url}" poster="${proxyUrl(media.preview_url || '')}" controls loop playsinline style="width: 100%; max-height: 380px; background: #000; display: block; margin: 0 auto; border-radius: 4px;"></video>`
-                    : `<img src="${url}" alt="${altText}" title="${altText}" style="max-width: 100%; max-height: 450px; object-fit: contain; cursor: pointer; display: block; margin: 0 auto; border-radius: 4px;" onclick="window.open('${url}', '_blank')">`;
+                    ? `<video src="${media.url}" poster="${proxyUrl(media.preview_url || '')}" controls loop playsinline style="${videoStyle}"></video>`
+                    : `<img src="${url}" alt="${altText}" title="${altText}" style="${imgStyle}" onclick="openImageViewerModal('${url}')">`;
+
+                const cardStyle = isMultiMedia
+                    ? 'position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; aspect-ratio: 1.5; display: flex; flex-direction: column;'
+                    : 'position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; display: flex; flex-direction: column;';
+
+                const wrapperStyle = isMultiMedia
+                    ? `display: ${toot.sensitive ? 'none' : 'block'}; position: relative; width: 100%; height: 100%;`
+                    : `display: ${toot.sensitive ? 'none' : 'block'}; position: relative; width: 100%;`;
+
+                const innerWrapperStyle = isMultiMedia
+                    ? `display: flex; justify-content: center; width: 100%; height: 100%; position: relative;`
+                    : `display: flex; justify-content: center; width: 100%; position: relative;`;
+
+                const placeholderStyle = isMultiMedia
+                    ? `display: ${toot.sensitive ? 'flex' : 'none'}; height: 100%; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;`
+                    : `display: ${toot.sensitive ? 'flex' : 'none'}; height: 220px; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;`;
 
                 mediaHTML += `
-                    <div class="toot-media-card" data-sensitive="${toot.sensitive ? 'true' : 'false'}" style="position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; display: flex; flex-direction: column;">
+                    <div class="toot-media-card" data-sensitive="${toot.sensitive ? 'true' : 'false'}" style="${cardStyle}">
                         
                         <!-- Botón superior derecho de ocultar/mostrar -->
                         <button class="media-toggle-btn" onclick="toggleMediaVisibility(this)" style="position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.65); color: #fff; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
@@ -846,9 +883,9 @@ function createThreadTootElement(toot, isMain = false) {
                         </button>
 
                         <!-- Contenedor del elemento multimedia -->
-                        <div class="media-wrapper" style="display: ${toot.sensitive ? 'none' : 'block'}; position: relative; width: 100%;">
-                            <div style="display: flex; justify-content: center; width: 100%; position: relative;">
-                                ${mediaTag}
+                        <div class="media-wrapper" style="${wrapperStyle}">
+                            <div style="${innerWrapperStyle}">
+                                 ${mediaTag}
                             </div>
                         </div>
 
@@ -869,7 +906,7 @@ function createThreadTootElement(toot, isMain = false) {
                         ` : ''}
 
                         <!-- Contenedor de Advertencia / Contenido Sensible -->
-                        <div class="media-placeholder" style="display: ${toot.sensitive ? 'flex' : 'none'}; height: 220px; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;" onclick="revealMediaFromPlaceholder(this)">
+                        <div class="media-placeholder" style="${placeholderStyle}" onclick="revealMediaFromPlaceholder(this)">
                             <span style="font-size: 32px; margin-bottom: 8px;">⚠️</span>
                             <span style="font-size: 14px; font-weight: 600; color: var(--text-color);">${toot.spoiler_text || 'Contenido Sensible'}</span>
                             <span style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Haz clic para mostrar el contenido multimedia</span>
@@ -1205,7 +1242,7 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
             const type = (media.type || '').toLowerCase();
             const url = type === 'audio' ? '' : proxyUrl(media.url);
             if (url) {
-                mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onclick="event.stopPropagation(); window.open('${url}', '_blank')">`;
+                mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onclick="event.stopPropagation(); openImageViewerModal('${url}')">`;
             }
         });
         mediaHTML += `</div>`;
@@ -4209,6 +4246,37 @@ document.addEventListener('click', function(e) {
         if (tag) {
             e.preventDefault();
             viewHashtagTimeline(tag);
+        }
+    }
+});
+
+// --- VISOR DE IMÁGENES EN POPUP (MODAL) ---
+function openImageViewerModal(url) {
+    const modal = document.getElementById('modal-image-viewer');
+    const img = document.getElementById('image-viewer-img');
+    if (modal && img) {
+        img.src = url;
+        modal.style.display = 'flex';
+    }
+}
+
+function closeImageViewerModal(event) {
+    const modal = document.getElementById('modal-image-viewer');
+    const img = document.getElementById('image-viewer-img');
+    if (modal && img) {
+        if (!event || event.target === modal || event.target.id === 'image-viewer-close') {
+            modal.style.display = 'none';
+            img.src = '';
+        }
+    }
+}
+
+// Cerrar visor con la tecla Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('modal-image-viewer');
+        if (modal && modal.style.display === 'flex') {
+            closeImageViewerModal();
         }
     }
 });
