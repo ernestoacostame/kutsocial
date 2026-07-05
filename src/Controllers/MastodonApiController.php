@@ -4463,6 +4463,9 @@ HTML;
             return;
         }
 
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+
         $db = Database::connect();
         
         $stmtCheck = $db->prepare("SELECT account_id FROM statuses WHERE id = ? LIMIT 1");
@@ -4479,12 +4482,71 @@ HTML;
             return;
         }
 
+        // Carga de media attachments
+        $mediaIds = $body['media_ids'] ?? [];
+        $mediaAttachments = [];
+        if (!empty($mediaIds) && is_array($mediaIds)) {
+            $uploadsDir = dirname(Database::getDbPath()) . '/uploads';
+            foreach ($mediaIds as $mId) {
+                $mId = preg_replace('/[^a-zA-Z0-9]/', '', $mId);
+                $matches = glob($uploadsDir . "/media_" . $mId . ".*");
+                $matches = array_filter($matches ?: [], function($f) {
+                    return pathinfo($f, PATHINFO_EXTENSION) !== 'txt';
+                });
+                $matches = array_values($matches);
+                if (!empty($matches)) {
+                    $filePath = $matches[0];
+                    $filename = basename($filePath);
+                    $fileUrl = "$proto://$domain/data/uploads/$filename";
+                    
+                    $width = 600;
+                    $height = 400;
+                    $aspect = 1.5;
+                    if ($size = @getimagesize($filePath)) {
+                        $width = $size[0];
+                        $height = $size[1];
+                        $aspect = $height > 0 ? $width / $height : 1.0;
+                    }
+
+                    // Cargar descripción de archivo si existe
+                    $descFile = $uploadsDir . "/media_" . $mId . ".txt";
+                    $description = null;
+                    if (file_exists($descFile)) {
+                        $description = trim(file_get_contents($descFile));
+                    }
+
+                    $mediaApiType = self::detectMediaTypeFromUrl($fileUrl);
+                    $mediaAttachments[] = [
+                        'id' => $mId,
+                        'type' => $mediaApiType,
+                        'url' => $fileUrl,
+                        'preview_url' => $fileUrl,
+                        'remote_url' => null,
+                        'text_url' => $fileUrl,
+                        'meta' => [
+                            'focus' => ['x' => 0.0, 'y' => 0.0],
+                            'original' => [
+                                'width' => $width,
+                                'height' => $height,
+                                'size' => "{$width}x{$height}",
+                                'aspect' => $aspect
+                            ]
+                        ],
+                        'description' => $description,
+                        'blurhash' => null
+                    ];
+                }
+            }
+        }
+
+        $mediaJson = !empty($mediaAttachments) ? json_encode($mediaAttachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+
         $stmt = $db->prepare("
             UPDATE statuses 
-            SET content = ?, sensitive = ?, spoiler_text = ? 
+            SET content = ?, sensitive = ?, spoiler_text = ?, media_attachments = ? 
             WHERE id = ?
         ");
-        $stmt->execute([$content, $sensitive, $spoilerText, $id]);
+        $stmt->execute([$content, $sensitive, $spoilerText, $mediaJson, $id]);
 
         $stmtFetch = $db->prepare("
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 

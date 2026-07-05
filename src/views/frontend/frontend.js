@@ -1081,7 +1081,7 @@ function handleEditButtonClick(btn) {
     const card = btn.closest('.toot-card');
     if (card && card._toot) {
         const toot = card._toot;
-        initEditToot(toot.id, toot.text || toot.content, toot.sensitive, toot.spoiler_text || '');
+        initEditToot(toot.id, toot.text || toot.content, toot.sensitive, toot.spoiler_text || '', toot.media_attachments);
     }
 }
 
@@ -3113,7 +3113,7 @@ function initReplyToToot(id, handle, visibility = 'public') {
     showTab('feed');
 }
 
-function initEditToot(id, content, sensitive, spoilerText) {
+function initEditToot(id, content, sensitive, spoilerText, mediaAttachments = []) {
     editTootId = id;
     replyToId = null;
     document.getElementById('composer-context').style.display = 'flex';
@@ -3134,6 +3134,63 @@ function initEditToot(id, content, sensitive, spoilerText) {
         container.style.display = 'none';
         btn.classList.remove('active');
         document.getElementById('composer-cw-text').value = '';
+    }
+
+    // Cargar media_attachments existentes para edición
+    const previewContainer = document.getElementById('composer-media-preview');
+    if (previewContainer) {
+        previewContainer.innerHTML = '';
+        composerUploadedMediaIds = [];
+        if (mediaAttachments && mediaAttachments.length > 0) {
+            mediaAttachments.forEach(media => {
+                composerUploadedMediaIds.push(media.id);
+                
+                const previewId = 'media-editing-' + media.id + '-' + Math.random().toString(36).substr(2, 9);
+                const tempDiv = document.createElement('div');
+                tempDiv.id = previewId;
+                tempDiv.className = 'media-preview-item';
+                tempDiv.style = "display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; position: relative; margin-bottom: 8px; width: 100%; box-sizing: border-box;";
+                
+                let previewHTML = '';
+                const type = media.type || 'image';
+                if (type === 'video') {
+                    previewHTML = `
+                        <div style="width: 50px; height: 50px; border-radius: 6px; overflow: hidden; position: relative; flex-shrink: 0; background: #000;">
+                            <video src="${media.url}" muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+                            <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                        </div>
+                    `;
+                } else if (type === 'audio') {
+                    previewHTML = `
+                        <div style="width: 50px; height: 50px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
+                            <span class="material-icons-outlined" style="font-size: 24px; color: var(--text-muted);">audiotrack</span>
+                            <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                        </div>
+                    `;
+                } else {
+                    previewHTML = `
+                        <div style="width: 50px; height: 50px; border-radius: 6px; background-image: url(${media.url}); background-size: cover; background-position: center; position: relative; flex-shrink: 0;">
+                            <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                        </div>
+                    `;
+                }
+
+                const description = media.description || '';
+                tempDiv.innerHTML = `
+                    ${previewHTML}
+                    <input type="text" placeholder="Texto alternativo (Alt)..." style="flex-grow: 1; font-size: 12px; padding: 6px 10px; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: white; border-radius: 6px; margin: 0; min-width: 0;" value="${description.replace(/"/g, '&quot;')}" oninput="updateMediaAltText('${media.id}', this.value)">
+                `;
+                
+                previewContainer.appendChild(tempDiv);
+                
+                const removeBtn = tempDiv.querySelector('.remove-media-btn');
+                removeBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeComposerMedia(media.id, previewId);
+                };
+            });
+        }
     }
 
     showTab('feed');
@@ -3166,6 +3223,7 @@ function cancelComposerContext() {
     }
     
     updateCharCount();
+    switchTimeline('home');
 }
 
 function toggleComposerCW() {
