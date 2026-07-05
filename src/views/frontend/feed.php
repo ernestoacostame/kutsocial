@@ -7,19 +7,7 @@
             <button class="composer-context-close" onclick="cancelComposerContext()">✕</button>
         </div>
 
-        <!-- Cabecera de selectores (Visibilidad, Idioma) -->
-        <div class="composer-meta-selects">
-            <select id="composer-visibility" class="composer-select-pill">
-                <option value="public">🌐 Público</option>
-                <option value="unlisted">🌙 Público silencioso</option>
-                <option value="private">🔒 Solo seguidores</option>
-                <option value="direct">✉️ Mensaje privado</option>
-            </select>
-            <select id="composer-language" class="composer-select-pill">
-                <option value="es">🗣️ Español</option>
-                <option value="en">🗣️ English</option>
-            </select>
-        </div>
+
 
         <!-- Input de Advertencia de Contenido (Content Warning) -->
         <div id="composer-cw-container" class="cw-input-container" style="display: none;">
@@ -82,6 +70,24 @@
                 <button id="emoji-picker-btn" class="composer-tool-btn" onclick="toggleEmojiPicker(event)" title="Insertar emoji">
                     <span class="material-icons-outlined">sentiment_satisfied_alt</span>
                 </button>
+                <!-- Selector de Visibilidad (Público) -->
+                <div class="composer-select-wrapper" title="Visibilidad de la publicación">
+                    <select id="composer-visibility">
+                        <option value="public">🌐 Público</option>
+                        <option value="unlisted">🌙 Público silencioso</option>
+                        <option value="private">🔒 Solo seguidores</option>
+                        <option value="direct">✉️ Mensaje privado</option>
+                    </select>
+                    <span class="material-icons-outlined" id="composer-visibility-icon">public</span>
+                </div>
+                <!-- Selector de Idioma -->
+                <div class="composer-select-wrapper" title="Idioma de la publicación">
+                    <select id="composer-language">
+                        <option value="es">🇪🇸 Español</option>
+                        <option value="en">🇺🇸 English</option>
+                    </select>
+                    <span class="material-icons-outlined">translate</span>
+                </div>
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
                 <span id="char-count" class="char-counter">500</span>

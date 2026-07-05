@@ -135,6 +135,12 @@ window.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('kutsocial_warn_missing_alt', warnMissingAltCheckbox.checked);
         });
     }
+
+    // Registrar listener de cambio de visibilidad en el composer para actualizar icono
+    const visSelect = document.getElementById('composer-visibility');
+    if (visSelect) {
+        visSelect.addEventListener('change', updateComposerVisibilityIcon);
+    }
 });
 
 // Event listener de scroll para carga diferida (Infinite Scroll)
@@ -3099,6 +3105,9 @@ function initReplyToToot(id, handle, visibility = 'public') {
     const visSelect = document.getElementById('composer-visibility');
     if (visSelect) {
         visSelect.value = visibility;
+        if (typeof updateComposerVisibilityIcon === 'function') {
+            updateComposerVisibilityIcon();
+        }
     }
     
     showTab('feed');
@@ -3151,6 +3160,9 @@ function cancelComposerContext() {
     const visSelect = document.getElementById('composer-visibility');
     if (visSelect) {
         visSelect.value = 'public';
+        if (typeof updateComposerVisibilityIcon === 'function') {
+            updateComposerVisibilityIcon();
+        }
     }
     
     updateCharCount();
@@ -4755,4 +4767,21 @@ function deleteCatchUpFromHistory(id) {
     history = history.filter(entry => entry.id !== id);
     saveCatchUpHistory(history);
     renderCatchUpHistory();
+}
+
+function updateComposerVisibilityIcon() {
+    const select = document.getElementById('composer-visibility');
+    const icon = document.getElementById('composer-visibility-icon');
+    if (!select || !icon) return;
+    
+    const val = select.value;
+    if (val === 'public') {
+        icon.innerText = 'public';
+    } else if (val === 'unlisted') {
+        icon.innerText = 'lock_open';
+    } else if (val === 'private') {
+        icon.innerText = 'lock';
+    } else if (val === 'direct') {
+        icon.innerText = 'mail';
+    }
 }

@@ -783,30 +783,50 @@ button:hover {
     background: rgba(99, 102, 241, 0.1);
 }
 
-.composer-meta-selects {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-}
-
-.composer-select-pill {
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-family: inherit;
-    cursor: pointer;
-    transition: all 0.2s;
+.composer-select-wrapper {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 4px;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
 }
 
-.composer-select-pill:hover {
+.composer-select-wrapper:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.composer-select-wrapper select {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    z-index: 2;
+}
+
+.composer-select-wrapper select option {
+    background: #161c26;
+    color: white;
+}
+
+.composer-select-wrapper .material-icons-outlined {
+    font-size: 20px;
+    color: var(--text-muted);
+    transition: color 0.2s;
+    z-index: 1;
+}
+
+.composer-select-wrapper:hover .material-icons-outlined {
     color: var(--text-color);
-    border-color: rgba(255,255,255,0.2);
 }
 
 .composer-context-bar {
