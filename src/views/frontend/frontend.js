@@ -889,14 +889,14 @@ function createThreadTootElement(toot, isMain = false) {
                             </div>
                         </div>
 
-                        <!-- Botón ALT en la esquina inferior izquierda -->
+                        <!-- Botón ALT (en la esquina inferior izquierda para imágenes, superior izquierda para videos para no tapar los controles) -->
                         ${altText ? `
-                        <button class="media-alt-btn" onclick="toggleAltTextPopup(this, event)" style="display: ${toot.sensitive ? 'none' : 'block'}; position: absolute; bottom: 12px; left: 12px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 3px 8px; border-radius: 4px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
+                        <button class="media-alt-btn" onclick="toggleAltTextPopup(this, event)" style="display: ${toot.sensitive ? 'none' : 'block'}; position: absolute; ${isVideo ? 'top: 12px;' : 'bottom: 12px;'} left: 12px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 3px 8px; border-radius: 4px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
                             ALT
                         </button>
                         
-                        <!-- Popup flotante de Alt text en la parte inferior izquierda -->
-                        <div class="media-alt-popup" style="display: none; position: absolute; bottom: 42px; left: 12px; width: 280px; max-width: 90%; background: #1e1f22; border: 1px solid #2f3037; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 30; text-align: left; padding: 12px; color: #fff; font-family: sans-serif;">
+                        <!-- Popup flotante de Alt text -->
+                        <div class="media-alt-popup" style="display: none; position: absolute; ${isVideo ? 'top: 42px;' : 'bottom: 42px;'} left: 12px; width: 280px; max-width: 90%; background: #1e1f22; border: 1px solid #2f3037; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 30; text-align: left; padding: 12px; color: #fff; font-family: sans-serif;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #2f3037; padding-bottom: 6px;">
                                 <span style="font-size: 12px; font-weight: bold; color: var(--text-color);">Alt text</span>
                                 <span onclick="closeAltTextPopup(this, event)" style="color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; user-select: none;">✕</span>
