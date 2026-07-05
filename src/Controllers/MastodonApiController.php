@@ -2605,6 +2605,72 @@ HTML;
     }
 
     /**
+     * Endpoint GET /api/v1/timelines/catchup
+     */
+    public static function getCatchUpTimeline(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+
+        $hours = isset($_GET['hours']) && is_numeric($_GET['hours']) ? (int)$_GET['hours'] : 6;
+        if ($hours < 1) $hours = 1;
+        if ($hours > 72) $hours = 72;
+
+        $whereClauses = [
+            "(
+                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
+                OR
+                (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
+                OR
+                (s.visibility IN ('public', 'unlisted') AND EXISTS (
+                    SELECT 1 FROM followed_hashtags fh 
+                    WHERE fh.account_id = ? 
+                      AND (s.content LIKE '%#' || fh.hashtag || '%' OR s.content LIKE '%/tags/' || fh.hashtag || '%')
+                ))
+            )",
+            "s.created_at >= datetime('now', ?)"
+        ];
+        $queryParams = [
+            $account['id'],
+            $account['id'],
+            $account['id'],
+            '%@' . $account['username'] . '%',
+            '%/users/' . $account['username'] . '%',
+            $account['id'],
+            "-$hours hours"
+        ];
+
+        $whereSql = implode(" AND ", $whereClauses);
+
+        $stmt = $db->prepare("
+            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                   s.visibility as status_visibility, s.created_at as status_created_at, 
+                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                   a.locked, a.discoverable
+            FROM statuses s
+            JOIN accounts a ON s.account_id = a.id
+            WHERE $whereSql
+            ORDER BY s.id DESC
+            LIMIT 1000
+        ");
+        $stmt->execute($queryParams);
+        $rows = self::filterStatuses($stmt->fetchAll());
+
+        $timeline = [];
+        foreach ($rows as $row) {
+            $timeline[] = self::formatStatus($row, (int)$account['id']);
+        }
+
+        Router::json($timeline);
+    }
+
+    /**
      * Endpoint GET /api/v1/timelines/public
      */
     public static function getPublicTimeline(): void {

@@ -109,6 +109,9 @@ $renderFrontend = function() {
     } elseif ($uri === '/home') {
         $section = 'feed';
         $currentTimeline = 'home';
+    } elseif ($uri === '/catchup') {
+        $section = 'catchup';
+        $currentTimeline = 'catchup';
     } elseif ($uri === '/local') {
         $section = 'feed';
         $currentTimeline = 'local';
@@ -315,6 +318,7 @@ $router->get('/@:username', function($params) use ($renderFrontend) {
 
 // --- Timelines, Posting & Streaming REST APIs ---
 $router->get('/api/v1/timelines/home', [MastodonApiController::class, 'getHomeTimeline']);
+$router->get('/api/v1/timelines/catchup', [MastodonApiController::class, 'getCatchUpTimeline']);
 $router->get('/api/v1/timelines/public', [MastodonApiController::class, 'getPublicTimeline']);
 $router->post('/api/v1/statuses', [MastodonApiController::class, 'postStatus']);
 $router->post('/api/v2/statuses', [MastodonApiController::class, 'postStatus']);
@@ -383,6 +387,7 @@ $router->post('/api/v1/import', [MastodonApiController::class, 'handleImport']);
 $router->get('/', $renderFrontend);
 $router->get('/public', $renderFrontend);
 $router->get('/home', $renderFrontend);
+$router->get('/catchup', $renderFrontend);
 $router->get('/local', $renderFrontend);
 $router->get('/bookmarks', $renderFrontend);
 $router->get('/notifications', $renderFrontend);

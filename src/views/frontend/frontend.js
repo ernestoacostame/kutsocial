@@ -380,7 +380,7 @@ function handlePathRouting() {
         const type = path.substring(1);
         switchTimeline(type, true);
         return true;
-    } else if (path === '/notifications' || path === '/lists' || path === '/collections' || path === '/followed-hashtags' || path === '/profile' || path === '/search-results') {
+    } else if (path === '/notifications' || path === '/lists' || path === '/collections' || path === '/followed-hashtags' || path === '/profile' || path === '/search-results' || path === '/catchup') {
         const tab = path.substring(1);
         if (tab === 'profile') {
             showTab('profile', true);
@@ -1643,7 +1643,7 @@ function showTab(tabName, fromHashChange = false) {
 
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
     
-    const tabs = ['feed', 'profile', 'profile-view', 'thread-view', 'notifications', 'users-list', 'search-results', 'lists', 'collections', 'followed-hashtags'];
+    const tabs = ['feed', 'profile', 'profile-view', 'thread-view', 'notifications', 'users-list', 'search-results', 'lists', 'collections', 'followed-hashtags', 'catchup'];
     tabs.forEach(t => {
         const el = document.getElementById('tab-' + t);
         if (el) el.style.display = 'none';
@@ -1697,6 +1697,10 @@ function showTab(tabName, fromHashChange = false) {
         const navHash = document.getElementById('nav-hashtags');
         if (navHash) navHash.classList.add('active');
         loadFollowedHashtags();
+    } else if (tabName === 'catchup') {
+        const navCatchup = document.getElementById('nav-catchup');
+        if (navCatchup) navCatchup.classList.add('active');
+        initCatchUpTab();
     }
 }
 
@@ -4301,3 +4305,335 @@ document.addEventListener('keydown', function(e) {
         }
     }
 });
+
+// ==========================================
+// SECCIÓN: PONERSE AL DÍA (CATCH UP)
+// ==========================================
+
+const catchupSteps = [1, 2, 4, 6, 12, 18, 24, 48, 72];
+let catchupToots = [];
+let catchupFilter = 'all'; // 'all', 'original', 'reply', 'reblog'
+let catchupAuthorFilter = null; // ID del autor (string)
+let catchupSort = 'date_asc'; // 'date_asc', 'date_desc', 'replies', 'favs', 'reblogs'
+
+function toggleCatchUpHelp(e) {
+    if (e) e.preventDefault();
+    const panel = document.getElementById('catchup-help');
+    if (panel) {
+        const isHidden = panel.style.display === 'none';
+        panel.style.display = isHidden ? 'block' : 'none';
+    }
+}
+
+function initCatchUpTab() {
+    const activeView = document.getElementById('catchup-active-view');
+    const setupView = document.getElementById('catchup-setup-view');
+    
+    if (catchupToots.length > 0) {
+        setupView.style.display = 'none';
+        activeView.style.display = 'block';
+    } else {
+        setupView.style.display = 'block';
+        activeView.style.display = 'none';
+        updateCatchUpSliderLabel();
+    }
+}
+
+function updateCatchUpSliderLabel() {
+    const slider = document.getElementById('catchup-range-slider');
+    if (!slider) return;
+    
+    const index = parseInt(slider.value);
+    const hours = catchupSteps[index];
+    
+    let text = `las últimas ${hours} horas`;
+    if (hours === 1) {
+        text = 'la última 1 hora';
+    } else if (hours === 24) {
+        text = 'las últimas 24 horas (1 día)';
+    } else if (hours === 48) {
+        text = 'las últimas 48 horas (2 días)';
+    } else if (hours === 72) {
+        text = 'las últimas 72 horas (3 días)';
+    }
+    
+    document.getElementById('catchup-slider-text').innerText = text;
+    
+    const date = new Date(Date.now() - hours * 60 * 60 * 1000);
+    document.getElementById('catchup-slider-date').innerText = date.toLocaleDateString('es-ES', {
+        weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function backToCatchUpSetup() {
+    document.getElementById('catchup-active-view').style.display = 'none';
+    document.getElementById('catchup-setup-view').style.display = 'block';
+}
+
+async function startCatchUp() {
+    const slider = document.getElementById('catchup-range-slider');
+    if (!slider) return;
+    
+    const index = parseInt(slider.value);
+    const hours = catchupSteps[index];
+    
+    const feed = document.getElementById('catchup-feed');
+    feed.innerHTML = '<div style="text-align:center; padding: 40px 20px; color: var(--text-muted);"><span class="material-icons-outlined spin" style="font-size: 24px; vertical-align: middle; margin-right: 8px; animation: spin 1s infinite linear;">sync</span> Cargando publicaciones de tu red...</div>';
+    
+    document.getElementById('catchup-setup-view').style.display = 'none';
+    document.getElementById('catchup-active-view').style.display = 'block';
+    
+    // Set labels
+    const endDate = new Date();
+    const startDate = new Date(Date.now() - hours * 60 * 60 * 1000);
+    
+    const timeRangeStr = `${startDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} – ${endDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+    document.getElementById('catchup-active-time-range').innerText = timeRangeStr;
+    document.getElementById('catchup-chart-start-time').innerText = startDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('catchup-chart-end-time').innerText = endDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+    try {
+        const res = await fetch(`/api/v1/timelines/catchup?hours=${hours}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) {
+            throw new Error('Fallo al obtener publicaciones');
+        }
+        
+        catchupToots = await res.json();
+        
+        // Reset states
+        catchupFilter = 'all';
+        catchupAuthorFilter = null;
+        catchupSort = 'date_asc';
+        
+        // Reset button classes
+        document.querySelectorAll('.btn-cu-filter').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('tab-cu-all').classList.add('active');
+        
+        document.querySelectorAll('.btn-cu-sort').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('sort-cu-date_asc').classList.add('active');
+        
+        document.getElementById('catchup-author-filter-indicator').style.display = 'none';
+        
+        processAndRenderCatchUp(hours);
+    } catch (e) {
+        console.error(e);
+        feed.innerHTML = `<div style="text-align:center; padding: 40px 20px; color: var(--error);">Error al cargar: ${e.message}. Por favor intenta de nuevo.</div>`;
+    }
+}
+
+function processAndRenderCatchUp(hours = 6) {
+    if (!catchupToots || catchupToots.length === 0) {
+        document.getElementById('badge-cu-all').innerText = '0';
+        document.getElementById('badge-cu-original').innerText = '0';
+        document.getElementById('badge-cu-reply').innerText = '0';
+        document.getElementById('badge-cu-reblog').innerText = '0';
+        
+        document.getElementById('catchup-chart-info').innerText = '0 publicaciones';
+        document.getElementById('catchup-bars').innerHTML = '<div style="width:100%; text-align:center; font-size:12px; color:var(--text-muted); padding: 10px 0;">Sin actividad registrada en este lapso</div>';
+        document.getElementById('catchup-users-row').innerHTML = '<div style="font-size:12px; color:var(--text-muted); padding:5px 0;">Ninguno</div>';
+        document.getElementById('catchup-feed').innerHTML = '<div style="text-align:center; padding:40px 20px; color:var(--text-muted);">No hay publicaciones de tus seguidos en este periodo de tiempo.</div>';
+        return;
+    }
+
+    // 1. Calcular filtros y números totales
+    let origCount = 0;
+    let replyCount = 0;
+    let reblogCount = 0;
+    
+    // Autores más activos
+    const authorCounts = {};
+    const authorMetadata = {};
+    
+    // Histogram Bins Setup
+    const numBins = 12;
+    const bins = Array(numBins).fill(0);
+    const endTime = Date.now();
+    const startTime = endTime - hours * 60 * 60 * 1000;
+    const binDuration = (endTime - startTime) / numBins;
+
+    catchupToots.forEach(toot => {
+        const hasReblog = !!toot.reblog;
+        const actualToot = hasReblog ? toot.reblog : toot;
+        const isReply = !!actualToot.in_reply_to_id;
+        
+        if (hasReblog) {
+            reblogCount++;
+        } else if (isReply) {
+            replyCount++;
+        } else {
+            origCount++;
+        }
+        
+        const author = actualToot.account;
+        authorCounts[author.id] = (authorCounts[author.id] || 0) + 1;
+        authorMetadata[author.id] = author;
+        
+        const tootTime = new Date(toot.created_at).getTime();
+        const binIndex = Math.floor((tootTime - startTime) / binDuration);
+        if (binIndex >= 0 && binIndex < numBins) {
+            bins[binIndex]++;
+        }
+    });
+
+    document.getElementById('badge-cu-all').innerText = catchupToots.length;
+    document.getElementById('badge-cu-original').innerText = origCount;
+    document.getElementById('badge-cu-reply').innerText = replyCount;
+    document.getElementById('badge-cu-reblog').innerText = reblogCount;
+    
+    document.getElementById('catchup-chart-info').innerText = `${catchupToots.length} publicaciones`;
+
+    // 2. Renderizar Histograma
+    const maxBinVal = Math.max(...bins);
+    const barsContainer = document.getElementById('catchup-bars');
+    barsContainer.innerHTML = '';
+    bins.forEach((count, i) => {
+        const heightPct = maxBinVal > 0 ? (count / maxBinVal) * 100 : 0;
+        const binStart = new Date(startTime + i * binDuration);
+        const binEnd = new Date(startTime + (i + 1) * binDuration);
+        
+        const timeTip = `${binStart.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} – ${binEnd.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}: ${count} posts`;
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'cu-chart-bar-container';
+        wrapper.title = timeTip;
+        wrapper.innerHTML = `<div class="cu-chart-bar" style="height: ${Math.max(heightPct, 4)}%; opacity: ${count > 0 ? 1 : 0.2};"></div>`;
+        barsContainer.appendChild(wrapper);
+    });
+
+    // 3. Renderizar burbujas de Autores más Activos
+    const sortedAuthors = Object.keys(authorCounts).sort((a, b) => authorCounts[b] - authorCounts[a]);
+    const usersRow = document.getElementById('catchup-users-row');
+    usersRow.innerHTML = '';
+    sortedAuthors.forEach(authorId => {
+        const author = authorMetadata[authorId];
+        const count = authorCounts[authorId];
+        
+        const bubble = document.createElement('div');
+        bubble.className = `cu-user-bubble ${catchupAuthorFilter === authorId ? 'active' : ''}`;
+        bubble.setAttribute('data-author-id', authorId);
+        bubble.title = `@${author.acct} (${count} posts)`;
+        bubble.innerHTML = `
+            <img src="${author.avatar || '/assets/default-avatar.png'}" alt="${author.display_name}">
+            <span class="badge">${count}</span>
+            <span class="name">${author.display_name}</span>
+        `;
+        bubble.onclick = () => filterCatchUpByAuthor(authorId, author.acct);
+        usersRow.appendChild(bubble);
+    });
+
+    renderCatchUpFeed();
+}
+
+function setCatchUpFilter(filter) {
+    catchupFilter = filter;
+    document.querySelectorAll('.btn-cu-filter').forEach(btn => btn.classList.remove('active'));
+    
+    let btnId = 'tab-cu-all';
+    if (filter === 'original') btnId = 'tab-cu-original';
+    else if (filter === 'reply') btnId = 'tab-cu-reply';
+    else if (filter === 'reblog') btnId = 'tab-cu-reblog';
+    
+    const activeBtn = document.getElementById(btnId);
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    renderCatchUpFeed();
+}
+
+function setCatchUpSort(sort) {
+    catchupSort = sort;
+    document.querySelectorAll('.btn-cu-sort').forEach(btn => btn.classList.remove('active'));
+    
+    const activeBtn = document.getElementById('sort-cu-' + sort);
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    renderCatchUpFeed();
+}
+
+function filterCatchUpByAuthor(authorId, acct) {
+    if (catchupAuthorFilter === authorId) {
+        clearCatchUpAuthorFilter();
+        return;
+    }
+    
+    catchupAuthorFilter = authorId;
+    
+    document.querySelectorAll('.cu-user-bubble').forEach(b => {
+        if (b.getAttribute('data-author-id') === authorId) {
+            b.classList.add('active');
+        } else {
+            b.classList.remove('active');
+        }
+    });
+    
+    const indicator = document.getElementById('catchup-author-filter-indicator');
+    const nameSpan = document.getElementById('catchup-filtered-author-name');
+    nameSpan.innerText = `@${acct}`;
+    indicator.style.display = 'flex';
+    
+    renderCatchUpFeed();
+}
+
+function clearCatchUpAuthorFilter() {
+    catchupAuthorFilter = null;
+    document.querySelectorAll('.cu-user-bubble').forEach(b => b.classList.remove('active'));
+    document.getElementById('catchup-author-filter-indicator').style.display = 'none';
+    renderCatchUpFeed();
+}
+
+function renderCatchUpFeed() {
+    const feed = document.getElementById('catchup-feed');
+    feed.innerHTML = '';
+
+    let filtered = catchupToots.filter(toot => {
+        if (catchupAuthorFilter) {
+            const actualToot = toot.reblog || toot;
+            if (String(actualToot.account.id) !== String(catchupAuthorFilter)) {
+                return false;
+            }
+        }
+        
+        if (catchupFilter === 'original') {
+            return !toot.reblog && !toot.in_reply_to_id;
+        } else if (catchupFilter === 'reply') {
+            return !toot.reblog && !!toot.in_reply_to_id;
+        } else if (catchupFilter === 'reblog') {
+            return !!toot.reblog;
+        }
+        
+        return true;
+    });
+
+    filtered.sort((a, b) => {
+        const idA = parseInt(a.id);
+        const idB = parseInt(b.id);
+        
+        const actA = a.reblog || a;
+        const actB = b.reblog || b;
+
+        if (catchupSort === 'date_asc') {
+            return idA - idB;
+        } else if (catchupSort === 'date_desc') {
+            return idB - idA;
+        } else if (catchupSort === 'replies') {
+            return (actB.replies_count || 0) - (actA.replies_count || 0);
+        } else if (catchupSort === 'favs') {
+            return (actB.favourites_count || 0) - (actA.favourites_count || 0);
+        } else if (catchupSort === 'reblogs') {
+            return (actB.reblogs_count || 0) - (actA.reblogs_count || 0);
+        }
+        return 0;
+    });
+
+    if (filtered.length === 0) {
+        feed.innerHTML = '<div style="text-align:center; padding: 40px 20px; color: var(--text-muted);">Ninguna publicación coincide con los filtros aplicados.</div>';
+        return;
+    }
+
+    filtered.forEach(toot => {
+        const card = createThreadTootElement(toot, false);
+        feed.appendChild(card);
+    });
+}

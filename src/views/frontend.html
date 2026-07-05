@@ -71,6 +71,11 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a href="/catchup" id="nav-catchup" class="nav-link <?= ($section === 'catchup') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">bolt</span> Ponerse al día
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="/local" id="nav-local" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'local') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">groups</span> Timeline Local
                         </a>
@@ -138,6 +143,7 @@
         <!-- Columna Central (Timeline) -->
         <main class="main-content">
             <?php include __DIR__ . '/frontend/feed.php'; ?>
+            <?php include __DIR__ . '/frontend/catchup.php'; ?>
             <?php include __DIR__ . '/frontend/notifications.php'; ?>
             <?php include __DIR__ . '/frontend/profile.php'; ?>
             <?php include __DIR__ . '/frontend/profile-view.php'; ?>
