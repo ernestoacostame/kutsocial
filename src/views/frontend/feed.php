@@ -41,15 +41,15 @@
         <div id="composer-poll-container" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px; margin: 0 12px 12px 12px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <span style="font-size: 13.5px; font-weight: 600; color: var(--text-muted);">Encuesta</span>
-                <button onclick="closeComposerPoll()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:14px;">✕</button>
+                <span onclick="closeComposerPoll()" style="color:var(--text-muted); cursor:pointer; font-size:14px; user-select:none; padding: 2px 6px;">✕</span>
             </div>
             <div id="poll-options-inputs" style="display: flex; flex-direction: column; gap: 8px;">
                 <input type="text" class="poll-option-field" placeholder="Opción 1" maxlength="25" style="padding:8px;">
                 <input type="text" class="poll-option-field" placeholder="Opción 2" maxlength="25" style="padding:8px;">
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-                <button onclick="addPollOptionField()" style="font-size: 12.5px; border:none; background:none; color: #818cf8; cursor:pointer; font-weight:600;">➕ Añadir opción</button>
-                <select id="poll-expires-in" style="width: 120px; padding: 4px; font-size: 12.5px; background:rgba(0,0,0,0.3); border:1px solid var(--border-color); color:white;">
+                <span onclick="addPollOptionField()" style="font-size: 12.5px; color: #818cf8; cursor:pointer; font-weight:600; user-select:none; padding: 4px 0;">➕ Añadir opción</span>
+                <select id="poll-expires-in" style="width: 120px; height: 32px; padding: 4px 8px; font-size: 12.5px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 6px; color: white; cursor: pointer; outline: none;">
                     <option value="3600">1 hora</option>
                     <option value="86400" selected>1 día</option>
                     <option value="604800">1 semana</option>
