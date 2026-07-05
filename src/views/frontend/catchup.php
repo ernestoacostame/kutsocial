@@ -59,6 +59,14 @@
                 Nota: Esta búsqueda procesa las publicaciones de tu feed de Inicio almacenadas localmente. El número máximo de publicaciones cargadas es de 1000.
             </p>
         </div>
+
+        <!-- Historial / Anteriormente -->
+        <div id="catchup-history-section" style="margin-top: 40px; border-top: 1px solid var(--border-color); padding-top: 30px; display: none;">
+            <div style="font-size: 13.5px; color: var(--text-muted); font-weight: 600; margin-bottom: 18px; text-transform: uppercase; letter-spacing: 0.8px;">Anteriormente...</div>
+            <div id="catchup-history-list" style="display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center;">
+                <!-- Elementos del historial inyectados dinámicamente -->
+            </div>
+        </div>
     </div>
 
     <!-- Pantalla de Resultados Activa -->

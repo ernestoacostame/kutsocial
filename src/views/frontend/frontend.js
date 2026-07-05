@@ -4329,6 +4329,8 @@ function initCatchUpTab() {
     const activeView = document.getElementById('catchup-active-view');
     const setupView = document.getElementById('catchup-setup-view');
     
+    renderCatchUpHistory();
+    
     if (catchupToots.length > 0) {
         setupView.style.display = 'none';
         activeView.style.display = 'block';
@@ -4402,6 +4404,22 @@ async function startCatchUp() {
         }
         
         catchupToots = await res.json();
+        
+        // Guardar en el historial
+        const historyEntry = {
+            id: Date.now().toString(),
+            label: timeRangeStr,
+            hours: hours,
+            count: catchupToots.length,
+            toots: catchupToots,
+            timestamp: Date.now()
+        };
+        let history = getCatchUpHistory();
+        history.unshift(historyEntry);
+        if (history.length > 5) {
+            history = history.slice(0, 5);
+        }
+        saveCatchUpHistory(history);
         
         // Reset states
         catchupFilter = 'all';
@@ -4636,4 +4654,105 @@ function renderCatchUpFeed() {
         const card = createThreadTootElement(toot, false);
         feed.appendChild(card);
     });
+}
+
+function getCatchUpHistory() {
+    try {
+        return JSON.parse(localStorage.getItem('kutsocial_catchup_history')) || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveCatchUpHistory(history) {
+    let saved = false;
+    while (history.length > 0 && !saved) {
+        try {
+            localStorage.setItem('kutsocial_catchup_history', JSON.stringify(history));
+            saved = true;
+        } catch (e) {
+            history.pop();
+        }
+    }
+}
+
+function renderCatchUpHistory() {
+    const historyList = document.getElementById('catchup-history-list');
+    const historySection = document.getElementById('catchup-history-section');
+    if (!historyList || !historySection) return;
+    
+    const history = getCatchUpHistory();
+    if (history.length === 0) {
+        historySection.style.display = 'none';
+        return;
+    }
+    
+    historySection.style.display = 'block';
+    historyList.innerHTML = '';
+    
+    history.forEach(item => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '10px';
+        row.style.background = 'rgba(255, 255, 255, 0.02)';
+        row.style.border = '1px solid var(--border-color)';
+        row.style.borderRadius = '20px';
+        row.style.padding = '6px 14px';
+        row.style.fontSize = '13.5px';
+        row.style.width = '100%';
+        row.style.maxWidth = '460px';
+        row.style.justifyContent = 'space-between';
+        
+        row.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span class="material-icons-outlined" style="font-size: 16px; color: var(--text-muted); flex-shrink: 0;">history</span>
+                <a href="#" onclick="loadCatchUpFromHistory('${item.id}'); return false;" style="color: #818cf8; text-decoration: none; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${item.label}</a>
+                <span style="color: var(--text-muted); font-size: 12.5px; flex-shrink: 0;">(${item.count} publicaciones)</span>
+            </div>
+            <button onclick="deleteCatchUpFromHistory('${item.id}')" style="background: rgba(239, 68, 68, 0.1) !important; border: 1px solid rgba(239, 68, 68, 0.2) !important; color: var(--error) !important; border-radius: 50% !important; width: 22px !important; height: 22px !important; display: flex !important; align-items: center !important; justify-content: center !important; font-size: 10px !important; cursor: pointer !important; padding: 0 !important; margin: 0 !important; box-shadow: none !important; transition: all 0.2s !important; flex-shrink: 0 !important;">✕</button>
+        `;
+        historyList.appendChild(row);
+    });
+}
+
+function loadCatchUpFromHistory(id) {
+    const history = getCatchUpHistory();
+    const item = history.find(entry => entry.id === id);
+    if (!item) return;
+    
+    catchupToots = item.toots || [];
+    catchupFilter = 'all';
+    catchupAuthorFilter = null;
+    catchupSort = 'date_asc';
+    
+    document.getElementById('catchup-setup-view').style.display = 'none';
+    document.getElementById('catchup-active-view').style.display = 'block';
+    
+    document.getElementById('catchup-active-time-range').innerText = item.label;
+    
+    const timestamp = parseInt(item.timestamp || Date.now());
+    const hours = item.hours || 6;
+    const endDate = new Date(timestamp);
+    const startDate = new Date(timestamp - hours * 60 * 60 * 1000);
+    
+    document.getElementById('catchup-chart-start-time').innerText = startDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('catchup-chart-end-time').innerText = endDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+    document.querySelectorAll('.btn-cu-filter').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('tab-cu-all').classList.add('active');
+    
+    document.querySelectorAll('.btn-cu-sort').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('sort-cu-date_asc').classList.add('active');
+    
+    document.getElementById('catchup-author-filter-indicator').style.display = 'none';
+    
+    processAndRenderCatchUp(hours);
+}
+
+function deleteCatchUpFromHistory(id) {
+    let history = getCatchUpHistory();
+    history = history.filter(entry => entry.id !== id);
+    saveCatchUpHistory(history);
+    renderCatchUpHistory();
 }

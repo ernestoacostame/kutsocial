@@ -1209,23 +1209,25 @@ button:hover {
 
 /* CatchUp Styles */
 .btn-cu-filter {
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid var(--border-color);
-    color: var(--text-color);
-    padding: 6px 16px;
-    border-radius: 20px;
-    font-size: 13px;
-    cursor: pointer;
-    font-weight: 600;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    box-shadow: none;
+    width: auto !important;
+    margin-top: 0 !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-color) !important;
+    padding: 6px 16px !important;
+    border-radius: 20px !important;
+    font-size: 13px !important;
+    cursor: pointer !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    box-shadow: none !important;
 }
 .btn-cu-filter:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
 }
 .btn-cu-filter.active {
     background: rgba(99, 102, 241, 0.15) !important;
@@ -1233,31 +1235,37 @@ button:hover {
     color: #818cf8 !important;
 }
 .btn-cu-filter .badge {
-    background: rgba(255, 255, 255, 0.1);
-    color: var(--text-muted);
-    border-radius: 10px;
-    padding: 1px 6px;
-    font-size: 11px;
-    font-weight: 600;
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: var(--text-muted) !important;
+    border-radius: 10px !important;
+    padding: 1px 6px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    box-shadow: none !important;
+    margin-top: 0 !important;
+    width: auto !important;
 }
 .btn-cu-filter.active .badge {
-    background: var(--primary);
-    color: white;
+    background: var(--primary) !important;
+    color: white !important;
 }
 
 .btn-cu-sort {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 6px;
-    font-weight: 600;
-    transition: all 0.2s;
+    width: auto !important;
+    margin-top: 0 !important;
+    background: none !important;
+    border: none !important;
+    color: var(--text-muted) !important;
+    cursor: pointer !important;
+    padding: 4px 8px !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s !important;
+    box-shadow: none !important;
 }
 .btn-cu-sort:hover {
-    color: var(--text-color);
-    background: rgba(255, 255, 255, 0.03);
+    color: var(--text-color) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
 }
 .btn-cu-sort.active {
     color: #818cf8 !important;
@@ -1265,113 +1273,175 @@ button:hover {
 }
 
 .cu-user-bubble {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    cursor: pointer;
-    position: relative;
-    min-width: 58px;
-    transition: transform 0.2s ease;
-    padding: 4px;
-    border-radius: 8px;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    cursor: pointer !important;
+    position: relative !important;
+    min-width: 58px !important;
+    transition: transform 0.2s ease !important;
+    padding: 4px !important;
+    border-radius: 8px !important;
+    margin-top: 0 !important;
+    background: none !important;
+    width: auto !important;
+    box-shadow: none !important;
 }
 .cu-user-bubble:hover {
-    transform: translateY(-2px);
-    background: rgba(255, 255, 255, 0.02);
+    transform: translateY(-2px) !important;
+    background: rgba(255, 255, 255, 0.02) !important;
 }
 .cu-user-bubble.active img {
-    border: 2px solid var(--primary);
-    box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+    border: 2px solid var(--primary) !important;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.5) !important;
 }
 .cu-user-bubble img {
-    width: 44px;
-    height: 44px;
-    border-radius: 50%;
-    object-fit: cover;
-    border: 2px solid transparent;
-    transition: all 0.2s ease;
+    width: 44px !important;
+    height: 44px !important;
+    border-radius: 50% !important;
+    object-fit: cover !important;
+    border: 2px solid transparent !important;
+    transition: all 0.2s ease !important;
 }
 .cu-user-bubble .badge {
-    position: absolute;
-    top: -2px;
-    right: 4px;
-    background: var(--primary);
-    color: white;
-    font-size: 10px;
-    font-weight: 700;
-    border-radius: 10px;
-    padding: 1px 5px;
-    min-width: 18px;
-    text-align: center;
-    border: 1.5px solid var(--bg-color);
+    position: absolute !important;
+    top: -2px !important;
+    right: 4px !important;
+    background: var(--primary) !important;
+    color: white !important;
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    border-radius: 10px !important;
+    padding: 1px 5px !important;
+    min-width: 18px !important;
+    text-align: center !important;
+    border: 1.5px solid var(--bg-color) !important;
+    margin-top: 0 !important;
+    width: auto !important;
+    box-shadow: none !important;
 }
 .cu-user-bubble .name {
-    font-size: 10.5px;
-    color: var(--text-muted);
-    text-align: center;
-    margin-top: 5px;
-    max-width: 54px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    font-size: 10.5px !important;
+    color: var(--text-muted) !important;
+    text-align: center !important;
+    margin-top: 5px !important;
+    max-width: 54px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
 }
 
 .cu-chart-bar-container {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-end;
-    height: 100%;
-    cursor: pointer;
+    flex-grow: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: flex-end !important;
+    height: 100% !important;
+    cursor: pointer !important;
 }
 .cu-chart-bar-container:hover .cu-chart-bar {
-    background: var(--primary);
+    background: var(--primary) !important;
 }
 .cu-chart-bar {
-    width: 100%;
-    background: rgba(99, 102, 241, 0.25);
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
-    transition: height 0.3s ease, background 0.3s ease;
+    width: 100% !important;
+    background: rgba(99, 102, 241, 0.25) !important;
+    border-top-left-radius: 4px !important;
+    border-top-right-radius: 4px !important;
+    transition: height 0.3s ease, background 0.3s ease !important;
 }
 
 /* Custom slider input */
 .catchup-slider-input {
-    -webkit-appearance: none;
-    appearance: none;
-    background: rgba(255, 255, 255, 0.1);
-    outline: none;
-    border: none;
-    padding: 0;
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    outline: none !important;
+    border: none !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 6px !important;
+    border-radius: 3px !important;
+    cursor: pointer !important;
+    box-shadow: none !important;
+    margin-top: 0 !important;
 }
 .catchup-slider-input::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: var(--primary);
-    cursor: pointer;
-    transition: transform 0.1s, background-color 0.2s;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    -webkit-appearance: none !important;
+    appearance: none !important;
+    width: 18px !important;
+    height: 18px !important;
+    border-radius: 50% !important;
+    background: var(--primary) !important;
+    cursor: pointer !important;
+    transition: transform 0.1s, background-color 0.2s !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
 }
 .catchup-slider-input::-webkit-slider-thumb:hover {
-    transform: scale(1.15);
-    background: var(--primary-hover);
+    transform: scale(1.15) !important;
+    background: var(--primary-hover) !important;
 }
 .catchup-slider-input::-moz-range-thumb {
-    width: 18px;
-    height: 18px;
-    border: none;
-    border-radius: 50%;
-    background: var(--primary);
-    cursor: pointer;
-    transition: transform 0.1s, background-color 0.2s;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+    width: 18px !important;
+    height: 18px !important;
+    border: none !important;
+    border-radius: 50% !important;
+    background: var(--primary) !important;
+    cursor: pointer !important;
+    transition: transform 0.1s, background-color 0.2s !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4) !important;
 }
 .catchup-slider-input::-moz-range-thumb:hover {
-    transform: scale(1.15);
-    background: var(--primary-hover);
+    transform: scale(1.15) !important;
+    background: var(--primary-hover) !important;
 }
+
+/* Secondary Button (Cambiar intervalo) */
+.btn-catchup-secondary {
+    width: auto !important;
+    margin-top: 0 !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--border-color) !important;
+    padding: 7px 15px !important;
+    border-radius: 16px !important;
+    font-size: 12.5px !important;
+    cursor: pointer !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    font-weight: 500 !important;
+    transition: all 0.2s !important;
+    box-shadow: none !important;
+}
+.btn-catchup-secondary:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+/* Primary Button (Ponerse al día setup button) */
+.btn-catchup-primary {
+    width: 100% !important;
+    margin-top: 10px !important;
+    background: linear-gradient(135deg, var(--primary) 0%, #4f46e5 100%) !important;
+    border: none !important;
+    padding: 12px 30px !important;
+    border-radius: 24px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    font-size: 15px !important;
+    transition: all 0.2s ease !important;
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    justify-content: center !important;
+    color: white !important;
+}
+.btn-catchup-primary:hover {
+    background: linear-gradient(135deg, var(--primary-hover) 0%, #4338ca 100%) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 6px 16px rgba(99, 102, 241, 0.4) !important;
+}
+
 
 
