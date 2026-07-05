@@ -3187,8 +3187,8 @@ async function updateMediaAltText(mediaId, value) {
 }
 
 async function uploadFileDirectly(file) {
-    if (!file.type.startsWith('image/')) {
-        alert('Solo se admiten imágenes.');
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/') && !file.type.startsWith('audio/')) {
+        alert('Solo se admiten imágenes, videos o audios.');
         return;
     }
     const previewContainer = document.getElementById('composer-media-preview');
@@ -3218,10 +3218,31 @@ async function uploadFileDirectly(file) {
             const media = await response.json();
             composerUploadedMediaIds.push(media.id);
             
+            let previewHTML = '';
+            if (media.type === 'video') {
+                previewHTML = `
+                    <div style="width: 50px; height: 50px; border-radius: 6px; overflow: hidden; position: relative; flex-shrink: 0; background: #000;">
+                        <video src="${media.url}" muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+                        <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                    </div>
+                `;
+            } else if (media.type === 'audio') {
+                previewHTML = `
+                    <div style="width: 50px; height: 50px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
+                        <span class="material-icons-outlined" style="font-size: 24px; color: var(--text-muted);">audiotrack</span>
+                        <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                    </div>
+                `;
+            } else {
+                previewHTML = `
+                    <div style="width: 50px; height: 50px; border-radius: 6px; background-image: url(${media.url}); background-size: cover; background-position: center; position: relative; flex-shrink: 0;">
+                        <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                    </div>
+                `;
+            }
+
             tempDiv.innerHTML = `
-                <div style="width: 50px; height: 50px; border-radius: 6px; background-image: url(${media.url}); background-size: cover; background-position: center; position: relative; flex-shrink: 0;">
-                    <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
-                </div>
+                ${previewHTML}
                 <input type="text" placeholder="Texto alternativo (Alt)..." style="flex-grow: 1; font-size: 12px; padding: 6px 10px; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: white; border-radius: 6px; margin: 0; min-width: 0;" oninput="updateMediaAltText('${media.id}', this.value)">
             `;
             

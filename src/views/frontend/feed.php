@@ -35,7 +35,7 @@
 
         <!-- Previsualización de Imágenes Subidas -->
         <div id="composer-media-preview" style="display: flex; gap: 8px; flex-wrap: wrap; margin: 0 12px 8px 12px;"></div>
-        <input type="file" id="composer-file-input" style="display: none;" accept="image/*" multiple onchange="handleComposerFileUpload()">
+        <input type="file" id="composer-file-input" style="display: none;" accept="image/*,video/*,audio/*" multiple onchange="handleComposerFileUpload()">
 
         <!-- Creador de Encuestas -->
         <div id="composer-poll-container" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px; margin: 0 12px 12px 12px;">
