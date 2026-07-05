@@ -122,11 +122,11 @@
             
             <!-- Indicador de Filtro de Autor Activo -->
             <div id="catchup-author-filter-indicator" style="display: none; align-items: center; justify-content: space-between; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 10px; padding: 10px 16px; margin-top: 12px; font-size: 13px;">
-                <span style="display: flex; align-items: center; gap: 6px;">
-                    <span class="material-icons-outlined" style="font-size: 16px; color: var(--primary);">person</span>
-                    Mostrando publicaciones de <strong id="catchup-filtered-author-name" style="color: var(--text-color);">@usuario</strong>
+                <span style="display: flex; align-items: center; gap: 8px;">
+                    <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary); flex-shrink: 0;">person</span>
+                    <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;">Mostrando publicaciones de <strong id="catchup-filtered-author-name" style="color: var(--text-color);">@usuario</strong></span>
                 </span>
-                <button onclick="clearCatchUpAuthorFilter()" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--error); cursor: pointer; display: flex; align-items: center; font-weight: 600; padding: 4px 10px; border-radius: 8px; font-size: 12px; transition: all 0.2s;">
+                <button onclick="clearCatchUpAuthorFilter()" class="btn-cu-clear-author">
                     Quitar filtro
                 </button>
             </div>
