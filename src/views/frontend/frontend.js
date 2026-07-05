@@ -899,7 +899,7 @@ function createThreadTootElement(toot, isMain = false) {
                         <div class="media-alt-popup" style="display: none; position: absolute; bottom: 42px; left: 12px; width: 280px; max-width: 90%; background: #1e1f22; border: 1px solid #2f3037; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 30; text-align: left; padding: 12px; color: #fff; font-family: sans-serif;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #2f3037; padding-bottom: 6px;">
                                 <span style="font-size: 12px; font-weight: bold; color: var(--text-color);">Alt text</span>
-                                <button onclick="closeAltTextPopup(this, event)" style="background: none; border: none; color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1;">✕</button>
+                                <span onclick="closeAltTextPopup(this, event)" style="color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; user-select: none;">✕</span>
                             </div>
                             <div style="font-size: 12.5px; line-height: 1.4; color: #e3e4e8; word-break: break-word;">${altText}</div>
                         </div>
