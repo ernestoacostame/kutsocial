@@ -126,10 +126,10 @@
 
             <!-- Perfil del usuario actual -->
             <div class="user-profile-summary" style="cursor: pointer;" onclick="if(currentProfileData) window.location.href='/@' + currentProfileData.username;">
-                <img id="my-avatar" class="user-avatar" src="/assets/default-avatar.png" alt="Mi Avatar">
+                <img id="my-avatar" class="user-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.png') ?>" alt="Mi Avatar">
                 <div class="user-info">
-                    <div id="my-display-name" class="user-name">Cargando...</div>
-                    <div id="my-username" class="user-handle">@cargando</div>
+                    <div id="my-display-name" class="user-name"><?= htmlspecialchars($localUser['display_name'] ?: ($localUser['username'] ?? 'Cargando...')) ?></div>
+                    <div id="my-username" class="user-handle">@<?= htmlspecialchars($localUser['username'] ?? 'cargando') ?></div>
                 </div>
                 <button class="btn-logout" title="Cerrar Sesión" onclick="event.stopPropagation(); logout()">✕</button>
             </div>

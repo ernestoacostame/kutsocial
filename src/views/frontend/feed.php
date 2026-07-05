@@ -27,7 +27,7 @@
         </div>
 
         <div class="composer-header" style="position: relative;">
-            <img id="composer-avatar" class="user-avatar" src="/assets/default-avatar.png" alt="Avatar">
+            <img id="composer-avatar" class="user-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.png') ?>" alt="Avatar">
             <textarea id="composer-text" class="composer-textarea" placeholder="¿Qué está pasando en el Fediverso?" maxlength="500" oninput="updateCharCount()"></textarea>
             <!-- Autocomplete dropdown suggestions -->
             <div id="composer-autocomplete" class="autocomplete-suggestions" style="display: none;"></div>
