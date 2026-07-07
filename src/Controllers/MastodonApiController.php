@@ -1060,12 +1060,13 @@ HTML;
         $stmtFavs->execute([$currUserId, $currUserId]);
         $favRows = $stmtFavs->fetchAll();
         foreach ($favRows as $row) {
+            $statusRow = self::fetchStatusRow($db, (int)$row['status_id']);
             $notifications[] = [
                 'id' => 'favourite_' . $row['id'],
                 'type' => 'favourite',
                 'created_at' => date('c', strtotime($row['created_at'])),
                 'account' => self::formatAccount($row),
-                'status' => self::formatStatus($row, $currUserId)
+                'status' => $statusRow ? self::formatStatus($statusRow, $currUserId) : null
             ];
         }
 
@@ -1158,31 +1159,9 @@ HTML;
         $stmtReblogs->execute([$currUserId, $currUserId]);
         $reblogRows = $stmtReblogs->fetchAll();
         foreach ($reblogRows as $row) {
-            $origRow = [
-                'status_id' => $row['orig_status_id'],
-                'status_uri' => $row['orig_status_uri'],
-                'status_content' => $row['orig_status_content'],
-                'status_visibility' => $row['orig_status_visibility'],
-                'status_created_at' => $row['orig_status_created_at'],
-                'in_reply_to_id' => $row['orig_in_reply_to_id'],
-                'sensitive' => $row['orig_sensitive'],
-                'spoiler_text' => $row['orig_spoiler_text'],
-                'media_attachments' => $row['orig_media_attachments'],
-                'account_id' => $currUserId,
-                'username' => $account['username'],
-                'domain' => null,
-                'display_name' => $account['display_name'],
-                'avatar' => $account['avatar'],
-                'header' => $account['header'],
-                'avatar_description' => $account['avatar_description'],
-                'header_description' => $account['header_description'],
-                'note' => $account['note'],
-                'created_at' => $account['created_at'],
-                'account_created_at' => $account['created_at'],
-                'locked' => $account['locked'],
-                'discoverable' => $account['discoverable'],
-                'fields' => $account['fields']
-            ];
+            $origStatusId = (int)$row['orig_status_id'];
+            $origRow = self::fetchStatusRow($db, $origStatusId);
+            if (!$origRow) continue;
 
             $notifications[] = [
                 'id' => 'reblog_' . $row['status_id'],

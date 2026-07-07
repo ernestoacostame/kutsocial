@@ -747,7 +747,7 @@ XML;
         }
     }
 
-    private static function getOrRegisterRemoteActor(string $actorUrl): ?array {
+    public static function getOrRegisterRemoteActor(string $actorUrl): ?array {
         $db = Database::connect();
 
         $host = parse_url($actorUrl, PHP_URL_HOST);
