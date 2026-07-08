@@ -275,6 +275,7 @@ class WebPushHelper {
 
             $res = curl_exec($ch);
             $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $curlError = curl_error($ch);
             curl_close($ch);
 
             // Web Push status codes: 201 Created is typical, 200/202 are also success
@@ -282,7 +283,11 @@ class WebPushHelper {
                 return true;
             }
 
-            error_log("Web Push dispatch failed for endpoint $endpoint. HTTP Code: $code. Response: $res");
+            if ($res === false || $code === 0) {
+                error_log("Web Push dispatch connection failed for endpoint $endpoint. cURL Error: $curlError");
+            } else {
+                error_log("Web Push dispatch failed for endpoint $endpoint. HTTP Code: $code. Response: $res");
+            }
             return false;
         } catch (\Throwable $e) {
             error_log("Error sending Web Push to $endpoint: " . $e->getMessage());
