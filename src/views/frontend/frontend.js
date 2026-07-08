@@ -9,6 +9,7 @@ if (token || (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked)) {
 let currentTimeline = 'public';
 let lastRenderedTimeline = '';
 let lastLoadedProfile = null;
+let profilesCache = {};
 let currentProfileRelationship = null;
 let activeTootOptionsMenu = null;
 function proxyUrl(url) {
@@ -2571,6 +2572,80 @@ async function viewProfileByUrl(profileUrl) {
 // ---------------------------
 // VISTA DE PERFIL Y SEGUIMIENTOS
 // ---------------------------
+function renderProfileData(account) {
+    document.getElementById('profile-view-display-name').innerText = account.display_name || account.username;
+    document.getElementById('profile-view-handle').innerText = `@${account.acct}`;
+    document.getElementById('profile-view-followers-count').innerText = formatStatNumber(account.followers_count);
+    document.getElementById('profile-view-following-count').innerText = formatStatNumber(account.following_count);
+    document.getElementById('profile-view-posts-count').innerText = formatStatNumber(account.statuses_count);
+    
+    const joinedYear = new Date(account.created_at).getFullYear();
+    document.getElementById('profile-view-joined').innerText = isNaN(joinedYear) ? '-' : joinedYear;
+
+    const headerUrl = proxyUrl(account.header || "/assets/default-header.png");
+    const avatarUrl = proxyUrl(account.avatar || "/assets/default-avatar.png");
+    
+    const headerBg = document.getElementById('profile-view-header-bg');
+    if (headerBg) {
+        const newBg = `url("${headerUrl}")`;
+        const currentBg = headerBg.style.backgroundImage || '';
+        if (currentBg !== newBg && currentBg.replace(/'/g, '"') !== newBg) {
+            headerBg.style.backgroundImage = newBg;
+        }
+    }
+
+    const avatarImg = document.getElementById('profile-view-avatar');
+    if (avatarImg && avatarImg.getAttribute('src') !== avatarUrl) {
+        avatarImg.src = avatarUrl;
+    }
+
+    const bioContainer = document.getElementById('profile-view-bio');
+    if (bioContainer) {
+        bioContainer.innerHTML = sanitizeHTML(account.note) || '<p style="color:var(--text-muted)">Sin biografía.</p>';
+    }
+
+    const fieldsGrid = document.getElementById('profile-view-fields');
+    if (fieldsGrid) {
+        fieldsGrid.innerHTML = '';
+        const fields = account.fields || [];
+        fields.forEach(f => {
+            const card = document.createElement('div');
+            card.className = 'profile-field-card';
+            if (f.verified_at) {
+                card.classList.add('verified');
+            }
+
+            let valHTML = sanitizeHTML(f.value || '');
+            if (valHTML.includes('<a ')) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = valHTML;
+                const links = tempDiv.querySelectorAll('a');
+                links.forEach(a => {
+                    const href = a.getAttribute('href');
+                    const cleanText = a.textContent || href.replace(/^https?:\/\/(www\.)?/, '');
+                    const newLink = document.createElement('a');
+                    newLink.setAttribute('href', href);
+                    newLink.setAttribute('target', '_blank');
+                    newLink.setAttribute('rel', 'me nofollow noopener noreferrer');
+                    newLink.textContent = cleanText;
+                    a.parentNode.replaceChild(newLink, a);
+                });
+                valHTML = tempDiv.innerHTML;
+            } else if (valHTML.startsWith('http://') || valHTML.startsWith('https://')) {
+                const label = valHTML.replace(/^https?:\/\/(www\.)?/, '');
+                valHTML = `<a href="${valHTML}" rel="me nofollow noopener noreferrer" target="_blank">${label}</a>`;
+            }
+
+            const verifiedBadge = f.verified_at ? `<span class="verified-badge">✓</span>` : '';
+            card.innerHTML = `
+                <span class="field-label" title="${f.name}">${f.name}</span>
+                <span class="field-value">${valHTML} ${verifiedBadge}</span>
+            `;
+            fieldsGrid.appendChild(card);
+        });
+    }
+}
+
 async function viewProfile(accountId, fromHashChange = false) {
     if (!accountId) return;
     if (!document.getElementById('tab-profile-view')) {
@@ -2610,19 +2685,45 @@ async function viewProfile(accountId, fromHashChange = false) {
     
     showTab('profile-view', fromHashChange);
 
-    document.getElementById('profile-view-display-name').innerText = 'Cargando...';
-    document.getElementById('profile-view-handle').innerText = '@...';
-    document.getElementById('profile-view-followers-count').innerText = '-';
-    document.getElementById('profile-view-following-count').innerText = '-';
-    document.getElementById('profile-view-posts-count').innerText = '-';
-    document.getElementById('profile-view-joined').innerText = '-';
-    document.getElementById('profile-view-bio').innerHTML = '';
-    document.getElementById('profile-view-fields').innerHTML = '';
-    document.getElementById('profile-view-role-container').style.display = 'none';
-    document.getElementById('profile-view-badge').innerText = '';
-    document.getElementById('profile-view-follows-you-badge').style.display = 'none';
-    document.getElementById('profile-view-mutual-badge').style.display = 'none';
-    document.getElementById('profile-view-remove-follower-btn').style.display = 'none';
+    // Intentar renderizar datos desde caché de inmediato
+    let cachedAccount = null;
+    if (currentProfileData && String(accountId) === String(currentProfileData.id)) {
+        cachedAccount = currentProfileData;
+    } else if (profilesCache[accountId]) {
+        cachedAccount = profilesCache[accountId];
+    }
+
+    if (cachedAccount) {
+        renderProfileData(cachedAccount);
+    } else {
+        document.getElementById('profile-view-display-name').innerText = 'Cargando...';
+        document.getElementById('profile-view-handle').innerText = '@...';
+        document.getElementById('profile-view-followers-count').innerText = '-';
+        document.getElementById('profile-view-following-count').innerText = '-';
+        document.getElementById('profile-view-posts-count').innerText = '-';
+        document.getElementById('profile-view-joined').innerText = '-';
+        document.getElementById('profile-view-bio').innerHTML = '';
+        document.getElementById('profile-view-fields').innerHTML = '';
+        document.getElementById('profile-view-role-container').style.display = 'none';
+        document.getElementById('profile-view-badge').innerText = '';
+        document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+        document.getElementById('profile-view-mutual-badge').style.display = 'none';
+        document.getElementById('profile-view-remove-follower-btn').style.display = 'none';
+        
+        // Reiniciar imágenes para evitar mostrar el perfil anterior mientras carga
+        const defaultAvatar = "/assets/default-avatar.png";
+        const defaultHeader = "/assets/default-header.png";
+        
+        const avatarImg = document.getElementById('profile-view-avatar');
+        if (avatarImg && avatarImg.getAttribute('src') !== defaultAvatar) {
+            avatarImg.src = defaultAvatar;
+        }
+        const headerBg = document.getElementById('profile-view-header-bg');
+        if (headerBg) {
+            headerBg.style.backgroundImage = `url("${defaultHeader}")`;
+        }
+    }
+
     const optionsBtn = document.getElementById('profile-view-options-btn');
     if (optionsBtn) optionsBtn.style.display = 'none';
     const dropdown = document.getElementById('profile-options-dropdown');
@@ -2636,6 +2737,7 @@ async function viewProfile(accountId, fromHashChange = false) {
         if (!res.ok) throw new Error("Error cargando perfil");
         const account = await res.json();
         lastLoadedProfile = account;
+        profilesCache[account.id] = account;
 
         // Actualizar la URL de la barra del navegador con el handle real @username o @username@domain
         const handlePath = account.domain ? `/@${account.username}@${account.domain}` : `/@${account.username}`;
@@ -2643,20 +2745,7 @@ async function viewProfile(accountId, fromHashChange = false) {
             history.replaceState(null, '', handlePath);
         }
 
-        document.getElementById('profile-view-display-name').innerText = account.display_name;
-        document.getElementById('profile-view-handle').innerText = `@${account.acct}`;
-        document.getElementById('profile-view-followers-count').innerText = formatStatNumber(account.followers_count);
-        document.getElementById('profile-view-following-count').innerText = formatStatNumber(account.following_count);
-        document.getElementById('profile-view-posts-count').innerText = formatStatNumber(account.statuses_count);
-        
-        const joinedYear = new Date(account.created_at).getFullYear();
-        document.getElementById('profile-view-joined').innerText = joinedYear;
-
-        const headerUrl = proxyUrl(account.header || "/assets/default-header.png");
-        const avatarUrl = proxyUrl(account.avatar || "/assets/default-avatar.png");
-        
-        document.getElementById('profile-view-header-bg').style.backgroundImage = `url('${headerUrl}')`;
-        document.getElementById('profile-view-avatar').src = avatarUrl;
+        renderProfileData(account);
 
         const actionBtn = document.getElementById('profile-view-action-btn');
         if (!token) {
@@ -2727,46 +2816,10 @@ async function viewProfile(accountId, fromHashChange = false) {
             }
         }
 
-        document.getElementById('profile-view-bio').innerHTML = sanitizeHTML(account.note) || '<p style="color:var(--text-muted)">Sin biografía.</p>';
-
-        const fieldsGrid = document.getElementById('profile-view-fields');
-        fieldsGrid.innerHTML = '';
-        const fields = account.fields || [];
-        fields.forEach(f => {
-            const card = document.createElement('div');
-            card.className = 'profile-field-card';
-            if (f.verified_at) {
-                card.classList.add('verified');
-            }
-
-            let valHTML = sanitizeHTML(f.value || '');
-            if (valHTML.includes('<a ')) {
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = valHTML;
-                const links = tempDiv.querySelectorAll('a');
-                links.forEach(a => {
-                    const href = a.getAttribute('href');
-                    const cleanText = a.textContent || href.replace(/^https?:\/\/(www\.)?/, '');
-                    const newLink = document.createElement('a');
-                    newLink.setAttribute('href', href);
-                    newLink.setAttribute('target', '_blank');
-                    newLink.setAttribute('rel', 'me nofollow noopener noreferrer');
-                    newLink.textContent = cleanText;
-                    a.parentNode.replaceChild(newLink, a);
-                });
-                valHTML = tempDiv.innerHTML;
-            } else if (valHTML.startsWith('http://') || valHTML.startsWith('https://')) {
-                const label = valHTML.replace(/^https?:\/\/(www\.)?/, '');
-                valHTML = `<a href="${valHTML}" rel="me nofollow noopener noreferrer" target="_blank">${label}</a>`;
-            }
-
-            const verifiedBadge = f.verified_at ? `<span class="verified-badge">✓</span>` : '';
-            card.innerHTML = `
-                <span class="field-label" title="${f.name}">${f.name}</span>
-                <span class="field-value">${valHTML} ${verifiedBadge}</span>
-            `;
-            fieldsGrid.appendChild(card);
-        });
+        // Mostrar opciones de bloquear/silenciar/reportar si no es mi propio perfil
+        if (token && currentProfileData && String(account.id) !== String(currentProfileData.id)) {
+            if (optionsBtn) optionsBtn.style.display = 'inline-block';
+        }
 
         await loadProfileStatuses(accountId);
     } catch (err) {
