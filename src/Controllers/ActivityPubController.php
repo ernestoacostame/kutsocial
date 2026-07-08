@@ -805,10 +805,10 @@ XML;
         if ($account) {
             $lastUpdated = strtotime($account['updated_at']);
             if (time() - $lastUpdated < 300) {
-                self::log("getOrRegisterRemoteActor: Actor remoto '$username@$host' ya existe en DB local y está fresco");
+                self::log("getOrRegisterRemoteActor: Actor remoto '{$account['username']}@$host' ya existe en DB local y está fresco");
                 return $account;
             }
-            self::log("getOrRegisterRemoteActor: Actor remoto '$username@$host' ya existe en DB local pero necesita actualización");
+            self::log("getOrRegisterRemoteActor: Actor remoto '{$account['username']}@$host' ya existe en DB local pero necesita actualización");
         }
 
         // Si no existe o está desactualizado, debemos resolver el actor para obtener su inbox, public_key y estadísticas
