@@ -1172,6 +1172,26 @@ HTML;
             ];
         }
 
+        // Filtrar notificaciones de usuarios/dominios bloqueados o silenciados
+        $filteredNotifications = [];
+        foreach ($notifications as $notification) {
+            $nAcc = $notification['account'] ?? null;
+            if ($nAcc) {
+                $nUsername = $nAcc['username'] ?? '';
+                $nAcct = $nAcc['acct'] ?? '';
+                $nDomain = '';
+                if (strpos($nAcct, '@') !== false) {
+                    $nDomain = explode('@', $nAcct)[1];
+                }
+                
+                if (self::isBlockedOrMuted($db, $nUsername, $nDomain)) {
+                    continue;
+                }
+            }
+            $filteredNotifications[] = $notification;
+        }
+        $notifications = $filteredNotifications;
+
         // Ordenar notificaciones por fecha descendente
         usort($notifications, function($a, $b) {
             return strcmp($b['created_at'], $a['created_at']);
@@ -3963,6 +3983,90 @@ HTML;
         ];
     }
 
+    private static function getRelationshipObj(\PDO $db, int $currentUserId, int $targetId): array {
+        $stmtAcc = $db->prepare("SELECT username, domain FROM accounts WHERE id = ? LIMIT 1");
+        $stmtAcc->execute([$targetId]);
+        $targetAcc = $stmtAcc->fetch();
+
+        $followStatus = null;
+        $followedByStatus = null;
+        $blocking = false;
+        $muting = false;
+        $domainBlocking = false;
+
+        if ($targetAcc) {
+            $tUsername = strtolower($targetAcc['username']);
+            $tDomain = $targetAcc['domain'] ? strtolower($targetAcc['domain']) : '';
+            $tAcct = $tDomain ? $tUsername . '@' . $tDomain : $tUsername;
+
+            // Check follow status (current user -> target)
+            $stmt = $db->prepare("SELECT status FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+            $stmt->execute([$currentUserId, $targetId]);
+            $followStatus = $stmt->fetchColumn();
+
+            // Check followed by status (target -> current user)
+            $stmt2 = $db->prepare("SELECT status FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+            $stmt2->execute([$targetId, $currentUserId]);
+            $followedByStatus = $stmt2->fetchColumn();
+
+            // Check blocking status
+            $stmtB = $db->prepare("SELECT 1 FROM moderation_blocks WHERE type = 'account' AND (LOWER(target) = ? OR LOWER(target) = ?) LIMIT 1");
+            $stmtB->execute([$tUsername, $tAcct]);
+            $blocking = (bool)$stmtB->fetchColumn();
+
+            // Check muting status
+            $stmtM = $db->prepare("SELECT 1 FROM moderation_blocks WHERE type = 'mute' AND (LOWER(target) = ? OR LOWER(target) = ?) LIMIT 1");
+            $stmtM->execute([$tUsername, $tAcct]);
+            $muting = (bool)$stmtM->fetchColumn();
+
+            // Check domain blocking status
+            if (!empty($tDomain)) {
+                $stmtD = $db->prepare("SELECT 1 FROM moderation_blocks WHERE type = 'domain' AND LOWER(target) = ? LIMIT 1");
+                $stmtD->execute([$tDomain]);
+                $domainBlocking = (bool)$stmtD->fetchColumn();
+            }
+        }
+
+        return [
+            'id' => (string)$targetId,
+            'following' => ($followStatus === 'accepted' || $followStatus === 'pending'),
+            'showing_reblogs' => true,
+            'notifying' => false,
+            'languages' => null,
+            'followed_by' => ($followedByStatus === 'accepted'),
+            'blocking' => $blocking,
+            'blocked_by' => false,
+            'muting' => $muting,
+            'muting_notifications' => $muting,
+            'requested' => ($followStatus === 'pending'),
+            'domain_blocking' => $domainBlocking,
+            'endorsement' => false,
+            'note' => ''
+        ];
+    }
+
+    private static function isBlockedOrMuted(\PDO $db, string $username, ?string $domain): bool {
+        $acct = $domain ? $username . '@' . $domain : $username;
+        $username = strtolower($username);
+        $acct = strtolower($acct);
+        $domain = $domain ? strtolower($domain) : '';
+
+        if (!empty($domain)) {
+            $stmt = $db->prepare("SELECT 1 FROM moderation_blocks WHERE type = 'domain' AND LOWER(target) = ? LIMIT 1");
+            $stmt->execute([$domain]);
+            if ($stmt->fetchColumn()) {
+                return true;
+            }
+        }
+
+        $stmt = $db->prepare("SELECT 1 FROM moderation_blocks WHERE type IN ('account', 'mute') AND (LOWER(target) = ? OR LOWER(target) = ?) LIMIT 1");
+        $stmt->execute([$username, $acct]);
+        if ($stmt->fetchColumn()) {
+            return true;
+        }
+
+        return false;
+
     public static function getRelationships(): void {
         $account = self::getAuthenticatedAccount();
         if (!$account) {
@@ -3979,32 +4083,7 @@ HTML;
         $relationships = [];
 
         foreach ($ids as $id) {
-            $id = (int)$id;
-            
-            $stmt = $db->prepare("SELECT status FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-            $stmt->execute([$account['id'], $id]);
-            $followStatus = $stmt->fetchColumn();
-
-            $stmt2 = $db->prepare("SELECT status FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-            $stmt2->execute([$id, $account['id']]);
-            $followedByStatus = $stmt2->fetchColumn();
-
-            $relationships[] = [
-                'id' => (string)$id,
-                'following' => ($followStatus === 'accepted'),
-                'showing_reblogs' => true,
-                'notifying' => false,
-                'languages' => null,
-                'followed_by' => ($followedByStatus === 'accepted'),
-                'blocking' => false,
-                'blocked_by' => false,
-                'muting' => false,
-                'muting_notifications' => false,
-                'requested' => ($followStatus === 'pending'),
-                'domain_blocking' => false,
-                'endorsement' => false,
-                'note' => ''
-            ];
+            $relationships[] = self::getRelationshipObj($db, (int)$account['id'], (int)$id);
         }
 
         Router::json($relationships);
@@ -4083,27 +4162,7 @@ HTML;
             \KutSocial\Queue::triggerAsync($domain);
         }
 
-        // Verificar si la cuenta objetivo nos sigue
-        $stmtFollowedBy = $db->prepare("SELECT status FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-        $stmtFollowedBy->execute([$targetId, $account['id']]);
-        $followedByStatus = $stmtFollowedBy->fetchColumn();
-
-        Router::json([
-            'id' => (string)$targetId,
-            'following' => ($status === 'accepted' || $status === 'pending'),
-            'showing_reblogs' => true,
-            'notifying' => false,
-            'languages' => null,
-            'followed_by' => ($followedByStatus === 'accepted'),
-            'blocking' => false,
-            'blocked_by' => false,
-            'muting' => false,
-            'muting_notifications' => false,
-            'requested' => ($status === 'pending'),
-            'domain_blocking' => false,
-            'endorsement' => false,
-            'note' => ''
-        ]);
+        Router::json(self::getRelationshipObj($db, (int)$account['id'], $targetId));
     }
 
     public static function unfollowAccount(array $params): void {
@@ -4145,27 +4204,7 @@ HTML;
             \KutSocial\Queue::triggerAsync($domain);
         }
 
-        // Verificar si la cuenta objetivo nos sigue
-        $stmtFollowedBy = $db->prepare("SELECT status FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-        $stmtFollowedBy->execute([$targetId, $account['id']]);
-        $followedByStatus = $stmtFollowedBy->fetchColumn();
-
-        Router::json([
-            'id' => (string)$targetId,
-            'following' => false,
-            'showing_reblogs' => false,
-            'notifying' => false,
-            'languages' => null,
-            'followed_by' => ($followedByStatus === 'accepted'),
-            'blocking' => false,
-            'blocked_by' => false,
-            'muting' => false,
-            'muting_notifications' => false,
-            'requested' => false,
-            'domain_blocking' => false,
-            'endorsement' => false,
-            'note' => ''
-        ]);
+        Router::json(self::getRelationshipObj($db, (int)$account['id'], $targetId));
     }
 
     public static function removeFromFollowers(array $params): void {
@@ -4750,7 +4789,7 @@ HTML;
             $t = strtolower($b['target']);
             if ($b['type'] === 'domain') {
                 $blockedDomains[] = $t;
-            } elseif ($b['type'] === 'account') {
+            } elseif ($b['type'] === 'account' || $b['type'] === 'mute') {
                 $blockedAccounts[] = $t;
             } elseif ($b['type'] === 'word') {
                 $blockedWords[] = $t;
@@ -6680,6 +6719,272 @@ HTML;
         }
 
         Router::json([]);
+    }
+
+    public static function muteAccount(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $targetId = (int)$params['id'];
+        $db = Database::connect();
+
+        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+        $stmtTarget->execute([$targetId]);
+        $targetAccount = $stmtTarget->fetch();
+        if (!$targetAccount) {
+            Router::json(['error' => 'Cuenta no encontrada'], 404);
+            return;
+        }
+
+        $tUsername = strtolower($targetAccount['username']);
+        $tDomain = $targetAccount['domain'] ? strtolower($targetAccount['domain']) : '';
+        $tAcct = $tDomain ? $tUsername . '@' . $tDomain : $tUsername;
+
+        $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES ('mute', ?)");
+        $stmt->execute([$tAcct]);
+
+        Router::json(self::getRelationshipObj($db, (int)$account['id'], $targetId));
+    }
+
+    public static function unmuteAccount(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $targetId = (int)$params['id'];
+        $db = Database::connect();
+
+        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+        $stmtTarget->execute([$targetId]);
+        $targetAccount = $stmtTarget->fetch();
+        if (!$targetAccount) {
+            Router::json(['error' => 'Cuenta no encontrada'], 404);
+            return;
+        }
+
+        $tUsername = strtolower($targetAccount['username']);
+        $tDomain = $targetAccount['domain'] ? strtolower($targetAccount['domain']) : '';
+        $tAcct = $tDomain ? $tUsername . '@' . $tDomain : $tUsername;
+
+        $stmt = $db->prepare("DELETE FROM moderation_blocks WHERE type = 'mute' AND (LOWER(target) = ? OR LOWER(target) = ?)");
+        $stmt->execute([$tUsername, $tAcct]);
+
+        Router::json(self::getRelationshipObj($db, (int)$account['id'], $targetId));
+    }
+
+    public static function blockAccount(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $targetId = (int)$params['id'];
+        $db = Database::connect();
+
+        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+        $stmtTarget->execute([$targetId]);
+        $targetAccount = $stmtTarget->fetch();
+        if (!$targetAccount) {
+            Router::json(['error' => 'Cuenta no encontrada'], 404);
+            return;
+        }
+
+        $tUsername = strtolower($targetAccount['username']);
+        $tDomain = $targetAccount['domain'] ? strtolower($targetAccount['domain']) : '';
+        $tAcct = $tDomain ? $tUsername . '@' . $tDomain : $tUsername;
+
+        $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES ('account', ?)");
+        $stmt->execute([$tAcct]);
+
+        // Break follows
+        $stmtBreak = $db->prepare("DELETE FROM follows WHERE (account_id = ? AND target_account_id = ?) OR (account_id = ? AND target_account_id = ?)");
+        $stmtBreak->execute([$account['id'], $targetId, $targetId, $account['id']]);
+
+        // Send federated ActivityPub Block activity if remote
+        if ($tDomain && !empty($targetAccount['inbox_url'])) {
+            $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+            $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $localActorUrl = "$proto://$domain/users/{$account['username']}";
+            $targetActorUrl = $targetAccount['url'] ?: "$proto://{$tDomain}/users/{$targetAccount['username']}";
+
+            $blockActivity = [
+                '@context' => 'https://www.w3.org/ns/activitystreams',
+                'id' => $localActorUrl . '/activities/block-' . bin2hex(random_bytes(8)),
+                'type' => 'Block',
+                'actor' => $localActorUrl,
+                'object' => $targetActorUrl
+            ];
+
+            \KutSocial\Queue::enqueue('Block', $blockActivity, $targetAccount['inbox_url']);
+            \KutSocial\Queue::triggerAsync($domain);
+        }
+
+        Router::json(self::getRelationshipObj($db, (int)$account['id'], $targetId));
+    }
+
+    public static function unblockAccount(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $targetId = (int)$params['id'];
+        $db = Database::connect();
+
+        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+        $stmtTarget->execute([$targetId]);
+        $targetAccount = $stmtTarget->fetch();
+        if (!$targetAccount) {
+            Router::json(['error' => 'Cuenta no encontrada'], 404);
+            return;
+        }
+
+        $tUsername = strtolower($targetAccount['username']);
+        $tDomain = $targetAccount['domain'] ? strtolower($targetAccount['domain']) : '';
+        $tAcct = $tDomain ? $tUsername . '@' . $tDomain : $tUsername;
+
+        $stmt = $db->prepare("DELETE FROM moderation_blocks WHERE type = 'account' AND (LOWER(target) = ? OR LOWER(target) = ?)");
+        $stmt->execute([$tUsername, $tAcct]);
+
+        Router::json(self::getRelationshipObj($db, (int)$account['id'], $targetId));
+    }
+
+    public static function getMutedAccounts(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("
+            SELECT a.* FROM accounts a 
+            JOIN moderation_blocks m ON m.type = 'mute' AND (
+                LOWER(m.target) = LOWER(a.username) 
+                OR (a.domain IS NOT NULL AND a.domain != '' AND LOWER(m.target) = LOWER(a.username || '@' || a.domain))
+            )
+            ORDER BY m.id DESC
+        ");
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        $formatted = [];
+        foreach ($rows as $row) {
+            $formatted[] = self::formatAccount($row);
+        }
+
+        Router::json($formatted);
+    }
+
+    public static function getBlockedAccounts(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("
+            SELECT a.* FROM accounts a 
+            JOIN moderation_blocks m ON m.type = 'account' AND (
+                LOWER(m.target) = LOWER(a.username) 
+                OR (a.domain IS NOT NULL AND a.domain != '' AND LOWER(m.target) = LOWER(a.username || '@' || a.domain))
+            )
+            ORDER BY m.id DESC
+        ");
+        $stmt->execute();
+        $rows = $stmt->fetchAll();
+
+        $formatted = [];
+        foreach ($rows as $row) {
+            $formatted[] = self::formatAccount($row);
+        }
+
+        Router::json($formatted);
+    }
+
+    public static function getDomainBlocks(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT target FROM moderation_blocks WHERE type = 'domain' ORDER BY id DESC");
+        $stmt->execute();
+        $rows = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+        Router::json($rows);
+    }
+
+    public static function blockDomain(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $domain = $_POST['domain'] ?? $_GET['domain'] ?? null;
+        if (!$domain) {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $domain = $input['domain'] ?? null;
+        }
+
+        if (empty($domain)) {
+            Router::json(['error' => 'Dominio no proporcionado'], 400);
+            return;
+        }
+
+        $domain = strtolower(trim($domain));
+        $db = Database::connect();
+
+        $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES ('domain', ?)");
+        $stmt->execute([$domain]);
+
+        // Break follows with accounts from this domain
+        $stmtBreak = $db->prepare("
+            DELETE FROM follows 
+            WHERE account_id IN (SELECT id FROM accounts WHERE LOWER(domain) = ?) 
+               OR target_account_id IN (SELECT id FROM accounts WHERE LOWER(domain) = ?)
+        ");
+        $stmtBreak->execute([$domain, $domain]);
+
+        Router::json((object)[]);
+    }
+
+    public static function unblockDomain(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $domain = $_POST['domain'] ?? $_GET['domain'] ?? null;
+        if (!$domain) {
+            $input = json_decode(file_get_contents('php://input'), true);
+            $domain = $input['domain'] ?? null;
+        }
+
+        if (empty($domain)) {
+            Router::json(['error' => 'Dominio no proporcionado'], 400);
+            return;
+        }
+
+        $domain = strtolower(trim($domain));
+        $db = Database::connect();
+
+        $stmt = $db->prepare("DELETE FROM moderation_blocks WHERE type = 'domain' AND LOWER(target) = ?");
+        $stmt->execute([$domain]);
+
+        Router::json((object)[]);
     }
 }
 

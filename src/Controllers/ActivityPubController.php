@@ -654,6 +654,35 @@ XML;
             return;
         }
 
+        // Validar si el actor o su dominio están bloqueados
+        $tUsername = strtolower($remoteAccount['username']);
+        $tDomain = $remoteAccount['domain'] ? strtolower($remoteAccount['domain']) : '';
+        $tAcct = $tDomain ? $tUsername . '@' . $tDomain : $tUsername;
+
+        $stmtB = $db->prepare("SELECT 1 FROM moderation_blocks WHERE (type = 'account' AND (LOWER(target) = ? OR LOWER(target) = ?)) OR (type = 'domain' AND LOWER(target) = ?) LIMIT 1");
+        $stmtB->execute([$tUsername, $tAcct, $tDomain]);
+        if ($stmtB->fetchColumn()) {
+            self::log("handleFollow: Actor '$tAcct' o su dominio '$tDomain' están bloqueados. Enviando Reject.");
+
+            $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+            $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $localActorUrl = "$proto://$domain/users/{$localAccount['username']}";
+
+            $rejectActivity = [
+                '@context' => 'https://www.w3.org/ns/activitystreams',
+                'id' => $localActorUrl . '/activities/reject-' . bin2hex(random_bytes(8)),
+                'type' => 'Reject',
+                'actor' => $localActorUrl,
+                'object' => $activity
+            ];
+
+            if (!empty($remoteAccount['inbox_url'])) {
+                \KutSocial\Queue::enqueue('Reject', $rejectActivity, $remoteAccount['inbox_url']);
+                \KutSocial\Queue::triggerAsync($domain);
+            }
+            return;
+        }
+
         // 2. Guardar relación en la tabla follows (respetando si la cuenta está cerrada/locked)
         $status = ($localAccount['locked'] ?? 0) ? 'pending' : 'accepted';
         self::log("handleFollow: Guardando relación follows en la DB con estado '$status' (remoto ID {$remoteAccount['id']} -> local ID {$localAccount['id']})");

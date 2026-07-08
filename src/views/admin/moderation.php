@@ -5,7 +5,8 @@
             <label for="block_type">Tipo de Filtro</label>
             <select name="type" id="block_type" required>
                 <option value="domain">Dominio completo</option>
-                <option value="account">Cuenta / Usuario</option>
+                <option value="account">Cuenta / Usuario (Bloqueo)</option>
+                <option value="mute">Cuenta / Usuario (Silencio)</option>
                 <option value="word">Palabra clave</option>
                 <option value="hashtag">Hashtag</option>
             </select>
@@ -36,6 +37,7 @@
                 $typeLabel = match($row['type']) {
                     'domain' => '<span class="material-icons-outlined" style="vertical-align: middle; margin-right: 6px; font-size: 18px;">public</span> Dominio',
                     'account' => '<span class="material-icons-outlined" style="vertical-align: middle; margin-right: 6px; font-size: 18px;">person</span> Cuenta',
+                    'mute' => '<span class="material-icons-outlined" style="vertical-align: middle; margin-right: 6px; font-size: 18px;">volume_off</span> Silenciado',
                     'word' => '<span class="material-icons-outlined" style="vertical-align: middle; margin-right: 6px; font-size: 18px;">description</span> Palabra',
                     'hashtag' => '<span class="material-icons-outlined" style="vertical-align: middle; margin-right: 6px; font-size: 18px;">tag</span> Hashtag',
                     default => htmlspecialchars($row['type'])

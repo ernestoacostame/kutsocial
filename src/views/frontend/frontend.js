@@ -9,6 +9,8 @@ if (token || (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked)) {
 let currentTimeline = 'public';
 let lastRenderedTimeline = '';
 let lastLoadedProfile = null;
+let currentProfileRelationship = null;
+let activeTootOptionsMenu = null;
 function proxyUrl(url) {
     if (!url) return '';
     if (url.startsWith('/') || url.startsWith(window.location.origin) || !url.startsWith('http')) {
@@ -1061,7 +1063,11 @@ function createThreadTootElement(toot, isMain = false) {
                         <button class="toot-action-btn btn-delete" onclick="deleteToot('${toot.id}', this)" title="Eliminar">
                             <span class="material-icons-outlined">delete</span>
                         </button>
-                    ` : ''}
+                    ` : `
+                        <button class="toot-action-btn btn-options" onclick="toggleTootOptionsMenu('${toot.id}', this, event)" title="Opciones de Moderación">
+                            <span class="material-icons-outlined">more_horiz</span>
+                        </button>
+                    `}
                 </div>
             </div>
         </div>
@@ -2616,6 +2622,10 @@ async function viewProfile(accountId, fromHashChange = false) {
     document.getElementById('profile-view-follows-you-badge').style.display = 'none';
     document.getElementById('profile-view-mutual-badge').style.display = 'none';
     document.getElementById('profile-view-remove-follower-btn').style.display = 'none';
+    const optionsBtn = document.getElementById('profile-view-options-btn');
+    if (optionsBtn) optionsBtn.style.display = 'none';
+    const dropdown = document.getElementById('profile-options-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
     document.getElementById('profile-feed').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Cargando toots...</div>';
 
     try {
@@ -2709,6 +2719,9 @@ async function viewProfile(accountId, fromHashChange = false) {
                         actionBtn.style.background = 'var(--primary)';
                         actionBtn.onclick = () => handleFollow(account.id, actionBtn);
                     }
+
+                    currentProfileRelationship = rel;
+                    updateProfileModerationMenu(account);
                 }
             }
         }
@@ -2827,6 +2840,372 @@ async function handleRemoveFollower(accountId, btn) {
         btn.disabled = false;
         btn.innerText = 'Eliminar seguidor';
     }
+}
+
+function toggleProfileOptionsMenu(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('profile-options-dropdown');
+    if (!dropdown) return;
+    const isHidden = (dropdown.style.display === 'none');
+    dropdown.style.display = isHidden ? 'block' : 'none';
+}
+
+// Add global listener to close profile options dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('profile-options-dropdown');
+    const optionsBtn = document.getElementById('profile-view-options-btn');
+    if (dropdown && dropdown.style.display === 'block') {
+        if (optionsBtn && e.target !== optionsBtn && !optionsBtn.contains(e.target) && e.target !== dropdown && !dropdown.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    }
+});
+
+function updateProfileModerationMenu(account) {
+    const optionsBtn = document.getElementById('profile-view-options-btn');
+    const dropdown = document.getElementById('profile-options-dropdown');
+    
+    if (dropdown) dropdown.style.display = 'none';
+
+    if (!token || !currentProfileRelationship || !currentProfileData || String(account.id) === String(currentProfileData.id)) {
+        if (optionsBtn) optionsBtn.style.display = 'none';
+        return;
+    }
+    
+    if (optionsBtn) optionsBtn.style.display = 'inline-flex';
+    
+    const isMuted = currentProfileRelationship.muting;
+    const isBlocked = currentProfileRelationship.blocking;
+    const isDomainBlocked = currentProfileRelationship.domain_blocking;
+    
+    const muteText = document.getElementById('profile-mute-text');
+    const muteIcon = document.getElementById('profile-mute-icon');
+    if (muteText && muteIcon) {
+        muteText.innerText = isMuted ? 'Desactivar silencio' : 'Silenciar usuario';
+        muteIcon.innerText = isMuted ? 'volume_up' : 'volume_off';
+    }
+    
+    const blockText = document.getElementById('profile-block-text');
+    const blockIcon = document.getElementById('profile-block-icon');
+    if (blockText && blockIcon) {
+        blockText.innerText = isBlocked ? 'Desbloquear usuario' : 'Bloquear usuario';
+        blockIcon.innerText = isBlocked ? 'do_not_disturb_off' : 'block';
+    }
+    
+    const domainBtn = document.getElementById('profile-domain-block-btn');
+    if (domainBtn) {
+        const domain = account.domain;
+        if (domain) {
+            domainBtn.style.display = 'flex';
+            const domainText = document.getElementById('profile-domain-block-text');
+            domainText.innerText = isDomainBlocked ? `Desbloquear dominio (${domain})` : `Bloquear dominio (${domain})`;
+            const domainIcon = domainBtn.querySelector('.material-icons-outlined');
+            if (domainIcon) {
+                domainIcon.innerText = isDomainBlocked ? 'public' : 'public_off';
+            }
+        } else {
+            domainBtn.style.display = 'none';
+        }
+    }
+}
+
+async function handleProfileMute() {
+    if (!currentProfileRelationship || !activeProfileViewId) return;
+    const isMuted = currentProfileRelationship.muting;
+    const action = isMuted ? 'unmute' : 'mute';
+    const confirmMsg = isMuted ? 
+        '¿Deseas reactivar el sonido de este usuario?' : 
+        '¿Deseas silenciar a este usuario? No verás sus toots en tus timelines.';
+        
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+        const res = await fetch(`/api/v1/accounts/${activeProfileViewId}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const rel = await res.json();
+            currentProfileRelationship = rel;
+            const handleText = document.getElementById('profile-view-handle').innerText;
+            const parts = handleText.split('@');
+            const domain = parts[2] || null;
+            const account = { id: activeProfileViewId, domain: domain };
+            updateProfileModerationMenu(account);
+            reloadCurrentTimeline();
+            alert(`Usuario ${isMuted ? 'desilenciado' : 'silenciado'} con éxito`);
+        } else {
+            alert("Error al cambiar estado de silencio");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error de red al silenciar/desilenciar");
+    }
+}
+
+async function handleProfileBlock() {
+    if (!currentProfileRelationship || !activeProfileViewId) return;
+    const isBlocked = currentProfileRelationship.blocking;
+    const action = isBlocked ? 'unblock' : 'block';
+    const confirmMsg = isBlocked ? 
+        '¿Deseas desbloquear a este usuario?' : 
+        '¿Deseas bloquear a este usuario? Se romperá el seguimiento mutuo y no verás sus toots.';
+        
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+        const res = await fetch(`/api/v1/accounts/${activeProfileViewId}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const rel = await res.json();
+            currentProfileRelationship = rel;
+            const handleText = document.getElementById('profile-view-handle').innerText;
+            const parts = handleText.split('@');
+            const domain = parts[2] || null;
+            const account = { id: activeProfileViewId, domain: domain };
+            updateProfileModerationMenu(account);
+            
+            // Si bloqueamos, actualizar botones de seguimiento
+            const actionBtn = document.getElementById('profile-view-action-btn');
+            if (actionBtn) {
+                if (rel.blocking) {
+                    actionBtn.innerText = 'Seguir';
+                    actionBtn.style.background = 'var(--primary)';
+                    actionBtn.onclick = () => handleFollow(activeProfileViewId, actionBtn);
+                    document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+                    document.getElementById('profile-view-mutual-badge').style.display = 'none';
+                    document.getElementById('profile-view-remove-follower-btn').style.display = 'none';
+                }
+            }
+            reloadCurrentTimeline();
+            alert(`Usuario ${isBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+        } else {
+            alert("Error al cambiar estado de bloqueo");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error de red al bloquear/desbloquear");
+    }
+}
+
+async function handleProfileDomainBlock() {
+    if (!currentProfileRelationship || !activeProfileViewId) return;
+    const handleText = document.getElementById('profile-view-handle').innerText;
+    const parts = handleText.split('@');
+    const domain = parts[2];
+    if (!domain) return;
+    
+    const isDomainBlocked = currentProfileRelationship.domain_blocking;
+    const confirmMsg = isDomainBlocked ? 
+        `¿Deseas desbloquear el dominio ${domain}?` : 
+        `¿Deseas bloquear completamente el dominio ${domain}? No verás ninguna publicación ni recibirás interacciones de esta instancia.`;
+        
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+        const res = await fetch(`/api/v1/domain_blocks`, {
+            method: isDomainBlocked ? 'DELETE' : 'POST',
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ domain: domain })
+        });
+        if (res.ok) {
+            currentProfileRelationship.domain_blocking = !isDomainBlocked;
+            const account = { id: activeProfileViewId, domain: domain };
+            updateProfileModerationMenu(account);
+            reloadCurrentTimeline();
+            alert(`Dominio ${domain} ${isDomainBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+        } else {
+            alert("Error al cambiar estado de bloqueo de dominio");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error de red al bloquear/desbloquear dominio");
+    }
+}
+
+function reloadCurrentTimeline() {
+    if (window.KUTSOCIAL_ACTIVE_SECTION === 'feed') {
+        loadTimeline(false);
+    } else if (window.KUTSOCIAL_ACTIVE_SECTION === 'profile-view' && activeProfileViewId) {
+        loadProfileStatuses(activeProfileViewId);
+    }
+}
+
+async function toggleTootOptionsMenu(tootId, btn, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    if (activeTootOptionsMenu) {
+        activeTootOptionsMenu.remove();
+        activeTootOptionsMenu = null;
+        return;
+    }
+
+    const card = btn.closest('.toot-card');
+    if (!card || !card._toot) return;
+    const toot = card._toot;
+    const account = toot.account;
+
+    // Create the menu container
+    const rect = btn.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'toot-context-menu';
+    menu.style = `
+        position: fixed;
+        top: ${rect.bottom + 6}px;
+        left: ${Math.min(rect.left, window.innerWidth - 220)}px;
+        background: #1e1f22;
+        border: 1px solid #2f3037;
+        border-radius: 8px;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        padding: 6px 0;
+        min-width: 200px;
+    `;
+
+    menu.innerHTML = '<div style="padding: 8px 16px; font-size: 13px; color: var(--text-muted);">Cargando...</div>';
+    document.body.appendChild(menu);
+    activeTootOptionsMenu = menu;
+
+    try {
+        const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${account.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!relRes.ok) throw new Error("Failed to load relationship");
+        const rels = await relRes.json();
+        const rel = rels[0];
+        if (!rel || activeTootOptionsMenu !== menu) return;
+
+        menu.innerHTML = '';
+
+        // Option: View Profile
+        const optProfile = document.createElement('button');
+        optProfile.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">person</span> Ver perfil';
+        setupMenuBtn(optProfile, () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            viewProfile(account.id);
+        });
+        menu.appendChild(optProfile);
+
+        // Option: Mute
+        const optMute = document.createElement('button');
+        const isMuted = rel.muting;
+        optMute.innerHTML = `<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">${isMuted ? 'volume_up' : 'volume_off'}</span> ${isMuted ? 'Desactivar silencio' : 'Silenciar a @' + account.acct}`;
+        setupMenuBtn(optMute, async () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            
+            const confirmMsg = isMuted ? 
+                `¿Deseas reactivar el sonido de @${account.acct}?` : 
+                `¿Deseas silenciar a @${account.acct}? No verás sus publicaciones.`;
+            if (!confirm(confirmMsg)) return;
+
+            const action = isMuted ? 'unmute' : 'mute';
+            const res = await fetch(`/api/v1/accounts/${account.id}/${action}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                alert(`Usuario ${isMuted ? 'desilenciado' : 'silenciado'} con éxito`);
+                reloadCurrentTimeline();
+            } else {
+                alert("Error al cambiar estado de silencio");
+            }
+        });
+        menu.appendChild(optMute);
+
+        // Option: Block
+        const optBlock = document.createElement('button');
+        const isBlocked = rel.blocking;
+        optBlock.innerHTML = `<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--error);">block</span> <span style="color: var(--error);">${isBlocked ? 'Desbloquear a @' + account.acct : 'Bloquear a @' + account.acct}</span>`;
+        setupMenuBtn(optBlock, async () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+
+            const confirmMsg = isBlocked ? 
+                `¿Deseas desbloquear a @${account.acct}?` : 
+                `¿Deseas bloquear a @${account.acct}? Se romperá la relación de seguimiento y no verás sus publicaciones.`;
+            if (!confirm(confirmMsg)) return;
+
+            const action = isBlocked ? 'unblock' : 'block';
+            const res = await fetch(`/api/v1/accounts/${account.id}/${action}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                alert(`Usuario ${isBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+                reloadCurrentTimeline();
+            } else {
+                alert("Error al cambiar estado de bloqueo");
+            }
+        });
+        menu.appendChild(optBlock);
+
+        // Option: Block Domain (if remote)
+        if (account.acct.includes('@')) {
+            const domain = account.acct.split('@')[1];
+            const optDomain = document.createElement('button');
+            const isDomainBlocked = rel.domain_blocking;
+            optDomain.innerHTML = `<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--error);">public_off</span> <span style="color: var(--error);">${isDomainBlocked ? 'Desbloquear dominio ' + domain : 'Bloquear dominio ' + domain}</span>`;
+            setupMenuBtn(optDomain, async () => {
+                menu.remove();
+                activeTootOptionsMenu = null;
+
+                const confirmMsg = isDomainBlocked ? 
+                    `¿Deseas desbloquear el dominio ${domain}?` : 
+                    `¿Deseas bloquear completamente el dominio ${domain}? No verás publicaciones de este servidor.`;
+                if (!confirm(confirmMsg)) return;
+
+                const res = await fetch(`/api/v1/domain_blocks`, {
+                    method: isDomainBlocked ? 'DELETE' : 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ domain: domain })
+                });
+                if (res.ok) {
+                    alert(`Dominio ${domain} ${isDomainBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+                    reloadCurrentTimeline();
+                } else {
+                    alert("Error al cambiar estado de bloqueo de dominio");
+                }
+            });
+            menu.appendChild(optDomain);
+        }
+
+    } catch (err) {
+        console.error(err);
+        menu.innerHTML = '<div style="padding: 8px 16px; font-size: 13px; color: var(--error);">Error al cargar opciones</div>';
+    }
+
+    setTimeout(() => {
+        const closeMenu = () => {
+            if (activeTootOptionsMenu) {
+                activeTootOptionsMenu.remove();
+                activeTootOptionsMenu = null;
+            }
+            document.removeEventListener('click', closeMenu);
+        };
+        document.addEventListener('click', closeMenu);
+    }, 50);
+}
+
+function setupMenuBtn(btn, onClick) {
+    btn.style = 'background:none; border:none; color:#fff; padding: 8px 16px; text-align:left; font-size:13px; cursor:pointer; display:flex; align-items:center; width:100%; gap: 6px;';
+    btn.onmouseover = () => btn.style.background = 'rgba(255,255,255,0.06)';
+    btn.onmouseout = () => btn.style.background = 'none';
+    btn.onclick = onClick;
 }
 
 async function loadProfileStatuses(accountId) {

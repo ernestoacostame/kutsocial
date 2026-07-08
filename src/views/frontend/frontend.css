@@ -1486,6 +1486,46 @@ button:hover {
     border-color: rgba(239, 68, 68, 0.3) !important;
 }
 
+/* Moderation Dropdown Menu */
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    background: #1e1f22;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    z-index: 1000;
+    min-width: 220px;
+    padding: 5px 0;
+}
+
+.dropdown-item {
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text-color, #ffffff);
+    padding: 10px 15px;
+    font-size: 13.5px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s;
+}
+
+.dropdown-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.dropdown-item.danger {
+    color: var(--error, #ef4444);
+}
+
+.dropdown-item.danger:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
 
 
 

@@ -263,6 +263,17 @@ $router->get('/api/v1/accounts/:id/followers', [MastodonApiController::class, 'g
 $router->get('/api/v1/accounts/:id/following', [MastodonApiController::class, 'getFollowing']);
 $router->post('/api/v1/accounts/:id/remove_from_followers', [MastodonApiController::class, 'removeFromFollowers']);
 
+// Moderación y Bloqueos
+$router->post('/api/v1/accounts/:id/mute', [MastodonApiController::class, 'muteAccount']);
+$router->post('/api/v1/accounts/:id/unmute', [MastodonApiController::class, 'unmuteAccount']);
+$router->post('/api/v1/accounts/:id/block', [MastodonApiController::class, 'blockAccount']);
+$router->post('/api/v1/accounts/:id/unblock', [MastodonApiController::class, 'unblockAccount']);
+$router->get('/api/v1/mutes', [MastodonApiController::class, 'getMutedAccounts']);
+$router->get('/api/v1/blocks', [MastodonApiController::class, 'getBlockedAccounts']);
+$router->get('/api/v1/domain_blocks', [MastodonApiController::class, 'getDomainBlocks']);
+$router->post('/api/v1/domain_blocks', [MastodonApiController::class, 'blockDomain']);
+$router->delete('/api/v1/domain_blocks', [MastodonApiController::class, 'unblockDomain']);
+
 // Solicitudes de seguimiento (Follow Requests)
 $router->get('/api/v1/follow_requests', [MastodonApiController::class, 'getFollowRequests']);
 $router->post('/api/v1/follow_requests/:id/authorize', [MastodonApiController::class, 'authorizeFollowRequest']);

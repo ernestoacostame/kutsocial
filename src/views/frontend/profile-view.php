@@ -14,10 +14,29 @@
 
         <!-- Datos del Perfil -->
         <div class="profile-info-container" style="padding: 20px;">
-            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: -10px; margin-bottom: 15px;">
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: -10px; margin-bottom: 15px; position: relative;">
                 <button id="profile-view-manage-lists-btn" class="btn-publish" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); font-size: 14px; padding: 6px 16px; border-radius: 20px; cursor: pointer; display: none; transition: all 0.2s;" onclick="openManageListsModal()">Organizar</button>
                 <button id="profile-view-remove-follower-btn" class="btn-publish" style="background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--error); font-size: 14px; padding: 6px 16px; border-radius: 20px; cursor: pointer; display: none; transition: all 0.2s;">Eliminar seguidor</button>
                 <button id="profile-view-action-btn" class="btn-publish" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); font-size: 14px; padding: 6px 16px; border-radius: 20px; cursor: pointer; transition: all 0.2s;">Editar perfil</button>
+                
+                <button id="profile-view-options-btn" class="btn-publish" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); font-size: 14px; padding: 6px 12px; border-radius: 20px; cursor: pointer; display: none; transition: all 0.2s; align-items: center; justify-content: center;" onclick="toggleProfileOptionsMenu(event)">
+                    <span class="material-icons-outlined" style="font-size: 18px; vertical-align: middle;">more_horiz</span>
+                </button>
+                
+                <div id="profile-options-dropdown" class="dropdown-menu" style="display: none; position: absolute; top: 38px; right: 0; background: #1e1f22; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; min-width: 220px; padding: 5px 0;">
+                    <button class="dropdown-item" onclick="handleProfileMute()" style="width: 100%; text-align: left; background: none; border: none; color: #fff; padding: 10px 15px; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.2s;">
+                        <span class="material-icons-outlined" style="font-size: 18px;" id="profile-mute-icon">volume_off</span>
+                        <span id="profile-mute-text">Silenciar usuario</span>
+                    </button>
+                    <button class="dropdown-item danger" onclick="handleProfileBlock()" style="width: 100%; text-align: left; background: none; border: none; color: var(--error); padding: 10px 15px; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.2s;">
+                        <span class="material-icons-outlined" style="font-size: 18px;" id="profile-block-icon">block</span>
+                        <span id="profile-block-text">Bloquear usuario</span>
+                    </button>
+                    <button class="dropdown-item danger" onclick="handleProfileDomainBlock()" style="width: 100%; text-align: left; background: none; border: none; color: var(--error); padding: 10px 15px; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.2s; border-top: 1px solid rgba(255,255,255,0.05);" id="profile-domain-block-btn">
+                        <span class="material-icons-outlined" style="font-size: 18px;">public_off</span>
+                        <span id="profile-domain-block-text">Bloquear dominio</span>
+                    </button>
+                </div>
             </div>
 
             <div style="margin-bottom: 12px;">
