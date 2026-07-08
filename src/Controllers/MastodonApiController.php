@@ -4066,6 +4066,7 @@ HTML;
         }
 
         return false;
+    }
 
     public static function getRelationships(): void {
         $account = self::getAuthenticatedAccount();
