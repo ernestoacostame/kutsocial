@@ -147,7 +147,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // Event listener de scroll para carga diferida (Infinite Scroll)
 window.addEventListener('scroll', () => {
-    if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 600) {
+    const scrollHeight = Math.max(document.body.offsetHeight, document.documentElement.scrollHeight);
+    if ((window.innerHeight + window.scrollY) >= scrollHeight - 600) {
         if (!isLoadingToots && hasMoreToots && currentTimeline !== 'bookmarks') {
             loadTimeline(true);
         }

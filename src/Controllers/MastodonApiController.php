@@ -2493,23 +2493,7 @@ HTML;
             $queryParams[] = $minId;
         }
 
-        $whereSql = implode(" AND ", $whereClauses);
-
-        $stmt = $db->prepare("
-            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                   s.visibility as status_visibility, s.created_at as status_created_at, 
-                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
-                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
-                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
-                   a.locked, a.discoverable
-            FROM statuses s
-            JOIN accounts a ON s.account_id = a.id
-            WHERE $whereSql
-            ORDER BY s.id DESC
-            LIMIT $limit
-        ");
-        $stmt->execute($queryParams);
-        $rows = self::filterStatuses($stmt->fetchAll());
+        $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $timeline = [];
         foreach ($rows as $row) {
@@ -2575,23 +2559,7 @@ HTML;
             $queryParams[] = $minId;
         }
 
-        $whereSql = implode(" AND ", $whereClauses);
-
-        $stmt = $db->prepare("
-            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                   s.visibility as status_visibility, s.created_at as status_created_at, 
-                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
-                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
-                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
-                   a.locked, a.discoverable
-            FROM statuses s
-            JOIN accounts a ON s.account_id = a.id
-            WHERE $whereSql
-            ORDER BY s.id DESC
-            LIMIT $limit
-        ");
-        $stmt->execute($queryParams);
-        $rows = self::filterStatuses($stmt->fetchAll());
+        $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $timeline = [];
         foreach ($rows as $row) {
@@ -2703,23 +2671,7 @@ HTML;
             $queryParams[] = $minId;
         }
 
-        $whereSql = "WHERE " . implode(" AND ", $whereClauses);
-
-        $stmt = $db->prepare("
-            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                   s.visibility as status_visibility, s.created_at as status_created_at, 
-                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
-                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
-                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
-                   a.locked, a.discoverable
-            FROM statuses s
-            JOIN accounts a ON s.account_id = a.id
-            $whereSql
-            ORDER BY s.id DESC
-            LIMIT $limit
-        ");
-        $stmt->execute($queryParams);
-        $rows = self::filterStatuses($stmt->fetchAll());
+        $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $currUser = self::getAuthenticatedAccount();
         $currUserId = $currUser ? (int)$currUser['id'] : null;
@@ -4872,6 +4824,72 @@ HTML;
         return $filtered;
     }
 
+    private static function paginateAndFilterStatuses(
+        \PDO $db,
+        array $baseWhereClauses,
+        array $baseQueryParams,
+        ?int $maxId,
+        ?int $sinceId,
+        ?int $minId,
+        int $limit
+    ): array {
+        $rows = [];
+        $currentMaxId = $maxId;
+
+        while (count($rows) < $limit) {
+            $whereClauses = $baseWhereClauses;
+            $queryParams = $baseQueryParams;
+
+            if ($currentMaxId !== null) {
+                $whereClauses[] = "s.id < ?";
+                $queryParams[] = $currentMaxId;
+            }
+            if ($sinceId !== null) {
+                $whereClauses[] = "s.id > ?";
+                $queryParams[] = $sinceId;
+            }
+            if ($minId !== null) {
+                $whereClauses[] = "s.id > ?";
+                $queryParams[] = $minId;
+            }
+
+            $whereSql = implode(" AND ", $whereClauses);
+            if (!empty($whereSql)) {
+                $whereSql = "WHERE " . $whereSql;
+            }
+
+            $remaining = $limit - count($rows);
+
+            $stmt = $db->prepare("
+                SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
+                       s.visibility as status_visibility, s.created_at as status_created_at, 
+                       s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                       a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                       a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                       a.locked, a.discoverable
+                FROM statuses s
+                JOIN accounts a ON s.account_id = a.id
+                $whereSql
+                ORDER BY s.id DESC
+                LIMIT $remaining
+            ");
+            $stmt->execute($queryParams);
+            $fetched = $stmt->fetchAll();
+
+            if (empty($fetched)) {
+                break;
+            }
+
+            $filtered = self::filterStatuses($fetched);
+            $rows = array_merge($rows, $filtered);
+
+            $lastRow = end($fetched);
+            $currentMaxId = (int)$lastRow['status_id'];
+        }
+
+        return $rows;
+    }
+
     public static function uploadMedia(): void {
         $account = self::getAuthenticatedAccount();
         if (!$account) {
@@ -5956,27 +5974,7 @@ HTML;
             $queryParams[] = $minId;
         }
 
-        $whereSql = implode(" AND ", $whereClauses);
-
-        $stmt = $db->prepare("
-            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                   s.visibility as status_visibility, s.created_at as status_created_at, 
-                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
-                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
-                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
-                   a.locked, a.discoverable
-            FROM statuses s
-            JOIN accounts a ON s.account_id = a.id
-            WHERE $whereSql
-            ORDER BY s.id DESC
-            LIMIT ?
-        ");
-        
-        $queryParams[] = $limit;
-        $stmt->execute($queryParams);
-        $rows = $stmt->fetchAll();
-
-        $rows = self::filterStatuses($rows);
+        $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $statuses = [];
         foreach ($rows as $s) {
@@ -6277,27 +6275,7 @@ HTML;
             $queryParams[] = $minId;
         }
 
-        $whereSql = implode(" AND ", $whereClauses);
-
-        $stmt = $db->prepare("
-            SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                   s.visibility as status_visibility, s.created_at as status_created_at, 
-                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
-                   a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
-                   a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
-                   a.locked, a.discoverable
-            FROM statuses s
-            JOIN accounts a ON s.account_id = a.id
-            WHERE $whereSql
-            ORDER BY s.id DESC
-            LIMIT ?
-        ");
-
-        $queryParams[] = $limit;
-        $stmt->execute($queryParams);
-        $rows = $stmt->fetchAll();
-
-        $rows = self::filterStatuses($rows);
+        $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $statuses = [];
         foreach ($rows as $s) {
