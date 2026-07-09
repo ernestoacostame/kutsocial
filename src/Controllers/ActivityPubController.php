@@ -1755,6 +1755,168 @@ XML;
     }
 
     /**
+     * Resuelve dinámicamente la ascendencia (ancestros) de una publicación remota.
+     */
+    public static function resolveAncestorsForStatus(int $statusId, int $depth = 0): void {
+        if ($depth > 15) {
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT id, uri, in_reply_to_id FROM statuses WHERE id = ?");
+        $stmt->execute([$statusId]);
+        $status = $stmt->fetch();
+        if (!$status) {
+            return;
+        }
+
+        // Si ya tiene un in_reply_to_id local, comprobamos recursivamente ese padre
+        if (!empty($status['in_reply_to_id'])) {
+            self::resolveAncestorsForStatus((int)$status['in_reply_to_id'], $depth + 1);
+            return;
+        }
+
+        // Si no tiene in_reply_to_id, pero es una publicación remota,
+        // intentamos obtener su JSON para buscar el campo inReplyTo
+        $uri = $status['uri'];
+        if (str_starts_with($uri, 'http://') || str_starts_with($uri, 'https://')) {
+            $u = parse_url($uri);
+            $localDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            if (!empty($u['host']) && strtolower($u['host']) !== strtolower($localDomain)) {
+                try {
+                    $resp = self::executeSignedGet($uri);
+                    if ($resp) {
+                        $json = json_decode($resp, true);
+                        if ($json) {
+                            if (isset($json['type']) && ($json['type'] === 'Create' || $json['type'] === 'Announce') && isset($json['object'])) {
+                                $object = $json['object'];
+                            } else {
+                                $object = $json;
+                            }
+
+                            $inReplyToUri = $object['inReplyTo'] ?? null;
+                            if ($inReplyToUri) {
+                                $parentStatusId = self::fetchAndRegisterRemoteStatus($inReplyToUri);
+                                if ($parentStatusId) {
+                                    $stmtUpdate = $db->prepare("UPDATE statuses SET in_reply_to_id = ? WHERE id = ?");
+                                    $stmtUpdate->execute([$parentStatusId, $statusId]);
+
+                                    self::resolveAncestorsForStatus($parentStatusId, $depth + 1);
+                                }
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    self::log("Error en resolveAncestorsForStatus para status $statusId: " . $e->getMessage());
+                }
+            }
+        }
+    }
+
+    /**
+     * Resuelve dinámicamente los descendientes (respuestas) de una publicación remota.
+     */
+    public static function resolveDescendantsForStatus(int $statusId): void {
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT uri FROM statuses WHERE id = ?");
+        $stmt->execute([$statusId]);
+        $uri = $stmt->fetchColumn();
+        if (!$uri) {
+            return;
+        }
+
+        if (str_starts_with($uri, 'http://') || str_starts_with($uri, 'https://')) {
+            $u = parse_url($uri);
+            $localDomain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            if (!empty($u['host']) && strtolower($u['host']) !== strtolower($localDomain)) {
+                try {
+                    $resp = self::executeSignedGet($uri);
+                    if (!$resp) {
+                        return;
+                    }
+                    $json = json_decode($resp, true);
+                    if (!$json) {
+                        return;
+                    }
+                    if (isset($json['type']) && ($json['type'] === 'Create' || $json['type'] === 'Announce') && isset($json['object'])) {
+                        $object = $json['object'];
+                    } else {
+                        $object = $json;
+                    }
+
+                    $repliesCol = $object['replies'] ?? null;
+                    if ($repliesCol) {
+                        $repliesUrl = null;
+                        $items = [];
+                        if (is_string($repliesCol)) {
+                            $repliesUrl = $repliesCol;
+                        } elseif (is_array($repliesCol)) {
+                            $repliesUrl = $repliesCol['id'] ?? null;
+                            if (isset($repliesCol['first'])) {
+                                if (is_array($repliesCol['first'])) {
+                                    $items = $repliesCol['first']['items'] ?? [];
+                                } elseif (is_string($repliesCol['first'])) {
+                                    $pageResp = self::executeSignedGet($repliesCol['first']);
+                                    if ($pageResp) {
+                                        $pageJson = json_decode($pageResp, true);
+                                        if ($pageJson) {
+                                            $items = $pageJson['items'] ?? $pageJson['orderedItems'] ?? [];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (empty($items) && $repliesUrl) {
+                            $pageResp = self::executeSignedGet($repliesUrl);
+                            if ($pageResp) {
+                                $pageJson = json_decode($pageResp, true);
+                                if ($pageJson) {
+                                    $items = $pageJson['items'] ?? $pageJson['orderedItems'] ?? [];
+                                    if (empty($items) && isset($pageJson['first'])) {
+                                        $firstPage = $pageJson['first'];
+                                        if (is_string($firstPage)) {
+                                            $firstPageResp = self::executeSignedGet($firstPage);
+                                            if ($firstPageResp) {
+                                                $firstPageJson = json_decode($firstPageResp, true);
+                                                if ($firstPageJson) {
+                                                    $items = $firstPageJson['items'] ?? $firstPageJson['orderedItems'] ?? [];
+                                                }
+                                            }
+                                        } elseif (is_array($firstPage)) {
+                                            $items = $firstPage['items'] ?? $firstPage['orderedItems'] ?? [];
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (!empty($items)) {
+                            foreach ($items as $replyItem) {
+                                $replyUri = null;
+                                if (is_string($replyItem)) {
+                                    $replyUri = $replyItem;
+                                } elseif (is_array($replyItem)) {
+                                    $replyUri = $replyItem['id'] ?? $replyItem['uri'] ?? null;
+                                }
+                                if ($replyUri) {
+                                    $replyId = self::fetchAndRegisterRemoteStatus($replyUri);
+                                    if ($replyId) {
+                                        $stmtUpdate = $db->prepare("UPDATE statuses SET in_reply_to_id = ? WHERE id = ? AND (in_reply_to_id IS NULL OR in_reply_to_id != ?)");
+                                        $stmtUpdate->execute([$statusId, $replyId, $statusId]);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    self::log("Error en resolveDescendantsForStatus para status $statusId: " . $e->getMessage());
+                }
+            }
+        }
+    }
+
+    /**
      * Escribe un mensaje en el archivo de registro de ActivityPub
      */
     public static function log(string $message): void {

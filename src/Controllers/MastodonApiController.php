@@ -4263,6 +4263,10 @@ HTML;
         $account = self::getAuthenticatedAccount();
         $currUserId = $account ? (int)$account['id'] : null;
 
+        // Resolver ancestros y descendientes federados ausentes dinámicamente
+        \KutSocial\Controllers\ActivityPubController::resolveAncestorsForStatus($id);
+        \KutSocial\Controllers\ActivityPubController::resolveDescendantsForStatus($id);
+
         $stmt = $db->prepare("SELECT in_reply_to_id FROM statuses WHERE id = ?");
         $stmt->execute([$id]);
         $status = $stmt->fetch();
