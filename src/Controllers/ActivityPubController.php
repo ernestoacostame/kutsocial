@@ -580,14 +580,20 @@ XML;
                 $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
             }
 
+            $htmlContent = \KutSocial\Controllers\MastodonApiController::formatLocalContentToHtml($status['content'], $domain, $db, $proto);
             $objectNote = [
                 'id' => $status['uri'],
                 'type' => 'Note',
-                'content' => $status['content'],
+                'content' => $htmlContent,
                 'published' => date('c', strtotime($status['created_at'])),
                 'to' => $to,
                 'cc' => $cc
             ];
+
+            $apTags = \KutSocial\Controllers\MastodonApiController::extractActivityPubTagsFromRawContent($status['content'], $domain, $db, $proto);
+            if (!empty($apTags)) {
+                $objectNote['tag'] = $apTags;
+            }
 
             if (!empty($status['reblog_of_id'])) {
                 $stmtQuoteUri = $db->prepare("SELECT uri FROM statuses WHERE id = ? LIMIT 1");
@@ -1636,16 +1642,26 @@ XML;
             $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
         }
 
+        $isRemote = !empty($status['domain']);
+        $htmlContent = ($isRemote || str_contains($status['content'], '<p>')) 
+            ? $status['content'] 
+            : \KutSocial\Controllers\MastodonApiController::formatLocalContentToHtml($status['content'], $domain, $db, $proto);
+
         $note = [
             '@context' => 'https://www.w3.org/ns/activitystreams',
             'id' => $status['uri'],
             'type' => 'Note',
             'attributedTo' => "$proto://$domain/users/$username",
-            'content' => $status['content'],
+            'content' => $htmlContent,
             'published' => date('c', strtotime($status['created_at'])),
             'to' => $to,
             'cc' => $cc
         ];
+
+        $apTags = \KutSocial\Controllers\MastodonApiController::extractActivityPubTagsFromRawContent($status['content'], $domain, $db, $proto);
+        if (!empty($apTags)) {
+            $note['tag'] = $apTags;
+        }
 
         if (!empty($status['reblog_of_id'])) {
             $stmtQuoteUri = $db->prepare("SELECT uri FROM statuses WHERE id = ? LIMIT 1");

@@ -1528,6 +1528,9 @@ HTML;
         $resolve = (($_GET['resolve'] ?? '') === 'true' || ($_GET['resolve'] ?? '') === '1');
         $type = $_GET['type'] ?? null;
         
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        
         $db = Database::connect();
 
         $account = null;
@@ -1569,9 +1572,10 @@ HTML;
                     $stmt = $db->prepare("
                         SELECT * FROM accounts 
                         WHERE id IN (SELECT rowid FROM accounts_fts WHERE accounts_fts MATCH ?)
+                           OR domain LIKE ?
                         LIMIT 10
                     ");
-                    $stmt->execute([$cleanQ . '*']);
+                    $stmt->execute([$cleanQ . '*', '%' . $q . '%']);
                     $localAccs = $stmt->fetchAll();
                 } else {
                     $localAccs = [];
@@ -1581,10 +1585,10 @@ HTML;
                 if (empty($localAccs)) {
                     $stmt = $db->prepare("
                         SELECT * FROM accounts 
-                        WHERE username LIKE ? OR display_name LIKE ? 
+                        WHERE username LIKE ? OR display_name LIKE ? OR domain LIKE ?
                         LIMIT 10
                     ");
-                    $stmt->execute(['%' . $q . '%', '%' . $q . '%']);
+                    $stmt->execute(['%' . $q . '%', '%' . $q . '%', '%' . $q . '%']);
                     $localAccs = $stmt->fetchAll();
                 }
                 
@@ -1699,13 +1703,32 @@ HTML;
             
             // 4. Buscar Hashtags locales
             if ($type === null || $type === 'hashtags') {
-                if (str_starts_with($q, '#')) {
-                    $tag = ltrim($q, '#');
+                $tag = ltrim(trim($q), '#');
+                if (preg_match('/^[\p{L}\p{N}_]+$/u', $tag)) {
                     $hashtags[] = [
                         'name' => $tag,
-                        'url' => 'https://' . ($_SERVER['HTTP_HOST'] ?? 'localhost') . '/tags/' . $tag,
+                        'url' => "$proto://$domain/tags/$tag",
                         'history' => []
                     ];
+                }
+                
+                try {
+                    $stmtTags = $db->prepare("
+                        SELECT DISTINCT hashtag FROM followed_hashtags 
+                        WHERE hashtag LIKE ? AND hashtag != ?
+                        LIMIT 5
+                    ");
+                    $stmtTags->execute(['%' . $tag . '%', $tag]);
+                    $dbTags = $stmtTags->fetchAll(PDO::FETCH_COLUMN);
+                    foreach ($dbTags as $t) {
+                        $hashtags[] = [
+                            'name' => $t,
+                            'url' => "$proto://$domain/tags/$t",
+                            'history' => []
+                        ];
+                    }
+                } catch (\Exception $e) {
+                    // Ignorar fallos
                 }
             }
         }
@@ -2923,6 +2946,27 @@ HTML;
             }
         }
 
+        // 1.5 Procesar hashtags para federación
+        if (preg_match_all('/(?<=^|[\s,;:.!?()\[\]{}])#(?!\d+\b)([\p{L}\p{N}_]+)/u', $content, $hashMatches)) {
+            $uniqueHashtags = array_unique($hashMatches[1]);
+            foreach ($uniqueHashtags as $tName) {
+                $tagExists = false;
+                foreach ($tags as $t) {
+                    if (isset($t['type']) && $t['type'] === 'Hashtag' && isset($t['name']) && strcasecmp($t['name'], '#' . $tName) === 0) {
+                        $tagExists = true;
+                        break;
+                    }
+                }
+                if (!$tagExists) {
+                    $tags[] = [
+                        'type' => 'Hashtag',
+                        'href' => "$proto://$domain/tags/$tName",
+                        'name' => "#$tName"
+                    ];
+                }
+            }
+        }
+
         // 2. Procesar respuesta a post padre
         $parentActorUrl = null;
         $parentInboxUrl = null;
@@ -3292,6 +3336,15 @@ HTML;
             return $matches[0];
         }, $escaped);
 
+        // 4.5 Convertir hashtags en enlaces
+        $escaped = preg_replace_callback('/<a\b[^>]*>.*?<\/a>|<[^>]+>|(?<=^|[\s,;:.!?()\[\]{}])#(?!\d+\b)([\p{L}\p{N}_]+)/us', function($matches) use ($domain, $proto) {
+            if ($matches[0][0] === '<') {
+                return $matches[0];
+            }
+            $tagName = $matches[1];
+            return '<a href="' . $proto . '://' . $domain . '/tags/' . $tagName . '" class="mention hashtag" rel="tag">#<span>' . $tagName . '</span></a>';
+        }, $escaped);
+
         // 5. Restaurar etiquetas <a> en crudo
         if (!empty($placeholders)) {
             $escaped = strtr($escaped, $placeholders);
@@ -3307,6 +3360,73 @@ HTML;
             }
         }
         return implode('', $htmlParagraphs);
+    }
+
+    /**
+     * Helper to extract tags (mentions and hashtags) in ActivityPub format from raw text
+     */
+    public static function extractActivityPubTagsFromRawContent(string $content, string $domain, \PDO $db, string $proto): array {
+        $tags = [];
+        
+        // 1. Mentions
+        preg_match_all('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', $content, $mMatches, PREG_SET_ORDER);
+        foreach ($mMatches as $match) {
+            $mUsername = $match[1];
+            $mDomain = isset($match[2]) && !empty($match[2]) ? strtolower($match[2]) : null;
+            if ($mDomain !== null && strcasecmp($mDomain, $domain) === 0) {
+                $mDomain = null;
+            }
+            
+            $mAcc = null;
+            if ($mDomain === null) {
+                $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+                $stmtM->execute([$mUsername]);
+                $mAcc = $stmtM->fetch();
+            } else {
+                $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                $stmtM->execute([$mUsername, $mDomain]);
+                $mAcc = $stmtM->fetch();
+            }
+            
+            if ($mAcc) {
+                $mActorUrl = $mAcc['domain'] 
+                    ? "https://{$mAcc['domain']}/users/{$mAcc['username']}"
+                    : "$proto://$domain/users/{$mAcc['username']}";
+                
+                $mentionName = $mAcc['domain']
+                    ? "@{$mAcc['username']}@{$mAcc['domain']}"
+                    : "@{$mAcc['username']}";
+
+                $tagExists = false;
+                foreach ($tags as $t) {
+                    if (isset($t['href']) && $t['href'] === $mActorUrl) {
+                        $tagExists = true;
+                        break;
+                    }
+                }
+                if (!$tagExists) {
+                    $tags[] = [
+                        'type' => 'Mention',
+                        'href' => $mActorUrl,
+                        'name' => $mentionName
+                    ];
+                }
+            }
+        }
+        
+        // 2. Hashtags
+        if (preg_match_all('/(?<=^|[\s,;:.!?()\[\]{}])#(?!\d+\b)([\p{L}\p{N}_]+)/u', $content, $hashMatches)) {
+            $uniqueHashtags = array_unique($hashMatches[1]);
+            foreach ($uniqueHashtags as $tName) {
+                $tags[] = [
+                    'type' => 'Hashtag',
+                    'href' => "$proto://$domain/tags/$tName",
+                    'name' => "#$tName"
+                ];
+            }
+        }
+        
+        return $tags;
     }
 
     /**
@@ -3876,6 +3996,17 @@ HTML;
         $formattedContent = (!empty($row['domain']) || str_contains($row['status_content'], '<p>')) 
             ? $row['status_content'] 
             : self::formatLocalContentToHtml($row['status_content'], $domain, $db, $proto);
+
+        $tags = [];
+        if (preg_match_all('/href="[^"]*\/(?:tags|tag)\/([a-zA-Z0-9_\p{L}\p{N}]+)/ui', $formattedContent, $matches)) {
+            $uniqueTags = array_unique($matches[1]);
+            foreach ($uniqueTags as $tName) {
+                $tags[] = [
+                    'name' => $tName,
+                    'url' => "$proto://$domain/tags/$tName"
+                ];
+            }
+        }
  
         $inReplyToAccountId = null;
         if (!empty($row['in_reply_to_id'])) {
@@ -3915,7 +4046,7 @@ HTML;
             'account' => $account,
             'media_attachments' => $attachments,
             'mentions' => [],
-            'tags' => [],
+            'tags' => $tags,
             'emojis' => self::extractEmojisFromContent($formattedContent, $row),
             'card' => (function() use ($row, $db) {
                 if (array_key_exists('card', $row)) {

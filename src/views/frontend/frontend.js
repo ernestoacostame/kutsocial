@@ -4007,9 +4007,13 @@ async function performSearch(query) {
     showTab('search-results');
     
     const accountsContainer = document.getElementById('search-accounts-container');
+    const hashtagsContainer = document.getElementById('search-hashtags-container');
     const statusesContainer = document.getElementById('search-statuses-container');
     
     accountsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0;">🔍 Buscando perfiles...</div>';
+    if (hashtagsContainer) {
+        hashtagsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0;">🔍 Buscando hashtags...</div>';
+    }
     statusesContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0;">🔍 Buscando publicaciones...</div>';
     
     try {
@@ -4047,6 +4051,37 @@ async function performSearch(query) {
                 accountsContainer.appendChild(accDiv);
             });
         }
+
+        // 1.5 Mostrar hashtags
+        if (hashtagsContainer) {
+            hashtagsContainer.innerHTML = '';
+            if (!data.hashtags || data.hashtags.length === 0) {
+                hashtagsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; padding: 10px 0; text-align: center;">No se encontraron hashtags.</div>';
+            } else {
+                data.hashtags.forEach(tag => {
+                    const tagDiv = document.createElement('div');
+                    tagDiv.style = "display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 16px; cursor: pointer; background: rgba(255,255,255,0.02); transition: all 0.2s ease;";
+                    tagDiv.onmouseover = () => {
+                        tagDiv.style.background = 'rgba(255,255,255,0.06)';
+                        tagDiv.style.borderColor = 'var(--primary)';
+                    };
+                    tagDiv.onmouseout = () => {
+                        tagDiv.style.background = 'rgba(255,255,255,0.02)';
+                        tagDiv.style.borderColor = 'var(--border-color)';
+                    };
+                    tagDiv.onclick = () => viewHashtagTimeline(tag.name);
+                    
+                    tagDiv.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="material-icons-outlined" style="color: var(--primary);">tag</span>
+                            <span style="font-weight: 600; color: var(--text-color); font-size: 15px;">#${escapeHTML(tag.name)}</span>
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Ver línea de tiempo</div>
+                    `;
+                    hashtagsContainer.appendChild(tagDiv);
+                });
+            }
+        }
         
         // 2. Mostrar publicaciones
         statusesContainer.innerHTML = '';
@@ -4060,6 +4095,9 @@ async function performSearch(query) {
         }
     } catch (err) {
         accountsContainer.innerHTML = `<div style="color: var(--error); font-size: 14px; text-align: center; padding: 10px 0;">Error: ${escapeHTML(err.message)}</div>`;
+        if (hashtagsContainer) {
+            hashtagsContainer.innerHTML = '';
+        }
         statusesContainer.innerHTML = '';
     }
 }

@@ -7,6 +7,10 @@
         <h3 style="font-size: 14px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 15px; letter-spacing: 0.5px;">👤 Perfiles</h3>
         <div id="search-accounts-container" style="display: flex; flex-direction: column; gap: 12px;"></div>
     </div>
+    <div style="margin-bottom: 25px;">
+        <h3 style="font-size: 14px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 15px; letter-spacing: 0.5px;"># Hashtags</h3>
+        <div id="search-hashtags-container" style="display: flex; flex-direction: column; gap: 10px;"></div>
+    </div>
     <div>
         <h3 style="font-size: 14px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 15px; letter-spacing: 0.5px;">📝 Publicaciones</h3>
         <div id="search-statuses-container" style="display: flex; flex-direction: column; gap: 15px;"></div>
