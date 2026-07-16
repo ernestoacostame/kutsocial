@@ -381,6 +381,13 @@ button:hover {
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
     animation: slideIn 0.4s ease-out;
 }
+.toot-card:not(.toot-main) {
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+}
+.toot-card:not(.toot-main):hover {
+    background: rgba(255, 255, 255, 0.02);
+}
 .toot-card-body {
     display: flex;
     gap: 16px;

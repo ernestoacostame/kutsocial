@@ -711,6 +711,7 @@ function createThreadTootElement(toot, isMain = false) {
     if (isMain) {
         card.style.background = 'rgba(99, 102, 241, 0.05)';
         card.style.borderLeft = '3px solid var(--primary)';
+        card.classList.add('toot-main');
     }
 
     const absoluteDateStr = new Date(toot.created_at).toLocaleDateString('es-ES', {
@@ -888,7 +889,7 @@ function createThreadTootElement(toot, isMain = false) {
                     <div class="toot-media-card" data-sensitive="${toot.sensitive ? 'true' : 'false'}" style="${cardStyle}">
                         
                         <!-- Botón superior derecho de ocultar/mostrar -->
-                        <button class="media-toggle-btn" onclick="toggleMediaVisibility(this)" style="position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.65); color: #fff; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
+                        <button class="media-toggle-btn" onclick="event.stopPropagation(); toggleMediaVisibility(this)" style="position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.65); color: #fff; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
                             ${toot.sensitive ? 'Show' : 'Hide'}
                         </button>
 
@@ -916,7 +917,7 @@ function createThreadTootElement(toot, isMain = false) {
                         ` : ''}
 
                         <!-- Contenedor de Advertencia / Contenido Sensible -->
-                        <div class="media-placeholder" style="${placeholderStyle}" onclick="revealMediaFromPlaceholder(this)">
+                        <div class="media-placeholder" style="${placeholderStyle}" onclick="event.stopPropagation(); revealMediaFromPlaceholder(this)">
                             <span style="font-size: 32px; margin-bottom: 8px;">⚠️</span>
                             <span style="font-size: 14px; font-weight: 600; color: var(--text-color);">${toot.spoiler_text || 'Contenido Sensible'}</span>
                             <span style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Haz clic para mostrar el contenido multimedia</span>
@@ -942,7 +943,7 @@ function createThreadTootElement(toot, isMain = false) {
         const parsedDomain = (u) => { try { return new URL(u).hostname; } catch(e) { return ''; } };
 
         cardHTML = `
-            <div class="toot-link-card" onclick="window.open('${card.url}', '_blank')" style="display: flex; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin-top: 12px; cursor: pointer; background: rgba(255,255,255,0.01); transition: all 0.2s; max-height: 140px; text-align: left; width: 100%;">
+            <div class="toot-link-card" onclick="event.stopPropagation(); window.open('${card.url}', '_blank')" style="display: flex; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin-top: 12px; cursor: pointer; background: rgba(255,255,255,0.01); transition: all 0.2s; max-height: 140px; text-align: left; width: 100%;">
                 ${card.image ? `
                     <div style="width: 120px; min-width: 120px; background-image: url('${card.image}'); background-size: cover; background-position: center; border-right: 1px solid var(--border-color);"></div>
                 ` : ''}
@@ -986,7 +987,7 @@ function createThreadTootElement(toot, isMain = false) {
         } else {
             poll.options.forEach((opt, idx) => {
                 pollHTML += `
-                    <button onclick="voteInPoll('${poll.id}', ${idx}, this)" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; font-family: inherit; font-size: 13px; color: white; cursor: pointer; transition: background 0.3s; font-weight: 500; width: 100%;">
+                    <button onclick="event.stopPropagation(); voteInPoll('${poll.id}', ${idx}, this)" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; font-family: inherit; font-size: 13px; color: white; cursor: pointer; transition: background 0.3s; font-weight: 500; width: 100%;">
                         🔘 ${escapeHTML(opt.title)}
                     </button>
                 `;
@@ -1014,7 +1015,7 @@ function createThreadTootElement(toot, isMain = false) {
         reblogHeaderHTML = `
             <div class="toot-reblog-header" style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; margin-left: 36px;">
                 <span class="material-icons" style="font-size: 16px; color: #10b981;">repeat</span>
-                <span><strong>${rebloggedByHTML}</strong> ha re-tooteado</span>
+                <span><a href="/@${rebloggedBy.acct}" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${rebloggedBy.id}')" style="color: inherit; text-decoration: none; font-weight: bold;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${rebloggedByHTML}</a> ha re-tooteado</span>
             </div>
         `;
     }
@@ -1028,16 +1029,16 @@ function createThreadTootElement(toot, isMain = false) {
     card.innerHTML = `
         ${reblogHeaderHTML}
         <div class="toot-card-body">
-            <a href="/@${toot.account.acct}"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
+            <a href="/@${toot.account.acct}" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
             <div style="flex-grow: 1; min-width: 0;">
                 <div class="toot-header">
-                    <a href="/@${toot.account.acct}" class="toot-author-details clickable-actor" style="text-decoration: none; color: inherit;">
+                    <a href="/@${toot.account.acct}" class="toot-author-details clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" style="text-decoration: none; color: inherit;">
                         <span class="toot-author-name">${displayNameHTML}</span>
                         <span class="toot-author-handle">@${toot.account.acct}</span>
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
                     </a>
-                    <a href="/users/${toot.account.username || 'iam'}/statuses/${toot.id}" class="toot-time clickable-actor" title="${absoluteDateStr}">${relativeDateStr}</a>
+                    <a href="/users/${toot.account.username || 'iam'}/statuses/${toot.id}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewTootThread('${toot.id}')" title="${absoluteDateStr}">${relativeDateStr}</a>
                 </div>
                 ${contentHTML}
                 ${mediaHTML}
@@ -1046,23 +1047,23 @@ function createThreadTootElement(toot, isMain = false) {
                 ${quotePlaceholderHTML}
                 
                 <div class="toot-actions" style="margin-top: 12px;">
-                    <button class="toot-action-btn btn-reply" onclick="handleReplyButtonClick(this)" title="Responder">
+                    <button class="toot-action-btn btn-reply" onclick="event.stopPropagation(); handleReplyButtonClick(this)" title="Responder">
                         <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn ${favClass}" onclick="toggleFavourite('${toot.id}', this)" title="Favorito">
+                    <button class="toot-action-btn ${favClass}" onclick="event.stopPropagation(); toggleFavourite('${toot.id}', this)" title="Favorito">
                         <span class="${toot.favourited ? 'material-icons' : 'material-icons-outlined'}">${toot.favourited ? 'star' : 'star_border'}</span> <span class="fav-count">${toot.favourites_count || 0}</span>
                     </button>
                     <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" data-reblog-toot-id="${toot.id}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="Compartir / Citar">
                         <span class="${toot.reblogged ? 'material-icons' : 'material-icons-outlined'}" style="${toot.reblogged ? 'color: #10b981;' : ''}">repeat</span> <span class="reblog-count" style="${toot.reblogged ? 'color: #10b981; font-weight: bold;' : ''}">${toot.reblogs_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn ${bookmarkClass}" onclick="toggleBookmark('${toot.id}', this)" title="Guardar">
+                    <button class="toot-action-btn ${bookmarkClass}" onclick="event.stopPropagation(); toggleBookmark('${toot.id}', this)" title="Guardar">
                         <span class="${toot.bookmarked ? 'material-icons' : 'material-icons-outlined'}">${toot.bookmarked ? 'bookmark' : 'bookmark_border'}</span>
                     </button>
                     ${isMyToot ? `
-                        <button class="toot-action-btn btn-edit" onclick="handleEditButtonClick(this)" title="Editar">
+                        <button class="toot-action-btn btn-edit" onclick="event.stopPropagation(); handleEditButtonClick(this)" title="Editar">
                             <span class="material-icons-outlined">edit</span>
                         </button>
-                        <button class="toot-action-btn btn-delete" onclick="deleteToot('${toot.id}', this)" title="Eliminar">
+                        <button class="toot-action-btn btn-delete" onclick="event.stopPropagation(); deleteToot('${toot.id}', this)" title="Eliminar">
                             <span class="material-icons-outlined">delete</span>
                         </button>
                     ` : `
@@ -1074,6 +1075,31 @@ function createThreadTootElement(toot, isMain = false) {
             </div>
         </div>
     `;
+
+    // Click on the card to navigate to the thread
+    card.addEventListener('click', (e) => {
+        if (isMain) return;
+        
+        // Don't navigate if selecting text
+        if (window.getSelection().toString().trim() !== '') return;
+
+        // If clicking on an interactive element, do not navigate
+        const interactive = e.target.closest('a, button, input, select, textarea, video, audio, [onclick], .media-placeholder');
+        if (interactive) return;
+
+        // If clicking on a media image, do not navigate
+        if (e.target.tagName === 'IMG' && (e.target.closest('.toot-media-card') || e.target.closest('.toot-media-item'))) {
+            return;
+        }
+
+        // If clicking on other interactive container elements, do not navigate
+        if (e.target.closest('.toot-actions') || e.target.closest('.toot-poll-card') || e.target.closest('.toot-link-card') || e.target.closest('.media-alt-popup')) {
+            return;
+        }
+
+        viewTootThread(toot.id);
+    });
+
     return card;
 }
 
