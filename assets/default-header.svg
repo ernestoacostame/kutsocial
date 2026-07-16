@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 500" width="1500" height="500">
+  <defs>
+    <linearGradient id="headerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e1b4b" />
+      <stop offset="50%" stop-color="#311042" />
+      <stop offset="100%" stop-color="#111827" />
+    </linearGradient>
+  </defs>
+  <rect width="1500" height="500" fill="url(#headerGrad)" />
+  <circle cx="200" cy="150" r="400" fill="#a855f7" opacity="0.05" filter="blur(60px)" />
+  <circle cx="1300" cy="350" r="300" fill="#3b82f6" opacity="0.05" filter="blur(50px)" />
+</svg>

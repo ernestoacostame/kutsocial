@@ -1,0 +1,446 @@
+<?php
+/**
+ * KutSocial - Punto de entrada y Enrutador Frontal
+ */
+
+// Normalizar HTTPS detrás de proxy inverso
+if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') {
+    $_SERVER['HTTPS'] = 'on';
+}
+
+// Cabeceras de Seguridad Globales (Mitigación de MitM, Secuestro y Clickjacking)
+header("X-Content-Type-Options: nosniff");
+header("X-Frame-Options: SAMEORIGIN");
+header("Referrer-Policy: strict-origin-when-cross-origin");
+if (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') {
+    header("Strict-Transport-Security: max-age=63072000; includeSubDomains; preload");
+}
+
+// 1. Validar instalación
+if (!file_exists(__DIR__ . '/config.php')) {
+    // Si no está instalado y no está accediendo al instalador, redirigir
+    $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+    if ($requestUri !== '/install.php' && !str_starts_with($requestUri, '/assets/')) {
+        header("Location: /install.php");
+        exit;
+    }
+    // Si está intentando cargar el instalador, permitir continuar
+    return;
+}
+
+// 2. Cargar configuración y clases
+require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/version.php';
+
+// Iniciar sesión para la página principal y rutas administrativas
+$requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+if ($requestUri === '/' || $requestUri === '/index.php' || str_starts_with($requestUri, '/admin')) {
+    if (session_status() === PHP_SESSION_NONE) {
+        session_start();
+    }
+}
+
+use KutSocial\Router;
+use KutSocial\Database;
+use KutSocial\UpdaterService;
+use KutSocial\Controllers\MastodonApiController;
+use KutSocial\Controllers\ActivityPubController;
+use KutSocial\Controllers\AdminController;
+
+// 3. Inicializar base de datos
+try {
+    Database::setDbPath(KUTSOCIAL_DB_PATH);
+    Database::runMigrations();
+} catch (Exception $e) {
+    http_response_code(500);
+    exit("Fallo crítico de base de datos: " . $e->getMessage());
+}
+
+// 4. Configurar Enrutador
+$router = new Router();
+
+$renderFrontend = function() {
+    $db = Database::connect();
+    
+    // Obtener datos del usuario propietario local (único usuario del cliente)
+    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
+    $localUser = $stmtOwner->fetch();
+    if (!$localUser) {
+        $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+        $localUser = $stmtOwner->fetch();
+    }
+    
+    $userLists = [];
+    $userCollections = [];
+    $userHashtags = [];
+    
+    if ($localUser) {
+        // Cargar listas
+        $stmtLists = $db->prepare("SELECT * FROM lists WHERE account_id = ? ORDER BY title ASC");
+        $stmtLists->execute([$localUser['id']]);
+        $userLists = $stmtLists->fetchAll();
+        
+        // Cargar colecciones
+        $stmtCol = $db->prepare("SELECT * FROM collections WHERE account_id = ? ORDER BY title ASC");
+        $stmtCol->execute([$localUser['id']]);
+        $userCollections = $stmtCol->fetchAll();
+        
+        // Cargar hashtags seguidos
+        $stmtTags = $db->prepare("SELECT hashtag FROM followed_hashtags WHERE account_id = ? ORDER BY id DESC");
+        $stmtTags->execute([$localUser['id']]);
+        $userHashtags = $stmtTags->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    // Determinar la sección activa según la ruta
+    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+    $uri = rtrim($uri, '/');
+    if (empty($uri)) {
+        $uri = '/public';
+    }
+    
+    $section = 'feed';
+    $currentTimeline = 'public';
+    $activeProfileViewId = null;
+    $activeThreadId = null;
+    
+    if ($uri === '/public') {
+        $section = 'feed';
+        $currentTimeline = 'public';
+    } elseif ($uri === '/home') {
+        $section = 'feed';
+        $currentTimeline = 'home';
+    } elseif ($uri === '/catchup') {
+        $section = 'catchup';
+        $currentTimeline = 'catchup';
+    } elseif ($uri === '/local') {
+        $section = 'feed';
+        $currentTimeline = 'local';
+    } elseif ($uri === '/bookmarks') {
+        $section = 'feed';
+        $currentTimeline = 'bookmarks';
+    } elseif ($uri === '/notifications') {
+        $section = 'notifications';
+    } elseif ($uri === '/lists') {
+        $section = 'lists';
+    } elseif ($uri === '/collections') {
+        $section = 'collections';
+    } elseif ($uri === '/followed-hashtags') {
+        $section = 'followed-hashtags';
+    } elseif ($uri === '/profile') {
+        $section = 'profile';
+    } elseif ($uri === '/search-results') {
+        $section = 'search-results';
+    } elseif (str_starts_with($uri, '/list_')) {
+        $section = 'feed';
+        $currentTimeline = substr($uri, 1); // e.g. list_3
+    } elseif (str_starts_with($uri, '/tag_')) {
+        $section = 'feed';
+        $currentTimeline = substr($uri, 1); // e.g. tag_linux
+    } elseif (str_starts_with($uri, '/@')) {
+        $section = 'profile-view';
+        $usernameWithAt = substr($uri, 2);
+        if (str_starts_with($usernameWithAt, 'id-')) {
+            $activeProfileViewId = (int)substr($usernameWithAt, 3);
+        } else {
+            // Intentar resolver ID en DB local
+            $parts = explode('@', $usernameWithAt);
+            $uname = $parts[0];
+            $udomain = $parts[1] ?? null;
+            if ($udomain) {
+                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                $stmt->execute([$uname, $udomain]);
+            } else {
+                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                $stmt->execute([$uname]);
+            }
+            $activeProfileViewId = $stmt->fetchColumn() ?: null;
+        }
+    } elseif (str_contains($uri, '/statuses/')) {
+        $section = 'thread-view';
+        $parts = explode('/', $uri);
+        $activeThreadId = end($parts);
+    }
+
+    $path = __DIR__ . '/src/views/frontend.html';
+    if (file_exists($path)) {
+        // Evaluar frontend.html como PHP (permite los includes de las vistas)
+        ob_start();
+        include $path;
+        $html = ob_get_clean();
+
+        $version = \KutSocial\Database::getVersion();
+        
+        // Inyectar variables globales en el head para el JS
+        $jsGlobals = "
+    <script>
+        window.KUTSOCIAL_VERSION = '{$version}';
+        window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
+        window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
+        window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
+        window.KUTSOCIAL_ACTIVE_THREAD_ID = " . ($activeThreadId ? "'$activeThreadId'" : "null") . ";
+        window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.KUTSOCIAL_USER_HASHTAGS = " . json_encode($userHashtags, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+    </script>
+        ";
+        $html = str_replace('<head>', "<head>\n" . $jsGlobals, $html);
+
+        try {
+            // Si el administrador está logueado en la sesión de backend, generamos un token automático para el frontend
+            if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION['admin_account_id'])) {
+                $adminId = (int)$_SESSION['admin_account_id'];
+                $stmtAdmin = $db->prepare("SELECT id FROM accounts WHERE id = ? LIMIT 1");
+                $stmtAdmin->execute([$adminId]);
+                if ($stmtAdmin->fetch()) {
+                    $secretStmt = $db->query("SELECT value FROM options WHERE key = 'jwt_secret' LIMIT 1");
+                    $secret = $secretStmt->fetchColumn();
+                    if (!$secret) {
+                        $secret = bin2hex(random_bytes(32));
+                        $ins = $db->prepare("INSERT INTO options (key, value) VALUES ('jwt_secret', ?)");
+                        $ins->execute([$secret]);
+                    }
+                    $hash = hash_hmac('sha256', $adminId, $secret);
+                    $autoToken = "token_" . $adminId . "_" . $hash;
+                    $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_AUTO_TOKEN = '{$autoToken}';</script>", $html);
+                }
+            }
+
+            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
+            $owner = $stmt->fetch();
+            if (!$owner) {
+                $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+                $owner = $stmt->fetch();
+            }
+            if ($owner) {
+                if (isset($owner['indexable']) && !$owner['indexable']) {
+                    $noindexTag = '<meta name="robots" content="noindex, nofollow">';
+                    $html = str_replace('<head>', "<head>\n    " . $noindexTag, $html);
+                }
+                $ownerData = json_encode([
+                    'id' => (string)$owner['id'],
+                    'username' => $owner['username'],
+                    'locked' => (bool)$owner['locked'],
+                    'display_name' => $owner['display_name'] ?: $owner['username']
+                ]);
+                $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_OWNER = {$ownerData};</script>", $html);
+            }
+        } catch (\Exception $e) {
+            // Ignorar errores de base de datos
+        }
+        Router::html($html);
+    } else {
+        Router::html("<h2>Frontend no encontrado.</h2>", 404);
+    }
+};
+
+// --- Rutas de Mastodon API ---
+$router->get('/.well-known/nodeinfo', [MastodonApiController::class, 'wellKnownNodeinfo']);
+$router->get('/nodeinfo/2.0', [MastodonApiController::class, 'nodeinfo20']);
+$router->get('/api/v1/instance', [MastodonApiController::class, 'getInstance']);
+$router->get('/api/v1/instance/peers', [MastodonApiController::class, 'getPeers']);
+$router->get('/api/v2/instance', [MastodonApiController::class, 'getInstanceV2']);
+$router->get('/api/v1/custom_emojis', [MastodonApiController::class, 'getCustomEmojis']);
+$router->post('/api/v1/apps', [MastodonApiController::class, 'createApp']);
+$router->get('/oauth/authorize', [MastodonApiController::class, 'showAuthorize']);
+$router->post('/oauth/authorize', [MastodonApiController::class, 'handleAuthorize']);
+$router->post('/oauth/token', [MastodonApiController::class, 'postToken']);
+$router->get('/api/v1/accounts/verify_credentials', [MastodonApiController::class, 'verifyCredentials']);
+$router->get('/api/v1/preferences', [MastodonApiController::class, 'getPreferences']);
+$router->get('/api/v1/collections', [MastodonApiController::class, 'getCollections']);
+
+// Perfil (Mastodon 4.6 plain text bio + accessibility)
+$router->get('/api/v1/profile', [MastodonApiController::class, 'getProfile']);
+$router->patch('/api/v1/profile', [MastodonApiController::class, 'patchProfile']);
+$router->patch('/api/v1/accounts/update_credentials', [MastodonApiController::class, 'updateCredentials']);
+$router->post('/api/v1/accounts/update_credentials', [MastodonApiController::class, 'updateCredentials']);
+$router->get('/api/v1/accounts/relationships', [MastodonApiController::class, 'getRelationships']);
+$router->get('/api/v1/accounts', [MastodonApiController::class, 'getAccounts']);
+$router->get('/api/v1/accounts/:id', [MastodonApiController::class, 'getAccountById']);
+$router->get('/api/v1/accounts/:id/statuses', [MastodonApiController::class, 'getAccountStatuses']);
+$router->post('/api/v1/accounts/:id/follow', [MastodonApiController::class, 'followAccount']);
+$router->post('/api/v1/accounts/:id/unfollow', [MastodonApiController::class, 'unfollowAccount']);
+$router->get('/api/v1/accounts/:id/followers', [MastodonApiController::class, 'getFollowers']);
+$router->get('/api/v1/accounts/:id/following', [MastodonApiController::class, 'getFollowing']);
+$router->post('/api/v1/accounts/:id/remove_from_followers', [MastodonApiController::class, 'removeFromFollowers']);
+
+// Moderación y Bloqueos
+$router->post('/api/v1/accounts/:id/mute', [MastodonApiController::class, 'muteAccount']);
+$router->post('/api/v1/accounts/:id/unmute', [MastodonApiController::class, 'unmuteAccount']);
+$router->post('/api/v1/accounts/:id/block', [MastodonApiController::class, 'blockAccount']);
+$router->post('/api/v1/accounts/:id/unblock', [MastodonApiController::class, 'unblockAccount']);
+$router->get('/api/v1/mutes', [MastodonApiController::class, 'getMutedAccounts']);
+$router->get('/api/v1/blocks', [MastodonApiController::class, 'getBlockedAccounts']);
+$router->get('/api/v1/domain_blocks', [MastodonApiController::class, 'getDomainBlocks']);
+$router->post('/api/v1/domain_blocks', [MastodonApiController::class, 'blockDomain']);
+$router->delete('/api/v1/domain_blocks', [MastodonApiController::class, 'unblockDomain']);
+
+// Solicitudes de seguimiento (Follow Requests)
+$router->get('/api/v1/follow_requests', [MastodonApiController::class, 'getFollowRequests']);
+$router->post('/api/v1/follow_requests/:id/authorize', [MastodonApiController::class, 'authorizeFollowRequest']);
+$router->post('/api/v1/follow_requests/:id/reject', [MastodonApiController::class, 'rejectFollowRequest']);
+$router->post('/api/v1/follows/resend_pending', [MastodonApiController::class, 'resendPendingFollows']);
+
+// Marcadores (Bookmarks)
+$router->get('/api/v1/bookmarks', [MastodonApiController::class, 'getBookmarks']);
+$router->get('/api/v1/favourites', [MastodonApiController::class, 'getFavourites']);
+$router->get('/api/proxy', [MastodonApiController::class, 'proxyMedia']);
+
+// Notificaciones con fallback
+$router->get('/api/v1/notifications', [MastodonApiController::class, 'getNotifications']);
+$router->get('/api/v1/notifications/:id', [MastodonApiController::class, 'getNotification']);
+$router->post('/api/v1/notifications/:id/dismiss', [MastodonApiController::class, 'dismissNotification']);
+$router->post('/api/v1/notifications/clear', [MastodonApiController::class, 'clearNotifications']);
+
+// Notificaciones Push (Web Push / VAPID)
+$router->post('/api/v1/push/subscription', [MastodonApiController::class, 'createPushSubscription']);
+$router->get('/api/v1/push/subscription', [MastodonApiController::class, 'getPushSubscription']);
+$router->put('/api/v1/push/subscription', [MastodonApiController::class, 'updatePushSubscription']);
+$router->delete('/api/v1/push/subscription', [MastodonApiController::class, 'deletePushSubscription']);
+
+
+// Búsqueda (Search API v1 & v2)
+$router->get('/api/v1/search', [MastodonApiController::class, 'search']);
+$router->get('/api/v2/search', [MastodonApiController::class, 'search']);
+
+// --- Rutas de ActivityPub ---
+$router->get('/.well-known/webfinger', [ActivityPubController::class, 'webfinger']);
+$router->get('/.well-known/host-meta', [ActivityPubController::class, 'hostMeta']);
+$router->get('/users/:username', [ActivityPubController::class, 'getActor']);
+$router->post('/users/:username/inbox', [ActivityPubController::class, 'postInbox']);
+$router->get('/users/:username/outbox', [ActivityPubController::class, 'getOutbox']);
+$router->get('/users/:username/followers', [ActivityPubController::class, 'getFollowers']);
+$router->get('/users/:username/following', [ActivityPubController::class, 'getFollowing']);
+$router->get('/users/:username/statuses/:id', function($params) use ($renderFrontend) {
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    if (str_contains($accept, 'json')) {
+        \KutSocial\Controllers\ActivityPubController::getStatus($params);
+    } else {
+        $renderFrontend();
+    }
+});
+$router->get('/@:username', function($params) use ($renderFrontend) {
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    if (str_contains($accept, 'json')) {
+        \KutSocial\Controllers\ActivityPubController::getActor($params);
+    } else {
+        $renderFrontend();
+    }
+});
+
+// --- Timelines, Posting & Streaming REST APIs ---
+$router->get('/api/v1/timelines/home', [MastodonApiController::class, 'getHomeTimeline']);
+$router->get('/api/v1/timelines/catchup', [MastodonApiController::class, 'getCatchUpTimeline']);
+$router->get('/api/v1/timelines/public', [MastodonApiController::class, 'getPublicTimeline']);
+$router->post('/api/v1/statuses', [MastodonApiController::class, 'postStatus']);
+$router->post('/api/v2/statuses', [MastodonApiController::class, 'postStatus']);
+$router->get('/api/v1/statuses', [MastodonApiController::class, 'getMultipleStatuses']);
+$router->get('/api/v1/statuses/resolve', [MastodonApiController::class, 'resolveStatusUrl']);
+$router->get('/api/v1/statuses/:id', [MastodonApiController::class, 'getSingleStatus']);
+$router->get('/api/v1/statuses/:id/context', [MastodonApiController::class, 'getStatusContext']);
+$router->put('/api/v1/statuses/:id', [MastodonApiController::class, 'updateStatus']);
+$router->delete('/api/v1/statuses/:id', [MastodonApiController::class, 'deleteStatus']);
+$router->post('/api/v1/statuses/:id/favourite', [MastodonApiController::class, 'favouriteStatus']);
+$router->post('/api/v1/statuses/:id/unfavourite', [MastodonApiController::class, 'unfavouriteStatus']);
+$router->post('/api/v1/statuses/:id/bookmark', [MastodonApiController::class, 'bookmarkStatus']);
+$router->post('/api/v1/statuses/:id/unbookmark', [MastodonApiController::class, 'unbookmarkStatus']);
+$router->post('/api/v1/statuses/:id/reblog', [MastodonApiController::class, 'reblogStatus']);
+$router->post('/api/v1/statuses/:id/unreblog', [MastodonApiController::class, 'unreblogStatus']);
+$router->get('/api/v1/streaming', [MastodonApiController::class, 'getStreaming']);
+
+// Carga Real de Multimedia (Mastodon compatible)
+$router->post('/api/v1/media', [MastodonApiController::class, 'uploadMedia']);
+$router->post('/api/v2/media', [MastodonApiController::class, 'uploadMedia']);
+$router->put('/api/v1/media/:id', [MastodonApiController::class, 'updateMedia']);
+$router->post('/api/v1/media/:id', [MastodonApiController::class, 'updateMedia']);
+
+// Encuestas Reales (Mastodon compatible)
+$router->post('/api/v1/polls/:id/votes', [MastodonApiController::class, 'votePoll']);
+$router->get('/api/v1/polls/:id', [MastodonApiController::class, 'getPoll']);
+
+// --- Listas (Lists) ---
+$router->get('/api/v1/lists', [MastodonApiController::class, 'getLists']);
+$router->post('/api/v1/lists', [MastodonApiController::class, 'createList']);
+$router->get('/api/v1/lists/:id', [MastodonApiController::class, 'getList']);
+$router->put('/api/v1/lists/:id', [MastodonApiController::class, 'updateList']);
+$router->delete('/api/v1/lists/:id', [MastodonApiController::class, 'deleteList']);
+$router->get('/api/v1/lists/:id/accounts', [MastodonApiController::class, 'getListAccounts']);
+$router->post('/api/v1/lists/:id/accounts', [MastodonApiController::class, 'addAccountsToList']);
+$router->delete('/api/v1/lists/:id/accounts', [MastodonApiController::class, 'removeAccountsFromList']);
+$router->get('/api/v1/timelines/list/:id', [MastodonApiController::class, 'getListTimeline']);
+
+// --- Colecciones (Collections) ---
+$router->post('/api/v1/collections', [MastodonApiController::class, 'createCollection']);
+$router->get('/api/v1/collections/:id', [MastodonApiController::class, 'getCollection']);
+$router->patch('/api/v1/collections/:id', [MastodonApiController::class, 'updateCollection']);
+$router->delete('/api/v1/collections/:id', [MastodonApiController::class, 'deleteCollection']);
+$router->post('/api/v1/collections/:id/items', [MastodonApiController::class, 'addAccountsToCollection']);
+$router->delete('/api/v1/collections/:id/items', [MastodonApiController::class, 'removeAccountsFromCollection']);
+
+// --- Hashtags Seguidos (Followed Tags) ---
+$router->get('/api/v1/followed_tags', [MastodonApiController::class, 'getFollowedTags']);
+$router->post('/api/v1/tags/:name/follow', [MastodonApiController::class, 'followTag']);
+$router->post('/api/v1/tags/:name/unfollow', [MastodonApiController::class, 'unfollowTag']);
+$router->get('/api/v1/timelines/tag/:name', [MastodonApiController::class, 'getTagTimeline']);
+
+// --- Importaciones y Exportaciones ---
+$router->get('/api/v1/export/posts', [MastodonApiController::class, 'exportPosts']);
+$router->get('/api/v1/export/follows', [MastodonApiController::class, 'exportFollows']);
+$router->get('/api/v1/export/followers', [MastodonApiController::class, 'exportFollowers']);
+$router->get('/api/v1/export/mutes', [MastodonApiController::class, 'exportMutes']);
+$router->get('/api/v1/export/blocks', [MastodonApiController::class, 'exportBlocks']);
+$router->get('/api/v1/export/domain_blocks', [MastodonApiController::class, 'exportDomainBlocks']);
+$router->get('/api/v1/export/bookmarks', [MastodonApiController::class, 'exportBookmarks']);
+$router->get('/api/v1/export/filters', [MastodonApiController::class, 'exportFilters']);
+$router->post('/api/v1/import', [MastodonApiController::class, 'handleImport']);
+
+// --- Cliente Web SPA ---
+// --- Cliente Web SPA ---
+$router->get('/', $renderFrontend);
+$router->get('/public', $renderFrontend);
+$router->get('/home', $renderFrontend);
+$router->get('/catchup', $renderFrontend);
+$router->get('/local', $renderFrontend);
+$router->get('/bookmarks', $renderFrontend);
+$router->get('/notifications', $renderFrontend);
+$router->get('/lists', $renderFrontend);
+$router->get('/collections', $renderFrontend);
+$router->get('/followed-hashtags', $renderFrontend);
+$router->get('/profile', $renderFrontend);
+$router->get('/@:username', $renderFrontend);
+$router->get('/list_:id', $renderFrontend);
+$router->get('/tag_:tag', $renderFrontend);
+$router->get('/search-results', $renderFrontend);
+
+
+// --- Panel de Administración Centralizado ---
+$router->get('/admin/login', [AdminController::class, 'showLogin']);
+$router->post('/admin/login', [AdminController::class, 'handleLogin']);
+$router->get('/admin/logout', [AdminController::class, 'handleLogout']);
+$router->get('/admin/dashboard', [AdminController::class, 'showDashboard']);
+$router->get('/admin/dashboard/:section', [AdminController::class, 'showDashboard']);
+$router->post('/admin/settings', [AdminController::class, 'handleSettings']);
+$router->post('/admin/security/password', [AdminController::class, 'handlePassword']);
+$router->post('/admin/security/2fa/setup', [AdminController::class, 'setup2FA']);
+$router->post('/admin/security/2fa/verify', [AdminController::class, 'verify2FA']);
+$router->post('/admin/security/2fa/disable', [AdminController::class, 'disable2FA']);
+$router->post('/admin/moderation/block', [AdminController::class, 'addBlock']);
+$router->post('/admin/moderation/unblock', [AdminController::class, 'removeBlock']);
+$router->post('/admin/relays', [AdminController::class, 'addRelay']);
+$router->post('/admin/relays/delete', [AdminController::class, 'removeRelay']);
+
+// Gestión de usuarios y mantenimiento
+$router->post('/admin/users/create', [AdminController::class, 'createUser']);
+$router->post('/admin/users/delete', [AdminController::class, 'deleteUser']);
+$router->post('/admin/users/role', [AdminController::class, 'changeUserRole']);
+$router->post('/admin/maintenance/clean', [AdminController::class, 'runMaintenanceClean']);
+$router->post('/admin/update/action', [AdminController::class, 'handleUpdateAction']);
+
+// Redirigir la antigua ruta del actualizador al dashboard
+$router->get('/admin/update', function() {
+    header("Location: /admin/dashboard");
+    exit;
+});
+$router->post('/admin/update', [AdminController::class, 'handleUpdate']);
+
+// 5. Despachar rutas
+$router->dispatch();
