@@ -77,6 +77,48 @@ let hasMoreToots = true;
 let isLoadingToots = false;
 let eventSource = null;
 
+// Timeline cache and DOM container state management
+const timelineStates = {};
+
+function getTimelineState(timelineId) {
+    if (!timelineStates[timelineId]) {
+        timelineStates[timelineId] = {
+            lastId: 0,
+            oldestId: null,
+            hasMoreToots: true
+        };
+    }
+    return timelineStates[timelineId];
+}
+
+function getFeedContainer(timelineId) {
+    let feed = document.getElementById(`feed-${timelineId}`);
+    if (!feed) {
+        feed = document.createElement('div');
+        feed.id = `feed-${timelineId}`;
+        feed.className = 'feed-container';
+        feed.style.display = 'none';
+        const wrapper = document.getElementById('feed-container-wrapper');
+        if (wrapper) {
+            wrapper.appendChild(feed);
+        }
+    }
+    return feed;
+}
+
+function showFeedContainer(timelineId) {
+    const wrapper = document.getElementById('feed-container-wrapper');
+    if (wrapper) {
+        const containers = wrapper.getElementsByClassName('feed-container');
+        for (let i = 0; i < containers.length; i++) {
+            containers[i].style.display = 'none';
+        }
+    }
+    const feed = getFeedContainer(timelineId);
+    feed.style.display = 'flex';
+    return feed;
+}
+
 // Comprobación de autenticación
 window.addEventListener('DOMContentLoaded', () => {
     if (!token) {
@@ -513,7 +555,7 @@ async function loadTimeline(loadMore = false) {
 
     isLoadingToots = true;
 
-    const feed = document.getElementById('feed');
+    const feed = showFeedContainer(currentTimeline);
     let loadingIndicator = null;
     const isTimelineChange = !loadMore && (lastRenderedTimeline !== currentTimeline || feed.innerHTML === '' || feed.innerHTML.includes('Cargando toots...'));
 
@@ -669,7 +711,7 @@ function startStreaming() {
 }
 
 function prependToot(toot, isNew = false) {
-    const feed = document.getElementById('feed');
+    const feed = getFeedContainer(currentTimeline);
     
     if (feed.querySelector(`[data-toot-id="${toot.id}"]`)) {
         return;
@@ -1600,7 +1642,38 @@ function switchTimeline(type, fromHashChange = false) {
     if (fromHashChange && currentTimeline === type && tabFeed && tabFeed.style.display === 'block') {
         return;
     }
+
+    // Save current timeline state before switching
+    if (lastRenderedTimeline) {
+        const state = getTimelineState(lastRenderedTimeline);
+        state.lastId = lastId;
+        state.oldestId = oldestId;
+        state.hasMoreToots = hasMoreToots;
+    }
+
+    const feed = getFeedContainer(type);
+    const alreadyLoaded = feed.innerHTML !== '' && !feed.innerHTML.includes('Cargando toots...');
+    const forceReload = (currentTimeline === type && alreadyLoaded && !fromHashChange);
+
+    if (forceReload) {
+        feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+        const state = getTimelineState(type);
+        state.lastId = 0;
+        state.oldestId = null;
+        state.hasMoreToots = true;
+        lastId = 0;
+        oldestId = null;
+        hasMoreToots = true;
+    } else {
+        // Restore target timeline state
+        const newState = getTimelineState(type);
+        lastId = newState.lastId;
+        oldestId = newState.oldestId;
+        hasMoreToots = newState.hasMoreToots;
+    }
+
     currentTimeline = type;
+    showFeedContainer(type);
     
     const newPath = '/' + type;
     if (window.location.pathname !== newPath && !fromHashChange) {
@@ -1629,9 +1702,19 @@ function switchTimeline(type, fromHashChange = false) {
     } else if (type.startsWith('tag_') && navHash) {
         navHash.classList.add('active');
     }
-    lastId = 0;
+    
     showTab('feed', fromHashChange);
-    loadTimeline();
+    
+    if (alreadyLoaded && !forceReload) {
+        lastRenderedTimeline = currentTimeline;
+        if (currentTimeline !== 'bookmarks') {
+            startStreaming();
+        } else if (eventSource) {
+            eventSource.close();
+        }
+    } else {
+        loadTimeline();
+    }
 }
 
 function updateCharCount() {

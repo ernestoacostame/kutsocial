@@ -97,7 +97,6 @@
     </div>
 
     <!-- Listado de toots -->
-    <div class="feed-container" id="feed">
-        <!-- Se inyectan dinámicamente -->
+    <div id="feed-container-wrapper" style="width: 100%;">
     </div>
 </div>
