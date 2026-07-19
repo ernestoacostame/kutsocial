@@ -886,7 +886,8 @@ function createThreadTootElement(toot, isMain = false) {
             let url = media.url || '';
             const altText = media.description ? escapeHTML(media.description) : '';
             
-            const isVideo = type === 'video' || type === 'gifv' || url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.endsWith('.m4v');
+            const isGif = url.toLowerCase().split('?')[0].endsWith('.gif');
+            const isVideo = (type === 'video' || type === 'gifv' || url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.endsWith('.m4v')) && !isGif;
             if (!isVideo && type !== 'audio') {
                 url = proxyUrl(url);
             }

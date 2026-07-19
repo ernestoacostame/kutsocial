@@ -3594,7 +3594,7 @@ HTML;
             return 'audio';
         }
         if ($mediaType === 'image/gif') {
-            return 'gifv';
+            return 'image';
         }
         return 'image';
     }
@@ -3613,7 +3613,7 @@ HTML;
             return 'audio';
         }
         if ($ext === 'gif') {
-            return 'gifv';
+            return 'image';
         }
         return 'image';
     }
