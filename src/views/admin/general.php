@@ -10,6 +10,11 @@
         <input type="password" name="update_github_token" id="update_github_token" value="<?= htmlspecialchars($githubToken) ?>">
         <p class="help-text">Token de Acceso Personal (PAT) de GitHub para poder buscar y descargar de forma segura actualizaciones de KutSocial.</p>
     </div>
+    <div class="form-group" style="margin-top: 20px;">
+        <label for="giphy_api_key">API Key de GIPHY</label>
+        <input type="password" name="giphy_api_key" id="giphy_api_key" value="<?= htmlspecialchars($giphyApiKey) ?>">
+        <p class="help-text">Clave de API de GIPHY para habilitar el buscador de GIFs en el compositor. Si se deja en blanco, se usará la clave pública beta por defecto.</p>
+    </div>
 
     <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 30px 0;">
     

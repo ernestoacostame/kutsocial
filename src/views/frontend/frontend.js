@@ -5424,3 +5424,136 @@ function updateComposerVisibilityIcon() {
         icon.innerText = 'mail';
     }
 }
+
+// ==========================================
+// GIPHY GIF Picker support
+// ==========================================
+function openGifModal() {
+    const modal = document.getElementById('modal-gif-picker');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    document.getElementById('gif-search-input').value = '';
+    document.getElementById('gif-search-input').focus();
+    loadTrendingGifs();
+}
+
+function closeGifModal() {
+    const modal = document.getElementById('modal-gif-picker');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function fetchGiphy(endpoint, params = {}) {
+    const apiKey = window.GIPHY_API_KEY || 'dc6zaTOxFJmzC';
+    const urlParams = new URLSearchParams({
+        api_key: apiKey,
+        rating: 'g',
+        limit: '24',
+        ...params
+    });
+    
+    const url = `https://api.giphy.com/v1/gifs/${endpoint}?${urlParams.toString()}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error('GIPHY API returned status ' + response.status);
+    }
+    return await response.json();
+}
+
+async function loadTrendingGifs() {
+    const container = document.getElementById('gif-results-container');
+    if (!container) return;
+    container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--text-muted); font-size: 13.5px; padding: 20px;">Cargando tendencias...</div>';
+    
+    try {
+        const data = await fetchGiphy('trending');
+        renderGifs(data.data);
+    } catch (err) {
+        console.error('Error al cargar tendencias de GIPHY:', err);
+        container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--error); font-size: 13.5px; padding: 20px;">Error al cargar tendencias de GIPHY.</div>';
+    }
+}
+
+async function searchGifs() {
+    const query = document.getElementById('gif-search-input').value.trim();
+    if (!query) {
+        loadTrendingGifs();
+        return;
+    }
+    
+    const container = document.getElementById('gif-results-container');
+    if (!container) return;
+    container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--text-muted); font-size: 13.5px; padding: 20px;">Buscando...</div>';
+    
+    try {
+        const data = await fetchGiphy('search', { q: query });
+        if (data.data.length === 0) {
+            container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--text-muted); font-size: 13.5px; padding: 20px;">No se encontraron resultados.</div>';
+        } else {
+            renderGifs(data.data);
+        }
+    } catch (err) {
+        console.error('Error al buscar en GIPHY:', err);
+        container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--error); font-size: 13.5px; padding: 20px;">Error al buscar en GIPHY.</div>';
+    }
+}
+
+function renderGifs(gifs) {
+    const container = document.getElementById('gif-results-container');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    gifs.forEach(gif => {
+        const previewUrl = gif.images.fixed_width_downsampled?.url || gif.images.fixed_height_small?.url || gif.images.original.url;
+        const originalUrl = gif.images.original.url;
+        
+        const img = document.createElement('img');
+        img.src = previewUrl;
+        img.alt = gif.title || 'GIF';
+        img.style = 'width: 100%; height: 100px; object-fit: cover; border-radius: 6px; cursor: pointer; transition: transform 0.2s, filter 0.2s;';
+        img.onmouseover = () => {
+            img.style.transform = 'scale(1.05)';
+            img.style.filter = 'brightness(1.1)';
+        };
+        img.onmouseout = () => {
+            img.style.transform = 'scale(1)';
+            img.style.filter = 'brightness(1)';
+        };
+        img.onclick = () => selectGif(originalUrl, gif.title || 'Giphy GIF');
+        
+        container.appendChild(img);
+    });
+}
+
+async function selectGif(gifUrl, title) {
+    closeGifModal();
+    
+    const previewContainer = document.getElementById('composer-media-preview');
+    if (!previewContainer) return;
+    
+    const previewId = 'media-uploading-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    const tempDiv = document.createElement('div');
+    tempDiv.id = previewId;
+    tempDiv.className = 'media-preview-item';
+    tempDiv.style = "display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; position: relative; margin-bottom: 8px; width: 100%; box-sizing: border-box;";
+    tempDiv.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); padding: 5px;">Descargando y subiendo GIF...</div>';
+    previewContainer.appendChild(tempDiv);
+    
+    try {
+        const response = await fetch(gifUrl);
+        if (!response.ok) throw new Error('Failed to fetch GIF from GIPHY source');
+        const blob = await response.blob();
+        
+        const file = new File([blob], "giphy.gif", { type: "image/gif" });
+        
+        tempDiv.remove();
+        
+        await uploadFileDirectly(file);
+        
+    } catch (err) {
+        console.error('Error al procesar/subir GIF de GIPHY:', err);
+        tempDiv.remove();
+        alert('Error al descargar o subir el GIF seleccionado.');
+    }
+}

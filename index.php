@@ -170,6 +170,10 @@ $renderFrontend = function() {
 
         $version = \KutSocial\Database::getVersion();
         
+        $stmtGiphy = $db->prepare("SELECT value FROM options WHERE key = 'giphy_api_key' LIMIT 1");
+        $stmtGiphy->execute();
+        $giphyApiKey = $stmtGiphy->fetchColumn() ?: '';
+        
         // Inyectar variables globales en el head para el JS
         $jsGlobals = "
     <script>
@@ -181,6 +185,7 @@ $renderFrontend = function() {
         window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_HASHTAGS = " . json_encode($userHashtags, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.GIPHY_API_KEY = '{$giphyApiKey}';
     </script>
         ";
         $html = str_replace('<head>', "<head>\n" . $jsGlobals, $html);

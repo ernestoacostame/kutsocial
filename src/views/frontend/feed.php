@@ -70,6 +70,10 @@
                 <button id="emoji-picker-btn" class="composer-tool-btn" onclick="toggleEmojiPicker(event)" title="Insertar emoji">
                     <span class="material-icons-outlined">sentiment_satisfied_alt</span>
                 </button>
+                <!-- Botón GIF -->
+                <button id="gif-picker-btn" class="composer-tool-btn" onclick="openGifModal()" title="Insertar GIF">
+                    <span class="material-icons-outlined">gif</span>
+                </button>
                 <!-- Selector de Visibilidad (Público) -->
                 <div class="composer-select-wrapper" title="Visibilidad de la publicación">
                     <select id="composer-visibility">

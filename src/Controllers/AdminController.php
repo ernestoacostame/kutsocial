@@ -203,6 +203,10 @@ class AdminController {
         $stmtToken->execute();
         $githubToken = $stmtToken->fetchColumn() ?: '';
 
+        $stmtGiphy = $db->prepare("SELECT value FROM options WHERE key = 'giphy_api_key' LIMIT 1");
+        $stmtGiphy->execute();
+        $giphyApiKey = $stmtGiphy->fetchColumn() ?: '';
+
         $rollbacks = $updater->getAvailableRollbacks();
         $updatesHistory = [];
         try {
@@ -240,6 +244,7 @@ class AdminController {
 
         $maxChars = (int)($_POST['max_toot_chars'] ?? 500);
         $githubToken = trim($_POST['update_github_token'] ?? '');
+        $giphyApiKey = trim($_POST['giphy_api_key'] ?? '');
 
         if ($maxChars < 500 || $maxChars > 9999) {
             $_SESSION['admin_error_msg'] = "El límite de caracteres debe estar entre 500 y 9999.";
@@ -249,6 +254,9 @@ class AdminController {
 
             $stmt2 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('update_github_token', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
             $stmt2->execute([$githubToken]);
+
+            $stmt3 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('giphy_api_key', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
+            $stmt3->execute([$giphyApiKey]);
 
             // Guardar preferencias SMTP y Atribución
             $smtpHost = trim($_POST['smtp_host'] ?? '');
