@@ -72,7 +72,7 @@
                 </button>
                 <!-- Botón GIF -->
                 <button id="gif-picker-btn" class="composer-tool-btn" onclick="openGifModal()" title="Insertar GIF">
-                    <span class="material-icons-outlined">gif</span>
+                    <span class="material-icons-outlined" style="font-size: 26px;">gif_box</span>
                 </button>
                 <!-- Selector de Visibilidad (Público) -->
                 <div class="composer-select-wrapper" title="Visibilidad de la publicación">

@@ -5471,7 +5471,7 @@ async function loadTrendingGifs() {
         renderGifs(data.data);
     } catch (err) {
         console.error('Error al cargar tendencias de GIPHY:', err);
-        container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--error); font-size: 13.5px; padding: 20px;">Error al cargar tendencias de GIPHY.</div>';
+        container.innerHTML = `<div style="grid-column: span 3; text-align: center; color: var(--error); font-size: 13.5px; padding: 20px; line-height: 1.5;">Error al cargar tendencias de GIPHY (${err.message}).<br><span style="font-size: 12px; color: var(--text-muted);">Asegúrate de configurar una API Key de GIPHY válida en el <a href="/admin/dashboard/general" style="color: #818cf8; text-decoration: underline;">Panel de Administración</a>.</span></div>`;
     }
 }
 
@@ -5495,7 +5495,7 @@ async function searchGifs() {
         }
     } catch (err) {
         console.error('Error al buscar en GIPHY:', err);
-        container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--error); font-size: 13.5px; padding: 20px;">Error al buscar en GIPHY.</div>';
+        container.innerHTML = `<div style="grid-column: span 3; text-align: center; color: var(--error); font-size: 13.5px; padding: 20px; line-height: 1.5;">Error al buscar en GIPHY (${err.message}).<br><span style="font-size: 12px; color: var(--text-muted);">Asegúrate de configurar una API Key de GIPHY válida en el <a href="/admin/dashboard/general" style="color: #818cf8; text-decoration: underline;">Panel de Administración</a>.</span></div>`;
     }
 }
 
