@@ -4045,7 +4045,7 @@ HTML;
             'text' => $row['status_content'],
             'account' => $account,
             'media_attachments' => $attachments,
-            'mentions' => [],
+            'mentions' => self::extractMentionsFromStatus($row['status_content'], $db),
             'tags' => $tags,
             'emojis' => self::extractEmojisFromContent($formattedContent, $row),
             'card' => (function() use ($row, $db) {
@@ -4064,6 +4064,89 @@ HTML;
             'poll' => $poll,
             'application' => $application
         ];
+    }
+
+    private static function extractMentionsFromStatus(string $content, \PDO $db): array {
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        
+        $mentions = [];
+        
+        // 1. Detect direct @username or @username@domain in text (for raw content / local posts)
+        preg_match_all('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', $content, $matches, PREG_SET_ORDER);
+        
+        // 2. Also detect href="/users/username" or href="https://domain/users/username" inside tags
+        preg_match_all('/href="([^"]+)"[^>]*class="[^"]*mention[^"]*"/i', $content, $linkMatches, PREG_SET_ORDER);
+        
+        $accountsToLookup = [];
+        
+        // Process plain text regex matches
+        foreach ($matches as $match) {
+            $mUsername = $match[1];
+            $mDomain = isset($match[2]) && !empty($match[2]) ? strtolower($match[2]) : null;
+            if ($mDomain !== null && strcasecmp($mDomain, $domain) === 0) {
+                $mDomain = null;
+            }
+            $key = $mUsername . ':' . ($mDomain ?: '');
+            $accountsToLookup[$key] = [
+                'username' => $mUsername,
+                'domain' => $mDomain
+            ];
+        }
+        
+        // Process HTML link matches (for remote HTML content)
+        foreach ($linkMatches as $lm) {
+            $url = htmlspecialchars_decode($lm[1], ENT_QUOTES);
+            $path = parse_url($url, PHP_URL_PATH);
+            $host = parse_url($url, PHP_URL_HOST);
+            
+            if ($path && preg_match('/^\/users\/([a-zA-Z0-9_-]+)$/i', $path, $pm)) {
+                $mUsername = $pm[1];
+                $mDomain = ($host && strcasecmp($host, $domain) !== 0) ? strtolower($host) : null;
+                $key = $mUsername . ':' . ($mDomain ?: '');
+                if (!isset($accountsToLookup[$key])) {
+                    $accountsToLookup[$key] = [
+                        'username' => $mUsername,
+                        'domain' => $mDomain
+                    ];
+                }
+            }
+        }
+        
+        // Lookup all accounts in the database and construct Mastodon Mention object
+        foreach ($accountsToLookup as $lookup) {
+            $username = $lookup['username'];
+            $domainVal = $lookup['domain'];
+            
+            $stmt = null;
+            if ($domainVal === null) {
+                $stmt = $db->prepare("SELECT id, username, domain FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+                $stmt->execute([$username]);
+            } else {
+                $stmt = $db->prepare("SELECT id, username, domain FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                $stmt->execute([$username, $domainVal]);
+            }
+            
+            $acc = $stmt->fetch();
+            if ($acc) {
+                $mActorUrl = $acc['domain'] 
+                    ? "https://{$acc['domain']}/users/{$acc['username']}"
+                    : "$proto://$domain/users/{$acc['username']}";
+                
+                $mentionAcct = $acc['domain']
+                    ? "{$acc['username']}@{$acc['domain']}"
+                    : $acc['username'];
+                    
+                $mentions[] = [
+                    'id' => (string)$acc['id'],
+                    'username' => $acc['username'],
+                    'acct' => $mentionAcct,
+                    'url' => $mActorUrl
+                ];
+            }
+        }
+        
+        return $mentions;
     }
 
     private static function getRelationshipObj(\PDO $db, int $currentUserId, int $targetId): array {
