@@ -771,7 +771,7 @@ function createThreadTootElement(toot, isMain = false) {
     }
     
     let quotePlaceholderHTML = '';
-    const statusUrlRegex = /(\/(users|@)[a-zA-Z0-9_\-\.]+\/(statuses\/)?[a-zA-Z0-9]+)|(\/(notice|objects|display)\/[a-zA-Z0-9_\-\.]+)/i;
+    const statusUrlRegex = /(\/users\/[a-zA-Z0-9_\-\.]+\/statuses\/[a-zA-Z0-9]+(?:\/)?(?:\?|#|$))|(\/@[a-zA-Z0-9_\-\.]+\/[0-9]+(?:\/)?(?:\?|#|$))|(\/(notice|objects|display)\/[a-zA-Z0-9_\-\.]+(?:\/)?(?:\?|#|$))/i;
     
     const quotedToot = toot.quote ? (toot.quote.quoted_status || toot.quote) : null;
     
