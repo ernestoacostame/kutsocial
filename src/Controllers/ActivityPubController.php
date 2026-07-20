@@ -611,7 +611,7 @@ XML;
                     foreach ($dbMedia as $att) {
                         $attachmentsList[] = [
                             'type' => 'Document',
-                            'mediaType' => 'image/' . pathinfo($att['url'], PATHINFO_EXTENSION),
+                            'mediaType' => self::getMimeTypeFromUrl($att['url']),
                             'url' => $att['url'],
                             'name' => !empty($att['description']) ? $att['description'] : null
                         ];
@@ -1679,7 +1679,7 @@ XML;
                 foreach ($dbMedia as $att) {
                     $attachmentsList[] = [
                         'type' => 'Document',
-                        'mediaType' => 'image/' . pathinfo($att['url'], PATHINFO_EXTENSION),
+                        'mediaType' => self::getMimeTypeFromUrl($att['url']),
                         'url' => $att['url'],
                         'name' => !empty($att['description']) ? $att['description'] : null
                     ];
@@ -1929,6 +1929,46 @@ XML;
                     self::log("Error en resolveDescendantsForStatus para status $statusId: " . $e->getMessage());
                 }
             }
+        }
+    }
+
+    public static function getMimeTypeFromUrl(string $url): string {
+        $path = parse_url($url, PHP_URL_PATH) ?: $url;
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        switch ($ext) {
+            case 'jpg':
+            case 'jpeg':
+                return 'image/jpeg';
+            case 'png':
+                return 'image/png';
+            case 'gif':
+                return 'image/gif';
+            case 'webp':
+                return 'image/webp';
+            case 'svg':
+                return 'image/svg+xml';
+            case 'mp4':
+                return 'video/mp4';
+            case 'webm':
+                return 'video/webm';
+            case 'ogv':
+                return 'video/ogg';
+            case 'mov':
+                return 'video/quicktime';
+            case 'm4v':
+                return 'video/x-m4v';
+            case 'mp3':
+                return 'audio/mpeg';
+            case 'ogg':
+                return 'audio/ogg';
+            case 'wav':
+                return 'audio/wav';
+            case 'm4a':
+                return 'audio/x-m4a';
+            case 'aac':
+                return 'audio/aac';
+            default:
+                return 'image/jpeg'; // fallback
         }
     }
 

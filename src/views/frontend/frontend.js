@@ -1325,7 +1325,13 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
             const type = (media.type || '').toLowerCase();
             const url = type === 'audio' ? '' : proxyUrl(media.url);
             if (url) {
-                mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onclick="event.stopPropagation(); openImageViewerModal(this.src)">`;
+                const isGif = url.toLowerCase().split('?')[0].endsWith('.gif');
+                const isVideo = type === 'video' || type === 'gifv' || ((url.toLowerCase().split('?')[0].endsWith('.mp4') || url.toLowerCase().split('?')[0].endsWith('.webm') || url.toLowerCase().split('?')[0].endsWith('.mov') || url.toLowerCase().split('?')[0].endsWith('.m4v') || url.toLowerCase().split('?')[0].endsWith('.ogv')) && !isGif);
+                if (isVideo) {
+                    mediaHTML += `<video src="${media.url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; background:#000;" muted playsinline loop onmouseover="this.play()" onmouseout="this.pause()" onclick="event.stopPropagation(); window.open('${media.url}', '_blank')"></video>`;
+                } else {
+                    mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onclick="event.stopPropagation(); openImageViewerModal(this.src)">`;
+                }
             }
         });
         mediaHTML += `</div>`;
