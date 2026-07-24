@@ -292,9 +292,15 @@ $router->get('/api/proxy', [MastodonApiController::class, 'proxyMedia']);
 
 // Notificaciones con fallback
 $router->get('/api/v1/notifications', [MastodonApiController::class, 'getNotifications']);
+$router->get('/api/v1/notifications/unread_count', [MastodonApiController::class, 'getNotificationsUnreadCount']);
+$router->get('/api/v2/notifications/policy', [MastodonApiController::class, 'getNotificationsPolicy']);
 $router->get('/api/v1/notifications/:id', [MastodonApiController::class, 'getNotification']);
 $router->post('/api/v1/notifications/:id/dismiss', [MastodonApiController::class, 'dismissNotification']);
 $router->post('/api/v1/notifications/clear', [MastodonApiController::class, 'clearNotifications']);
+
+// Marcadores de lectura (Timeline Markers)
+$router->get('/api/v1/markers', [MastodonApiController::class, 'getMarkers']);
+$router->post('/api/v1/markers', [MastodonApiController::class, 'postMarkers']);
 
 // Notificaciones Push (Web Push / VAPID)
 $router->post('/api/v1/push/subscription', [MastodonApiController::class, 'createPushSubscription']);
@@ -341,6 +347,7 @@ $router->post('/api/v2/statuses', [MastodonApiController::class, 'postStatus']);
 $router->get('/api/v1/statuses', [MastodonApiController::class, 'getMultipleStatuses']);
 $router->get('/api/v1/statuses/resolve', [MastodonApiController::class, 'resolveStatusUrl']);
 $router->get('/api/v1/statuses/:id', [MastodonApiController::class, 'getSingleStatus']);
+$router->get('/api/v1/statuses/:id/source', [MastodonApiController::class, 'getStatusSource']);
 $router->get('/api/v1/statuses/:id/context', [MastodonApiController::class, 'getStatusContext']);
 $router->put('/api/v1/statuses/:id', [MastodonApiController::class, 'updateStatus']);
 $router->delete('/api/v1/statuses/:id', [MastodonApiController::class, 'deleteStatus']);

@@ -1449,6 +1449,151 @@ HTML;
     }
 
     /**
+     * Endpoint GET /api/v1/notifications/unread_count
+     */
+    public static function getNotificationsUnreadCount(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        Router::json(['count' => 0]);
+    }
+
+    /**
+     * Endpoint GET /api/v2/notifications/policy
+     */
+    public static function getNotificationsPolicy(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        Router::json([
+            'for_not_following' => 'accept',
+            'for_not_followers' => 'accept',
+            'for_new_accounts' => 'accept',
+            'for_private_mentions' => 'accept',
+            'for_limited_accounts' => 'accept',
+            'summary' => [
+                'pending_requests_count' => 0,
+                'pending_notifications_count' => 0
+            ]
+        ]);
+    }
+
+    /**
+     * Endpoint GET /api/v1/markers
+     */
+    public static function getMarkers(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $timelines = $_GET['timeline'] ?? [];
+        if (is_string($timelines)) {
+            $timelines = [$timelines];
+        }
+
+        $db = Database::connect();
+        $result = [];
+
+        foreach ($timelines as $tl) {
+            $tl = preg_replace('/[^a-zA-Z0-9_\-]/', '', $tl);
+            if (empty($tl)) continue;
+
+            try {
+                $stmt = $db->prepare("SELECT last_read_id, version, updated_at FROM markers WHERE account_id = ? AND timeline = ? LIMIT 1");
+                $stmt->execute([$account['id'], $tl]);
+                $row = $stmt->fetch();
+                if ($row) {
+                    $result[$tl] = [
+                        'last_read_id' => (string)$row['last_read_id'],
+                        'version' => (int)$row['version'],
+                        'updated_at' => date('c', strtotime($row['updated_at']))
+                    ];
+                    continue;
+                }
+            } catch (\Throwable $e) {}
+
+            $result[$tl] = [
+                'last_read_id' => '0',
+                'version' => 0,
+                'updated_at' => date('c')
+            ];
+        }
+
+        Router::json($result);
+    }
+
+    /**
+     * Endpoint POST /api/v1/markers
+     */
+    public static function postMarkers(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $body = Router::getRequestBody();
+        $db = Database::connect();
+
+        try {
+            $db->exec("CREATE TABLE IF NOT EXISTS markers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                timeline TEXT NOT NULL,
+                last_read_id TEXT NOT NULL,
+                version INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(account_id, timeline)
+            )");
+        } catch (\Throwable $e) {}
+
+        $result = [];
+        $timelines = ['home', 'notifications', 'public'];
+
+        foreach ($timelines as $tl) {
+            $lastReadId = null;
+            if (isset($body[$tl]['last_read_id'])) {
+                $lastReadId = (string)$body[$tl]['last_read_id'];
+            } elseif (isset($_POST[$tl]['last_read_id'])) {
+                $lastReadId = (string)$_POST[$tl]['last_read_id'];
+            }
+
+            if ($lastReadId !== null) {
+                $stmt = $db->prepare("
+                    INSERT INTO markers (account_id, timeline, last_read_id, updated_at)
+                    VALUES (?, ?, ?, datetime('now'))
+                    ON CONFLICT(account_id, timeline) DO UPDATE SET
+                        last_read_id = excluded.last_read_id,
+                        version = version + 1,
+                        updated_at = datetime('now')
+                ");
+                $stmt->execute([$account['id'], $tl, $lastReadId]);
+
+                $stmtFetch = $db->prepare("SELECT last_read_id, version, updated_at FROM markers WHERE account_id = ? AND timeline = ? LIMIT 1");
+                $stmtFetch->execute([$account['id'], $tl]);
+                $row = $stmtFetch->fetch();
+                if ($row) {
+                    $result[$tl] = [
+                        'last_read_id' => (string)$row['last_read_id'],
+                        'version' => (int)$row['version'],
+                        'updated_at' => date('c', strtotime($row['updated_at']))
+                    ];
+                }
+            }
+        }
+
+        Router::json($result);
+    }
+
+    /**
      * Endpoint GET /api/v1/custom_emojis
      */
     public static function getCustomEmojis(): void {
@@ -3515,6 +3660,57 @@ HTML;
         }
 
         Router::json(self::formatStatus($row, $currUserId));
+    }
+
+    /**
+     * Endpoint GET /api/v1/statuses/:id/source
+     * Retorna la fuente (texto plano / markdown y spoiler_text) de una publicación para edición en clientes como Tokodon.
+     */
+    public static function getStatusSource(array $params): void {
+        $id = (int)$params['id'];
+        $db = Database::connect();
+
+        $stmt = $db->prepare("SELECT id, content, spoiler_text, account_id, visibility FROM statuses WHERE id = ? LIMIT 1");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        $account = null;
+        $currUserId = null;
+        try {
+            $account = self::getAuthenticatedAccount();
+            if ($account) {
+                $currUserId = (int)$account['id'];
+            }
+        } catch (\Exception $e) {}
+
+        // Verificar visibilidad básica
+        $visibility = $row['visibility'] ?? 'public';
+        $statusAuthorId = (int)$row['account_id'];
+        if ($visibility === 'direct' || $visibility === 'private') {
+            if ($currUserId === null || ($currUserId !== $statusAuthorId)) {
+                Router::json(['error' => 'Record not found'], 404);
+                return;
+            }
+        }
+
+        $text = $row['content'] ?? '';
+        if (str_contains($text, '<p>') || str_contains($text, '<br>')) {
+            $textWithBreaks = preg_replace('/<br\s*\/?>/i', "\n", $text);
+            $textWithBreaks = preg_replace('/<\/p>\s*<p>/i', "\n\n", $textWithBreaks);
+            $text = trim(strip_tags($textWithBreaks));
+            $text = html_entity_decode($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        }
+
+        Router::json([
+            'id' => (string)$row['id'],
+            'text' => $text,
+            'spoiler_text' => $row['spoiler_text'] ?? ''
+        ]);
     }
 
     public static function getMultipleStatuses(): void {
