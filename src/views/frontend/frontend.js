@@ -428,7 +428,7 @@ async function resolveAndOpenProfile(username) {
 
 function handlePathRouting() {
     const path = window.location.pathname;
-    if (path === '/public' || path === '/home' || path === '/local' || path === '/bookmarks' || path.startsWith('/list_') || path.startsWith('/tag_')) {
+    if (path === '/public' || path === '/home' || path === '/local' || path === '/bookmarks' || path === '/direct' || path.startsWith('/list_') || path.startsWith('/tag_')) {
         const type = path.substring(1);
         switchTimeline(type, true);
         return true;
@@ -656,7 +656,7 @@ async function loadTimeline(loadMore = false) {
 
         if (!loadMore) {
             lastRenderedTimeline = currentTimeline;
-            if (currentTimeline !== 'bookmarks') {
+            if (currentTimeline !== 'bookmarks' && currentTimeline !== 'direct') {
                 startStreaming();
             } else if (eventSource) {
                 eventSource.close();
@@ -718,6 +718,9 @@ function startStreaming() {
 }
 
 function prependToot(toot, isNew = false) {
+    if (currentTimeline === 'direct' && toot.visibility !== 'direct') {
+        return;
+    }
     const feed = getFeedContainer(currentTimeline);
     
     if (feed.querySelector(`[data-toot-id="${toot.id}"]`)) {
@@ -1724,7 +1727,7 @@ function switchTimeline(type, fromHashChange = false) {
     
     if (alreadyLoaded && !forceReload) {
         lastRenderedTimeline = currentTimeline;
-        if (currentTimeline !== 'bookmarks') {
+        if (currentTimeline !== 'bookmarks' && currentTimeline !== 'direct') {
             startStreaming();
         } else if (eventSource) {
             eventSource.close();
