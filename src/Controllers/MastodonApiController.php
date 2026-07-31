@@ -2701,43 +2701,11 @@ HTML;
             '%/users/' . $account['username'] . '%'
         ];
 
-        if ($maxId !== null) {
-            $whereClauses[] = "s.id < ?";
-            $queryParams[] = $maxId;
-        }
-        if ($sinceId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $sinceId;
-        }
-        if ($minId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $minId;
-        }
-
-        $whereSql = implode(' AND ', $whereClauses);
-        $orderSql = ($minId !== null) ? "ORDER BY s.id ASC" : "ORDER BY s.id DESC";
-
-        $sql = "SELECT s.*, 
-                       a.username, a.display_name, a.avatar, a.header, a.domain, 
-                       a.locked, a.discoverable, a.note, a.created_at as account_created_at,
-                       a.emojis as account_emojis, a.url as account_url, a.avatar_description, a.header_description
-                FROM statuses s
-                JOIN accounts a ON s.account_id = a.id
-                WHERE {$whereSql}
-                {$orderSql}
-                LIMIT {$limit}";
-
-        $stmt = $db->prepare($sql);
-        $stmt->execute($queryParams);
-        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-        if ($minId !== null) {
-            $rows = array_reverse($rows);
-        }
+        $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $conversations = [];
         foreach ($rows as $row) {
-            $statusObj = self::formatStatus($row, $account['id']);
+            $statusObj = self::formatStatus($row, (int)$account['id']);
 
             // Gather accounts in this conversation
             $participantAccounts = [];
@@ -2766,7 +2734,7 @@ HTML;
             }
 
             $conversations[] = [
-                'id' => (string)$row['id'],
+                'id' => (string)($row['status_id'] ?? $row['id']),
                 'unread' => false,
                 'accounts' => array_values($participantAccounts),
                 'last_status' => $statusObj
@@ -2794,22 +2762,20 @@ HTML;
         }
 
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT s.*, 
-                                     a.username, a.display_name, a.avatar, a.header, a.domain, 
-                                     a.locked, a.discoverable, a.note, a.created_at as account_created_at,
-                                     a.emojis as account_emojis, a.url as account_url, a.avatar_description, a.header_description
-                              FROM statuses s
-                              JOIN accounts a ON s.account_id = a.id
-                              WHERE s.id = ? AND s.visibility = 'direct' LIMIT 1");
-        $stmt->execute([$id]);
-        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        $whereClauses = [
+            "s.id = ?",
+            "s.visibility = 'direct'"
+        ];
+        $queryParams = [(int)$id];
 
-        if (!$row) {
+        $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, null, null, null, 1);
+        if (empty($rows)) {
             Router::json(['error' => 'Record not found'], 404);
             return;
         }
+        $row = $rows[0];
 
-        $statusObj = self::formatStatus($row, $account['id']);
+        $statusObj = self::formatStatus($row, (int)$account['id']);
         $participantAccounts = [];
         $authorAccount = $statusObj['account'];
         if ((int)$authorAccount['id'] !== (int)$account['id']) {
@@ -2834,7 +2800,7 @@ HTML;
         }
 
         Router::json([
-            'id' => (string)$row['id'],
+            'id' => (string)($row['status_id'] ?? $row['id']),
             'unread' => false,
             'accounts' => array_values($participantAccounts),
             'last_status' => $statusObj
@@ -4370,9 +4336,11 @@ HTML;
             }
         }
  
-        $formattedContent = (!empty($row['domain']) || str_contains($row['status_content'], '<p>')) 
-            ? $row['status_content'] 
-            : self::formatLocalContentToHtml($row['status_content'], $domain, $db, $proto);
+        $rawStatusContent = $row['status_content'] ?? $row['content'] ?? '';
+
+        $formattedContent = (!empty($row['domain']) || str_contains($rawStatusContent, '<p>')) 
+            ? $rawStatusContent 
+            : self::formatLocalContentToHtml($rawStatusContent, $domain, $db, $proto);
 
         $tags = [];
         if (preg_match_all('/href="[^"]*\/(?:tags|tag)\/([a-zA-Z0-9_\p{L}\p{N}]+)/ui', $formattedContent, $matches)) {
@@ -4419,10 +4387,10 @@ HTML;
             'muted' => false,
             'bookmarked' => $bookmarked,
             'content' => $formattedContent,
-            'text' => $row['status_content'],
+            'text' => $rawStatusContent,
             'account' => $account,
             'media_attachments' => $attachments,
-            'mentions' => self::extractMentionsFromStatus($row['status_content'], $db),
+            'mentions' => self::extractMentionsFromStatus($rawStatusContent, $db),
             'tags' => $tags,
             'emojis' => self::extractEmojisFromContent($formattedContent, $row),
             'card' => (function() use ($row, $db) {
@@ -4443,7 +4411,8 @@ HTML;
         ];
     }
 
-    private static function extractMentionsFromStatus(string $content, \PDO $db): array {
+    private static function extractMentionsFromStatus(?string $content, \PDO $db): array {
+        $content = $content ?? '';
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         
@@ -4906,8 +4875,9 @@ HTML;
                         } else {
                             $username = $account['username'] ?? '';
                             $actorUrlPattern = "/users/" . $username;
-                            if (str_contains($row['status_content'], $actorUrlPattern) ||
-                                preg_match('/@' . preg_quote($username, '/') . '\b/i', $row['status_content'])) {
+                            $stContent = $row['status_content'] ?? $row['content'] ?? '';
+                            if (str_contains($stContent, $actorUrlPattern) ||
+                                preg_match('/@' . preg_quote($username, '/') . '\b/i', $stContent)) {
                                 $authorized = true;
                             }
                         }
@@ -4989,8 +4959,9 @@ HTML;
                         } else {
                             $username = $account['username'] ?? '';
                             $actorUrlPattern = "/users/" . $username;
-                            if (str_contains($row['status_content'], $actorUrlPattern) ||
-                                preg_match('/@' . preg_quote($username, '/') . '\b/i', $row['status_content'])) {
+                            $stContent = $row['status_content'] ?? $row['content'] ?? '';
+                            if (str_contains($stContent, $actorUrlPattern) ||
+                                preg_match('/@' . preg_quote($username, '/') . '\b/i', $stContent)) {
                                 $authorized = true;
                             }
                         }
