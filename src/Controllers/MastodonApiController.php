@@ -2674,6 +2674,187 @@ HTML;
     }
 
     /**
+     * Endpoint GET /api/v1/conversations
+     */
+    public static function getConversations(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+
+        $maxId = isset($_GET['max_id']) && is_numeric($_GET['max_id']) ? (int)$_GET['max_id'] : null;
+        $sinceId = isset($_GET['since_id']) && is_numeric($_GET['since_id']) ? (int)$_GET['since_id'] : null;
+        $minId = isset($_GET['min_id']) && is_numeric($_GET['min_id']) ? (int)$_GET['min_id'] : null;
+        $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? (int)$_GET['limit'] : 20;
+        if ($limit < 1) $limit = 20;
+        if ($limit > 40) $limit = 40;
+
+        $whereClauses = [
+            "(s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))"
+        ];
+        $queryParams = [
+            $account['id'],
+            '%@' . $account['username'] . '%',
+            '%/users/' . $account['username'] . '%'
+        ];
+
+        if ($maxId !== null) {
+            $whereClauses[] = "s.id < ?";
+            $queryParams[] = $maxId;
+        }
+        if ($sinceId !== null) {
+            $whereClauses[] = "s.id > ?";
+            $queryParams[] = $sinceId;
+        }
+        if ($minId !== null) {
+            $whereClauses[] = "s.id > ?";
+            $queryParams[] = $minId;
+        }
+
+        $whereSql = implode(' AND ', $whereClauses);
+        $orderSql = ($minId !== null) ? "ORDER BY s.id ASC" : "ORDER BY s.id DESC";
+
+        $sql = "SELECT s.*, 
+                       a.username, a.display_name, a.avatar, a.header, a.domain, 
+                       a.locked, a.discoverable, a.note, a.created_at as account_created_at,
+                       a.emojis as account_emojis, a.url as account_url, a.avatar_description, a.header_description
+                FROM statuses s
+                JOIN accounts a ON s.account_id = a.id
+                WHERE {$whereSql}
+                {$orderSql}
+                LIMIT {$limit}";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($queryParams);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if ($minId !== null) {
+            $rows = array_reverse($rows);
+        }
+
+        $conversations = [];
+        foreach ($rows as $row) {
+            $statusObj = self::formatStatus($row, $account['id']);
+
+            // Gather accounts in this conversation
+            $participantAccounts = [];
+            $authorAccount = $statusObj['account'];
+            
+            if ((int)$authorAccount['id'] !== (int)$account['id']) {
+                $participantAccounts[$authorAccount['id']] = $authorAccount;
+            }
+
+            if (!empty($statusObj['mentions'])) {
+                foreach ($statusObj['mentions'] as $mention) {
+                    $mId = $mention['id'] ?? null;
+                    if ($mId && (int)$mId !== (int)$account['id'] && !isset($participantAccounts[$mId])) {
+                        $stmtAcc = $db->prepare("SELECT id, username, display_name, avatar, header, domain, locked, discoverable, note, created_at, emojis, url, avatar_description, header_description FROM accounts WHERE id = ? LIMIT 1");
+                        $stmtAcc->execute([$mId]);
+                        $accRow = $stmtAcc->fetch(\PDO::FETCH_ASSOC);
+                        if ($accRow) {
+                            $participantAccounts[$mId] = self::formatAccount($accRow);
+                        }
+                    }
+                }
+            }
+
+            if (empty($participantAccounts)) {
+                $participantAccounts[$authorAccount['id']] = $authorAccount;
+            }
+
+            $conversations[] = [
+                'id' => (string)$row['id'],
+                'unread' => false,
+                'accounts' => array_values($participantAccounts),
+                'last_status' => $statusObj
+            ];
+        }
+
+        self::setLinkHeader($conversations);
+        Router::json($conversations);
+    }
+
+    /**
+     * Endpoint POST /api/v1/conversations/:id/read
+     */
+    public static function readConversation(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $id = $params['id'] ?? null;
+        if (!$id) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT s.*, 
+                                     a.username, a.display_name, a.avatar, a.header, a.domain, 
+                                     a.locked, a.discoverable, a.note, a.created_at as account_created_at,
+                                     a.emojis as account_emojis, a.url as account_url, a.avatar_description, a.header_description
+                              FROM statuses s
+                              JOIN accounts a ON s.account_id = a.id
+                              WHERE s.id = ? AND s.visibility = 'direct' LIMIT 1");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        $statusObj = self::formatStatus($row, $account['id']);
+        $participantAccounts = [];
+        $authorAccount = $statusObj['account'];
+        if ((int)$authorAccount['id'] !== (int)$account['id']) {
+            $participantAccounts[$authorAccount['id']] = $authorAccount;
+        }
+
+        if (!empty($statusObj['mentions'])) {
+            foreach ($statusObj['mentions'] as $mention) {
+                $mId = $mention['id'] ?? null;
+                if ($mId && (int)$mId !== (int)$account['id'] && !isset($participantAccounts[$mId])) {
+                    $stmtAcc = $db->prepare("SELECT id, username, display_name, avatar, header, domain, locked, discoverable, note, created_at, emojis, url, avatar_description, header_description FROM accounts WHERE id = ? LIMIT 1");
+                    $stmtAcc->execute([$mId]);
+                    $accRow = $stmtAcc->fetch(\PDO::FETCH_ASSOC);
+                    if ($accRow) {
+                        $participantAccounts[$mId] = self::formatAccount($accRow);
+                    }
+                }
+            }
+        }
+        if (empty($participantAccounts)) {
+            $participantAccounts[$authorAccount['id']] = $authorAccount;
+        }
+
+        Router::json([
+            'id' => (string)$row['id'],
+            'unread' => false,
+            'accounts' => array_values($participantAccounts),
+            'last_status' => $statusObj
+        ]);
+    }
+
+    /**
+     * Endpoint DELETE /api/v1/conversations/:id
+     */
+    public static function deleteConversation(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        Router::json(new \stdClass());
+    }
+
+    /**
      * Endpoint GET /api/v1/timelines/home
      */
     public static function getHomeTimeline(): void {

@@ -272,7 +272,7 @@ function initPublicView() {
     
     // Ocultar elementos exclusivos de usuarios registrados en el sidebar
     const linksToHide = [
-        'nav-public', 'nav-home', 'nav-local', 'nav-notifications', 'nav-bookmarks', 
+        'nav-public', 'nav-home', 'nav-local', 'nav-notifications', 'nav-bookmarks', 'nav-direct',
         'nav-lists', 'nav-collections', 'nav-hashtags', 'nav-profile', 
         'nav-admin-settings'
     ];
@@ -581,6 +581,8 @@ async function loadTimeline(loadMore = false) {
         url = '/api/v1/timelines/public?local=true';
     } else if (currentTimeline === 'bookmarks') {
         url = '/api/v1/bookmarks';
+    } else if (currentTimeline === 'direct') {
+        url = '/api/v1/conversations';
     } else if (currentTimeline.startsWith('list_')) {
         const listId = currentTimeline.split('_')[1];
         url = `/api/v1/timelines/list/${listId}`;
@@ -600,7 +602,12 @@ async function loadTimeline(loadMore = false) {
         const res = await fetch(fetchUrl, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
-        const toots = await res.json();
+        let rawData = await res.json();
+        let toots = Array.isArray(rawData) ? rawData : [];
+
+        if (currentTimeline === 'direct') {
+            toots = toots.map(conv => conv.last_status).filter(Boolean);
+        }
 
         if (loadingIndicator && loadingIndicator.parentNode) {
             loadingIndicator.parentNode.removeChild(loadingIndicator);
@@ -1693,6 +1700,7 @@ function switchTimeline(type, fromHashChange = false) {
     const navHome = document.getElementById('nav-home');
     const navLocal = document.getElementById('nav-local');
     const navBook = document.getElementById('nav-bookmarks');
+    const navDirect = document.getElementById('nav-direct');
     const navList = document.getElementById('nav-lists');
     const navHash = document.getElementById('nav-hashtags');
 
@@ -1704,6 +1712,8 @@ function switchTimeline(type, fromHashChange = false) {
         navLocal.classList.add('active');
     } else if (type === 'bookmarks' && navBook) {
         navBook.classList.add('active');
+    } else if (type === 'direct' && navDirect) {
+        navDirect.classList.add('active');
     } else if (type.startsWith('list_') && navList) {
         navList.classList.add('active');
     } else if (type.startsWith('tag_') && navHash) {
@@ -1788,12 +1798,14 @@ function showTab(tabName, fromHashChange = false) {
         const navHome = document.getElementById('nav-home');
         const navLocal = document.getElementById('nav-local');
         const navBook = document.getElementById('nav-bookmarks');
+        const navDirect = document.getElementById('nav-direct');
         const navList = document.getElementById('nav-lists');
         const navHash = document.getElementById('nav-hashtags');
         if (currentTimeline === 'public' && navPub) navPub.classList.add('active');
         else if (currentTimeline === 'home' && navHome) navHome.classList.add('active');
         else if (currentTimeline === 'local' && navLocal) navLocal.classList.add('active');
         else if (currentTimeline === 'bookmarks' && navBook) navBook.classList.add('active');
+        else if (currentTimeline === 'direct' && navDirect) navDirect.classList.add('active');
         else if (currentTimeline.startsWith('list_') && navList) navList.classList.add('active');
         else if (currentTimeline.startsWith('tag_') && navHash) navHash.classList.add('active');
     } else if (tabName === 'profile') {

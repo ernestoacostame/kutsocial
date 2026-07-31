@@ -118,6 +118,9 @@ $renderFrontend = function() {
     } elseif ($uri === '/bookmarks') {
         $section = 'feed';
         $currentTimeline = 'bookmarks';
+    } elseif ($uri === '/direct') {
+        $section = 'feed';
+        $currentTimeline = 'direct';
     } elseif ($uri === '/notifications') {
         $section = 'notifications';
     } elseif ($uri === '/lists') {
@@ -290,6 +293,11 @@ $router->get('/api/v1/bookmarks', [MastodonApiController::class, 'getBookmarks']
 $router->get('/api/v1/favourites', [MastodonApiController::class, 'getFavourites']);
 $router->get('/api/proxy', [MastodonApiController::class, 'proxyMedia']);
 
+// Conversaciones (Direct Messages / DMs)
+$router->get('/api/v1/conversations', [MastodonApiController::class, 'getConversations']);
+$router->post('/api/v1/conversations/:id/read', [MastodonApiController::class, 'readConversation']);
+$router->delete('/api/v1/conversations/:id', [MastodonApiController::class, 'deleteConversation']);
+
 // Notificaciones con fallback
 $router->get('/api/v1/notifications', [MastodonApiController::class, 'getNotifications']);
 $router->get('/api/v1/notifications/unread_count', [MastodonApiController::class, 'getNotificationsUnreadCount']);
@@ -413,6 +421,7 @@ $router->get('/home', $renderFrontend);
 $router->get('/catchup', $renderFrontend);
 $router->get('/local', $renderFrontend);
 $router->get('/bookmarks', $renderFrontend);
+$router->get('/direct', $renderFrontend);
 $router->get('/notifications', $renderFrontend);
 $router->get('/lists', $renderFrontend);
 $router->get('/collections', $renderFrontend);
