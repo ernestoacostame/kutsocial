@@ -1105,14 +1105,12 @@ function createThreadTootElement(toot, isMain = false) {
     card.innerHTML = `
         ${reblogHeaderHTML}
         <div class="toot-card-body">
-            <a href="${authorProfileHref}" onclick="event.preventDefault(); event.stopPropagation(); ${authorProfileClick}"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
+            <a href="${authorProfileHref}" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" title="Ver perfil de @${toot.account.acct}"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
             <div style="flex-grow: 1; min-width: 0;">
                 <div class="toot-header">
                     <div class="toot-author-details">
-                        <a href="${authorProfileHref}" class="clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); ${authorProfileClick}" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 4px 10px; flex-wrap: wrap;">
-                            <span class="toot-author-name">${displayNameHTML}</span>
-                            <span class="toot-author-handle">@${toot.account.acct}</span>
-                        </a>
+                        <span class="toot-author-name clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewTootThread('${toot.id}')" style="cursor: pointer;">${displayNameHTML}</span>
+                        <a href="${authorProfileHref}" class="toot-author-handle clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')">@${toot.account.acct}</a>
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
                     </div>

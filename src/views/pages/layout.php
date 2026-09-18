@@ -1,5 +1,5 @@
 <?php
-$basePath = $basePath ?? '/p';
+$basePath = $basePath ?? '';
 ?>
 <!DOCTYPE html>
 <html lang="es">

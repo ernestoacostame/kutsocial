@@ -32,9 +32,9 @@ if (!file_exists(__DIR__ . '/config.php')) {
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/version.php';
 
-// Iniciar sesión para la página principal y rutas administrativas
+// Iniciar sesión para el cliente web y rutas administrativas
 $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-if ($requestUri === '/' || $requestUri === '/index.php' || str_starts_with($requestUri, '/admin') || str_starts_with($requestUri, '/p')) {
+if (!str_starts_with($requestUri, '/api/') && !str_starts_with($requestUri, '/.well-known/')) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
@@ -381,7 +381,7 @@ $renderPagesFrontend = function() {
         $pageTitle = 'Conversación - KutSocial';
     }
 
-    $basePath = '/p';
+    $basePath = str_starts_with($uri, '/p') ? '/p' : '';
     $path = __DIR__ . '/src/views/pages/layout.php';
     if (file_exists($path)) {
         ob_start();
@@ -545,20 +545,20 @@ $router->post('/users/:username/inbox', [ActivityPubController::class, 'postInbo
 $router->get('/users/:username/outbox', [ActivityPubController::class, 'getOutbox']);
 $router->get('/users/:username/followers', [ActivityPubController::class, 'getFollowers']);
 $router->get('/users/:username/following', [ActivityPubController::class, 'getFollowing']);
-$router->get('/users/:username/statuses/:id', function($params) use ($renderFrontend) {
+$router->get('/users/:username/statuses/:id', function($params) use ($renderPagesFrontend) {
     $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
     if (str_contains($accept, 'json')) {
         \KutSocial\Controllers\ActivityPubController::getStatus($params);
     } else {
-        $renderFrontend();
+        $renderPagesFrontend();
     }
 });
-$router->get('/@:username', function($params) use ($renderFrontend) {
+$router->get('/@:username', function($params) use ($renderPagesFrontend) {
     $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
     if (str_contains($accept, 'json')) {
         \KutSocial\Controllers\ActivityPubController::getActor($params);
     } else {
-        $renderFrontend();
+        $renderPagesFrontend();
     }
 });
 
@@ -629,27 +629,26 @@ $router->get('/api/v1/export/bookmarks', [MastodonApiController::class, 'exportB
 $router->get('/api/v1/export/filters', [MastodonApiController::class, 'exportFilters']);
 $router->post('/api/v1/import', [MastodonApiController::class, 'handleImport']);
 
-// --- Cliente Web SPA ---
-// --- Cliente Web SPA ---
-$router->get('/', $renderFrontend);
-$router->get('/public', $renderFrontend);
-$router->get('/home', $renderFrontend);
-$router->get('/catchup', $renderFrontend);
-$router->get('/local', $renderFrontend);
-$router->get('/bookmarks', $renderFrontend);
-$router->get('/direct', $renderFrontend);
-$router->get('/notifications', $renderFrontend);
-$router->get('/lists', $renderFrontend);
-$router->get('/collections', $renderFrontend);
-$router->get('/followed-hashtags', $renderFrontend);
-$router->get('/profile', $renderFrontend);
-$router->get('/@:username', $renderFrontend);
-$router->get('/list_:id', $renderFrontend);
-$router->get('/tag_:tag', $renderFrontend);
-$router->get('/search-results', $renderFrontend);
+// --- Cliente Web MPA (Páginas Independientes por defecto) ---
+$router->get('/', $renderPagesFrontend);
+$router->get('/public', $renderPagesFrontend);
+$router->get('/home', $renderPagesFrontend);
+$router->get('/catchup', $renderPagesFrontend);
+$router->get('/local', $renderPagesFrontend);
+$router->get('/bookmarks', $renderPagesFrontend);
+$router->get('/direct', $renderPagesFrontend);
+$router->get('/notifications', $renderPagesFrontend);
+$router->get('/lists', $renderPagesFrontend);
+$router->get('/collections', $renderPagesFrontend);
+$router->get('/followed-hashtags', $renderPagesFrontend);
+$router->get('/profile', $renderPagesFrontend);
+$router->get('/statuses/:id', $renderPagesFrontend);
+$router->get('/list_:id', $renderPagesFrontend);
+$router->get('/tag_:tag', $renderPagesFrontend);
+$router->get('/search-results', $renderPagesFrontend);
 
-// --- Cliente Web MPA: Páginas Independientes (/p/...) ---
-$router->get('/p', function() { header('Location: /p/public'); exit; });
+// --- Rutas de compatibilidad (/p/...) ---
+$router->get('/p', function() { header('Location: /public'); exit; });
 $router->get('/p/public', $renderPagesFrontend);
 $router->get('/p/home', $renderPagesFrontend);
 $router->get('/p/catchup', $renderPagesFrontend);
