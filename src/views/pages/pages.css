@@ -412,7 +412,6 @@ button:hover {
     flex-wrap: wrap;
     gap: 4px 10px;
     min-width: 0;
-    flex-grow: 1;
 }
 
 .toot-author-name {

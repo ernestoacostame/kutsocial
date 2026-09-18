@@ -427,7 +427,12 @@ async function resolveAndOpenProfile(username) {
 }
 
 function handlePathRouting() {
-    const path = window.location.pathname;
+    let path = window.location.pathname;
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    if (base && path.startsWith(base)) {
+        path = path.substring(base.length);
+        if (!path.startsWith('/')) path = '/' + path;
+    }
     if (path === '/public' || path === '/home' || path === '/local' || path === '/bookmarks' || path === '/direct' || path.startsWith('/list_') || path.startsWith('/tag_')) {
         const type = path.substring(1);
         switchTimeline(type, true);
@@ -481,15 +486,20 @@ async function initApp() {
         const profile = await res.json();
         currentProfileData = profile;
         
-        document.getElementById('my-display-name').innerText = profile.display_name;
-        document.getElementById('my-username').innerText = '@' + profile.username;
+        const myDispEl = document.getElementById('my-display-name');
+        if (myDispEl) myDispEl.innerText = profile.display_name;
+        const myUserEl = document.getElementById('my-username');
+        if (myUserEl) myUserEl.innerText = '@' + profile.username;
         if (profile.avatar) {
-            document.getElementById('my-avatar').src = profile.avatar;
-            document.getElementById('composer-avatar').src = profile.avatar;
+            const myAvEl = document.getElementById('my-avatar');
+            if (myAvEl) myAvEl.src = profile.avatar;
+            const compAvEl = document.getElementById('composer-avatar');
+            if (compAvEl) compAvEl.src = profile.avatar;
         }
         
         // Mostrar URL de perfil para configurar la etiqueta rel="me" en web externas
-        document.getElementById('profile-verification-url-preview').innerText = profile.url;
+        const prevUrlEl = document.getElementById('profile-verification-url-preview');
+        if (prevUrlEl) prevUrlEl.innerText = profile.url;
     } catch (e) {
         console.error("Error al verificar perfil", e);
     }
@@ -783,6 +793,10 @@ function createThreadTootElement(toot, isMain = false) {
     const isMyToot = currentProfileData && String(toot.account.id) === String(currentProfileData.id);
     const favClass = toot.favourited ? 'active-fav' : '';
     const bookmarkClass = toot.bookmarked ? 'active-bookmark' : '';
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    const authorProfileClick = isMyToot ? `viewTootThread('${toot.id}')` : `viewProfile('${toot.account.id}')`;
+    const authorProfileHref = `${base}/@${toot.account.acct}`;
+    const tootStatusHref = `${base}/statuses/${toot.id}`;
 
     let sanitizedContent = sanitizeHTML(toot.content);
     if (toot.emojis) {
@@ -1077,7 +1091,7 @@ function createThreadTootElement(toot, isMain = false) {
         reblogHeaderHTML = `
             <div class="toot-reblog-header" style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; margin-left: 36px;">
                 <span class="material-icons" style="font-size: 16px; color: #10b981;">repeat</span>
-                <span><a href="/@${rebloggedBy.acct}" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${rebloggedBy.id}')" style="color: inherit; text-decoration: none; font-weight: bold;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${rebloggedByHTML}</a> ha re-tooteado</span>
+                <span><a href="${base}/@${rebloggedBy.acct}" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${rebloggedBy.id}')" style="color: inherit; text-decoration: none; font-weight: bold;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${rebloggedByHTML}</a> ha re-tooteado</span>
             </div>
         `;
     }
@@ -1091,16 +1105,18 @@ function createThreadTootElement(toot, isMain = false) {
     card.innerHTML = `
         ${reblogHeaderHTML}
         <div class="toot-card-body">
-            <a href="/@${toot.account.acct}" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
+            <a href="${authorProfileHref}" onclick="event.preventDefault(); event.stopPropagation(); ${authorProfileClick}"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
             <div style="flex-grow: 1; min-width: 0;">
                 <div class="toot-header">
-                    <a href="/@${toot.account.acct}" class="toot-author-details clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" style="text-decoration: none; color: inherit;">
-                        <span class="toot-author-name">${displayNameHTML}</span>
-                        <span class="toot-author-handle">@${toot.account.acct}</span>
+                    <div class="toot-author-details">
+                        <a href="${authorProfileHref}" class="clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); ${authorProfileClick}" style="text-decoration: none; color: inherit; display: inline-flex; align-items: center; gap: 4px 10px; flex-wrap: wrap;">
+                            <span class="toot-author-name">${displayNameHTML}</span>
+                            <span class="toot-author-handle">@${toot.account.acct}</span>
+                        </a>
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
-                    </a>
-                    <a href="/users/${toot.account.username || 'iam'}/statuses/${toot.id}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewTootThread('${toot.id}')" title="${absoluteDateStr}">${relativeDateStr}</a>
+                    </div>
+                    <a href="${tootStatusHref}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewTootThread('${toot.id}')" title="${absoluteDateStr}">${relativeDateStr}</a>
                 </div>
                 ${contentHTML}
                 ${mediaHTML}
@@ -1728,7 +1744,8 @@ function switchTimeline(type, fromHashChange = false) {
     currentTimeline = type;
     showFeedContainer(type);
     
-    const newPath = '/' + type;
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    const newPath = base + '/' + type;
     if (window.location.pathname !== newPath && !fromHashChange) {
         history.pushState(null, '', newPath);
     }
@@ -2826,7 +2843,8 @@ async function viewProfile(accountId, fromHashChange = false) {
     if (fromHashChange && activeProfileViewId === accountId && document.getElementById('tab-profile-view').style.display === 'block') {
         return;
     }
-    const tempPath = '/@id-' + accountId;
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    const tempPath = base + '/@id-' + accountId;
     if (window.location.pathname !== tempPath && !fromHashChange) {
         history.pushState(null, '', tempPath);
     }
@@ -2911,7 +2929,8 @@ async function viewProfile(accountId, fromHashChange = false) {
         profilesCache[account.id] = account;
 
         // Actualizar la URL de la barra del navegador con el handle real @username o @username@domain
-        const handlePath = account.domain ? `/@${account.username}@${account.domain}` : `/@${account.username}`;
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        const handlePath = base + (account.domain ? `/@${account.username}@${account.domain}` : `/@${account.username}`);
         if (window.location.pathname !== handlePath && !fromHashChange) {
             history.replaceState(null, '', handlePath);
         }
@@ -3603,10 +3622,11 @@ async function viewTootThread(statusId, fromHashChange = false) {
 }
 
 function goBackToFeed() {
-    if (previousTab === 'profile-view') {
-        showTab('profile-view');
+    if (window.history.length > 1) {
+        window.history.back();
     } else {
-        showTab('feed');
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        window.location.href = base + '/local';
     }
 }
 

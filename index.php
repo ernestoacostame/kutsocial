@@ -666,6 +666,7 @@ $router->get('/p/list_:id', $renderPagesFrontend);
 $router->get('/p/tag_:tag', $renderPagesFrontend);
 $router->get('/p/search-results', $renderPagesFrontend);
 $router->get('/p/statuses/:id', $renderPagesFrontend);
+$router->get('/p/users/:username/statuses/:id', $renderPagesFrontend);
 
 
 // --- Panel de Administración Centralizado ---
