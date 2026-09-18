@@ -1,0 +1,286 @@
+<?php
+$basePath = $basePath ?? '/p';
+?>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><?= htmlspecialchars($pageTitle ?? 'KutSocial - Cliente Web') ?></title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <!-- Google Fonts Outfit -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Google Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
+    <!-- DOMPurify para Saneamiento XSS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
+    
+    <style>
+    <?php include __DIR__ . '/pages.css'; ?>
+    main.main-content > div[id^="tab-"] { display: block !important; }
+    </style>
+</head>
+<body>
+
+    <!-- Pantalla de Login / Carga -->
+    <div id="login-container" class="full-screen-container" style="display: none;">
+        <div class="login-card">
+            <img src="/kutsocial_logo.svg" alt="Logo" style="width: 64px; height: 64px; margin: 0 auto 15px auto; display: block;">
+            <div class="logo-text">KutSocial</div>
+            <div class="logo-subtitle">Acceso de Administrador</div>
+            
+            <div id="login-error" style="color: var(--error); font-size: 14px; margin-bottom: 15px; display: none;"></div>
+
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Usuario</label>
+                    <input type="text" id="username" required placeholder="ej. admin">
+                </div>
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+                <button type="submit">Iniciar Sesión</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Layout Principal -->
+    <div id="app-container" class="app-layout">
+        
+        <!-- Sidebar Izquierdo -->
+        <aside class="sidebar">
+            <div>
+                <div class="nav-logo" style="display: flex; align-items: center; gap: 10px;">
+                    <img src="/kutsocial_logo.svg" alt="Logo" style="width: 28px; height: 28px;">
+                    <span>KutSocial</span>
+                </div>
+                
+                <!-- Buscador de Usuarios / Contenido -->
+                <div class="sidebar-search">
+                    <div class="search-input-wrapper">
+                        <span class="material-icons-outlined search-icon">search</span>
+                        <input type="text" class="sidebar-search-input" placeholder="Buscar en el Fediverso..." 
+                               onkeydown="if(event.key === 'Enter') performSearch(this.value)">
+                    </div>
+                </div>
+
+                <ul class="nav-menu">
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/home" id="nav-home" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">home</span> Inicio
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/catchup" id="nav-catchup" class="nav-link <?= ($section === 'catchup') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">bolt</span> Ponerse al día
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/local" id="nav-local" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'local') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">groups</span> Timeline Local
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/public" id="nav-public" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'public') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">public</span> Federación Pública
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/notifications" id="nav-notifications" class="nav-link <?= ($section === 'notifications') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">notifications</span> Notificaciones
+                            <span id="nav-notifications-count" class="notification-badge" style="display: none; background: var(--error, #ef4444); color: white; border-radius: 10px; padding: 2px 6px; font-size: 11px; font-weight: bold; margin-left: auto;">0</span>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/bookmarks" id="nav-bookmarks" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'bookmarks') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">bookmark_border</span> Marcadores
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/direct" id="nav-direct" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'direct') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">mail_outline</span> Mensajes Privados
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/lists" id="nav-lists" class="nav-link <?= ($section === 'lists') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">list</span> Listas
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/collections" id="nav-collections" class="nav-link <?= ($section === 'collections') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">folder</span> Colecciones
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/followed-hashtags" id="nav-hashtags" class="nav-link <?= ($section === 'followed-hashtags') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">tag</span> Hashtags Seguidos
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= (($section === 'profile') || ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null))) ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">person</span> Mi Perfil
+                        </a>
+                    </li>
+                    <li class="nav-item" id="nav-admin-settings">
+                        <a href="/admin/update" class="nav-link">
+                            <span class="material-icons-outlined">settings</span> Ajustes & Actualizador
+                        </a>
+                    </li>
+                    <li class="nav-item" id="nav-item-owner" style="display: none;">
+                        <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-owner-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">verified_user</span> Propietario
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Perfil del usuario actual -->
+            <div class="user-profile-summary" style="cursor: pointer;" onclick="if(currentProfileData) window.location.href='<?= $basePath ?>/@' + currentProfileData.username;">
+                <img id="my-avatar" class="user-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.png') ?>" alt="Mi Avatar">
+                <div class="user-info">
+                    <div id="my-display-name" class="user-name"><?= htmlspecialchars($localUser['display_name'] ?: ($localUser['username'] ?? 'Cargando...')) ?></div>
+                    <div id="my-username" class="user-handle">@<?= htmlspecialchars($localUser['username'] ?? 'cargando') ?></div>
+                </div>
+                <button class="btn-logout" title="Cerrar Sesión" onclick="event.stopPropagation(); logout()">✕</button>
+            </div>
+        </aside>
+
+        <!-- Columna Central: ÚNICA vista cargada en esta página -->
+        <main class="main-content">
+            <?php 
+            if (!empty($contentView) && file_exists(__DIR__ . '/' . $contentView)) {
+                include __DIR__ . '/' . $contentView;
+            } else {
+                echo '<div style="padding: 40px; text-align: center; color: var(--text-muted);">Página no encontrada.</div>';
+            }
+            ?>
+        </main>
+
+        <!-- Columna Derecha (Instancia) -->
+        <aside class="right-sidebar">
+            <!-- Actualizaciones del Servidor -->
+            <div class="widget-card">
+                <div class="update-indicator">
+                    <span class="update-dot"></span>
+                    <span id="stat-version">v0.0.0</span>
+                </div>
+                <div style="font-size: 15px; font-weight: 700; margin-bottom: 5px;">Servidor Activo</div>
+                <div style="font-size: 12.5px; color: var(--text-muted); line-height: 1.4;">KutSocial se ejecuta de forma descentralizada y federada.</div>
+            </div>
+
+            <!-- Estadísticas Locales -->
+            <div class="widget-card">
+                <h3 class="widget-title">Estadísticas</h3>
+                <div class="stat-item">
+                    <span class="stat-label">Usuarios</span>
+                    <span class="stat-value" id="stat-users">-</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Publicaciones</span>
+                    <span class="stat-value" id="stat-toots">-</span>
+                </div>
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- Modal: Información Técnica de Perfil -->
+    <div id="modal-profile-tech-info" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <h3 class="modal-title">🛠️ Información Técnica</h3>
+            <div id="profile-tech-info-content" style="display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; color: var(--text-color);"></div>
+            <div class="modal-actions">
+                <button class="modal-btn-confirm" onclick="closeProfileTechInfoModal()">Aceptar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Organizar Cuenta (Añadir a listas / colecciones) -->
+    <div id="modal-organize-account" class="modal-overlay" style="display: none;">
+        <div class="modal-card" style="max-width: 460px;">
+            <h3 class="modal-title">📂 Organizar cuenta</h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin: 0;">Organiza a <strong id="organize-account-handle" style="color:var(--text-color);">@...</strong> en tus listas y colecciones.</p>
+            
+            <div style="margin-top: 5px;">
+                <h4 style="font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; font-weight: bold; letter-spacing: 0.5px;">Mis Listas (Feeds Privados)</h4>
+                <div id="organize-lists-checkboxes" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px;"></div>
+            </div>
+
+            <div style="margin-top: 10px;">
+                <h4 style="font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; font-weight: bold; letter-spacing: 0.5px;">Mis Colecciones (Páginas Curadas Públicas)</h4>
+                <div id="organize-collections-checkboxes" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px;"></div>
+            </div>
+
+            <div class="modal-actions" style="margin-top: 10px;">
+                <button class="modal-btn-confirm" onclick="closeOrganizeModal()">Listo</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Crear/Editar Lista -->
+    <div id="modal-manage-list" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <h3 class="modal-title" id="list-modal-title">Nueva Lista</h3>
+            <input type="text" id="list-modal-input-title" class="modal-input" placeholder="Nombre de la lista (ej: Desarrolladores)">
+            <div class="modal-actions">
+                <button class="modal-btn-cancel" onclick="closeListModal()">Cancelar</button>
+                <button class="modal-btn-confirm" onclick="saveListModal()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Crear/Editar Colección -->
+    <div id="modal-manage-collection" class="modal-overlay" style="display: none;">
+        <div class="modal-card">
+            <h3 class="modal-title" id="collection-modal-title">Nueva Colección</h3>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <input type="text" id="collection-modal-input-title" class="modal-input" placeholder="Nombre de la colección (ej: Fotógrafos)">
+                <textarea id="collection-modal-input-desc" class="modal-input" style="height: 80px; resize: none;" placeholder="Descripción corta pública de la colección"></textarea>
+            </div>
+            <div class="modal-actions" style="margin-top: 5px;">
+                <button class="modal-btn-cancel" onclick="closeCollectionModal()">Cancelar</button>
+                <button class="modal-btn-confirm" onclick="saveCollectionModal()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Buscador de GIFs (GIPHY) -->
+    <div id="modal-gif-picker" class="modal-overlay" style="display: none; z-index: 3100;" onclick="if(event.target === this) closeGifModal()">
+        <div class="modal-card" style="max-width: 500px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 class="modal-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
+                    <span class="material-icons-outlined" style="color: var(--primary); font-size: 28px;">gif_box</span> Buscar GIF en GIPHY
+                </h3>
+                <span onclick="closeGifModal()" style="color:var(--text-muted); cursor:pointer; font-size:24px; user-select:none; padding: 2px 6px;">✕</span>
+            </div>
+            
+            <div style="display: flex; gap: 8px; margin-bottom: 15px;">
+                <input type="text" id="gif-search-input" class="modal-input" placeholder="Buscar GIFs..." style="margin: 0; flex-grow: 1;" onkeydown="if(event.key === 'Enter') searchGifs()">
+                <button class="modal-btn-confirm" onclick="searchGifs()" style="padding: 0 20px; margin: 0; height: 42px; border-radius: 6px;">Buscar</button>
+            </div>
+            
+            <div id="gif-results-container" style="flex-grow: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; min-height: 250px; max-height: 450px; padding: 2px;"></div>
+            
+            <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 12px; font-size: 11px; color: var(--text-muted);">
+                Powered by GIPHY
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Visor de Imágenes -->
+    <div id="modal-image-viewer" class="modal-overlay" style="display: none; background: rgba(0, 0, 0, 0.85); z-index: 3000; padding: 20px;" onclick="closeImageViewerModal(event)">
+        <div style="position: relative; max-width: 90vw; max-height: 90vh; display: flex; justify-content: center; align-items: center;">
+            <span id="image-viewer-close" style="position: absolute; top: -45px; right: 0; font-size: 35px; color: #fff; cursor: pointer; user-select: none; transition: color 0.2s;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='#fff'">&times;</span>
+            <img id="image-viewer-img" src="" style="max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
+        </div>
+    </div>
+
+    <script>
+    <?php include __DIR__ . '/pages.js'; ?>
+    </script>
+</body>
+</html>

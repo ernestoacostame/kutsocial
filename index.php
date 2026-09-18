@@ -34,7 +34,7 @@ require_once __DIR__ . '/version.php';
 
 // Iniciar sesión para la página principal y rutas administrativas
 $requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-if ($requestUri === '/' || $requestUri === '/index.php' || str_starts_with($requestUri, '/admin')) {
+if ($requestUri === '/' || $requestUri === '/index.php' || str_starts_with($requestUri, '/admin') || str_starts_with($requestUri, '/p')) {
     if (session_status() === PHP_SESSION_NONE) {
         session_start();
     }
@@ -241,6 +241,222 @@ $renderFrontend = function() {
     }
 };
 
+$renderPagesFrontend = function() {
+    $db = Database::connect();
+    
+    // Obtener datos del usuario propietario local
+    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
+    $localUser = $stmtOwner->fetch();
+    if (!$localUser) {
+        $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+        $localUser = $stmtOwner->fetch();
+    }
+    
+    $userLists = [];
+    $userCollections = [];
+    $userHashtags = [];
+    
+    if ($localUser) {
+        $stmtLists = $db->prepare("SELECT * FROM lists WHERE account_id = ? ORDER BY title ASC");
+        $stmtLists->execute([$localUser['id']]);
+        $userLists = $stmtLists->fetchAll();
+        
+        $stmtCol = $db->prepare("SELECT * FROM collections WHERE account_id = ? ORDER BY title ASC");
+        $stmtCol->execute([$localUser['id']]);
+        $userCollections = $stmtCol->fetchAll();
+        
+        $stmtTags = $db->prepare("SELECT hashtag FROM followed_hashtags WHERE account_id = ? ORDER BY id DESC");
+        $stmtTags->execute([$localUser['id']]);
+        $userHashtags = $stmtTags->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    // Determinar la sección activa según la ruta bajo /p
+    $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+    $uri = rtrim($uri, '/');
+    if (str_starts_with($uri, '/p')) {
+        $subUri = substr($uri, 2);
+    } else {
+        $subUri = $uri;
+    }
+    if (empty($subUri)) {
+        $subUri = '/public';
+    }
+    
+    $section = 'feed';
+    $currentTimeline = 'public';
+    $activeProfileViewId = null;
+    $activeThreadId = null;
+    $contentView = 'feed.php';
+    $pageTitle = 'KutSocial - Cliente Web';
+    
+    if ($subUri === '/public') {
+        $section = 'feed';
+        $currentTimeline = 'public';
+        $contentView = 'feed.php';
+        $pageTitle = 'Federación Pública - KutSocial';
+    } elseif ($subUri === '/home') {
+        $section = 'feed';
+        $currentTimeline = 'home';
+        $contentView = 'feed.php';
+        $pageTitle = 'Inicio - KutSocial';
+    } elseif ($subUri === '/catchup') {
+        $section = 'catchup';
+        $currentTimeline = 'catchup';
+        $contentView = 'catchup.php';
+        $pageTitle = 'Ponerse al día - KutSocial';
+    } elseif ($subUri === '/local') {
+        $section = 'feed';
+        $currentTimeline = 'local';
+        $contentView = 'feed.php';
+        $pageTitle = 'Timeline Local - KutSocial';
+    } elseif ($subUri === '/bookmarks') {
+        $section = 'feed';
+        $currentTimeline = 'bookmarks';
+        $contentView = 'feed.php';
+        $pageTitle = 'Marcadores - KutSocial';
+    } elseif ($subUri === '/direct') {
+        $section = 'feed';
+        $currentTimeline = 'direct';
+        $contentView = 'feed.php';
+        $pageTitle = 'Mensajes Privados - KutSocial';
+    } elseif ($subUri === '/notifications') {
+        $section = 'notifications';
+        $contentView = 'notifications.php';
+        $pageTitle = 'Notificaciones - KutSocial';
+    } elseif ($subUri === '/lists') {
+        $section = 'lists';
+        $contentView = 'lists.php';
+        $pageTitle = 'Listas - KutSocial';
+    } elseif ($subUri === '/collections') {
+        $section = 'collections';
+        $contentView = 'collections.php';
+        $pageTitle = 'Colecciones - KutSocial';
+    } elseif ($subUri === '/followed-hashtags') {
+        $section = 'followed-hashtags';
+        $contentView = 'followed-hashtags.php';
+        $pageTitle = 'Hashtags Seguidos - KutSocial';
+    } elseif ($subUri === '/profile') {
+        $section = 'profile';
+        $contentView = 'profile.php';
+        $pageTitle = 'Editar Perfil - KutSocial';
+    } elseif ($subUri === '/search-results') {
+        $section = 'search-results';
+        $contentView = 'search-results.php';
+        $pageTitle = 'Búsqueda - KutSocial';
+    } elseif (str_starts_with($subUri, '/list_')) {
+        $section = 'feed';
+        $currentTimeline = substr($subUri, 1);
+        $contentView = 'feed.php';
+        $pageTitle = 'Lista - KutSocial';
+    } elseif (str_starts_with($subUri, '/tag_')) {
+        $section = 'feed';
+        $currentTimeline = substr($subUri, 1);
+        $contentView = 'feed.php';
+        $pageTitle = '#' . substr($currentTimeline, 4) . ' - KutSocial';
+    } elseif (str_starts_with($subUri, '/@')) {
+        $section = 'profile-view';
+        $contentView = 'profile-view.php';
+        $usernameWithAt = substr($subUri, 2);
+        if (str_starts_with($usernameWithAt, 'id-')) {
+            $activeProfileViewId = (int)substr($usernameWithAt, 3);
+        } else {
+            $parts = explode('@', $usernameWithAt);
+            $uname = $parts[0];
+            $udomain = $parts[1] ?? null;
+            if ($udomain) {
+                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                $stmt->execute([$uname, $udomain]);
+            } else {
+                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                $stmt->execute([$uname]);
+            }
+            $activeProfileViewId = $stmt->fetchColumn() ?: null;
+        }
+        $pageTitle = '@' . $usernameWithAt . ' - KutSocial';
+    } elseif (str_contains($subUri, '/statuses/')) {
+        $section = 'thread-view';
+        $contentView = 'thread-view.php';
+        $parts = explode('/', $subUri);
+        $activeThreadId = end($parts);
+        $pageTitle = 'Conversación - KutSocial';
+    }
+
+    $basePath = '/p';
+    $path = __DIR__ . '/src/views/pages/layout.php';
+    if (file_exists($path)) {
+        ob_start();
+        include $path;
+        $html = ob_get_clean();
+
+        $version = \KutSocial\Database::getVersion();
+        
+        $stmtGiphy = $db->prepare("SELECT value FROM options WHERE key = 'giphy_api_key' LIMIT 1");
+        $stmtGiphy->execute();
+        $giphyApiKey = $stmtGiphy->fetchColumn() ?: '';
+        
+        $jsGlobals = "
+    <script>
+        window.KUTSOCIAL_BASE_PATH = '{$basePath}';
+        window.KUTSOCIAL_VERSION = '{$version}';
+        window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
+        window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
+        window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
+        window.KUTSOCIAL_ACTIVE_THREAD_ID = " . ($activeThreadId ? "'$activeThreadId'" : "null") . ";
+        window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.KUTSOCIAL_USER_HASHTAGS = " . json_encode($userHashtags, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.GIPHY_API_KEY = '{$giphyApiKey}';
+    </script>
+        ";
+        $html = str_replace('<head>', "<head>\n" . $jsGlobals, $html);
+
+        try {
+            if (session_status() === PHP_SESSION_ACTIVE && isset($_SESSION['admin_account_id'])) {
+                $adminId = (int)$_SESSION['admin_account_id'];
+                $stmtAdmin = $db->prepare("SELECT id FROM accounts WHERE id = ? LIMIT 1");
+                $stmtAdmin->execute([$adminId]);
+                if ($stmtAdmin->fetch()) {
+                    $secretStmt = $db->query("SELECT value FROM options WHERE key = 'jwt_secret' LIMIT 1");
+                    $secret = $secretStmt->fetchColumn();
+                    if (!$secret) {
+                        $secret = bin2hex(random_bytes(32));
+                        $ins = $db->prepare("INSERT INTO options (key, value) VALUES ('jwt_secret', ?)");
+                        $ins->execute([$secret]);
+                    }
+                    $hash = hash_hmac('sha256', $adminId, $secret);
+                    $autoToken = "token_" . $adminId . "_" . $hash;
+                    $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_AUTO_TOKEN = '{$autoToken}';</script>", $html);
+                }
+            }
+
+            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
+            $owner = $stmt->fetch();
+            if (!$owner) {
+                $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+                $owner = $stmt->fetch();
+            }
+            if ($owner) {
+                if (isset($owner['indexable']) && !$owner['indexable']) {
+                    $noindexTag = '<meta name="robots" content="noindex, nofollow">';
+                    $html = str_replace('<head>', "<head>\n    " . $noindexTag, $html);
+                }
+                $ownerData = json_encode([
+                    'id' => (string)$owner['id'],
+                    'username' => $owner['username'],
+                    'locked' => (bool)$owner['locked'],
+                    'display_name' => $owner['display_name'] ?: $owner['username']
+                ]);
+                $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_OWNER = {$ownerData};</script>", $html);
+            }
+        } catch (\Exception $e) {
+            // Ignorar errores
+        }
+        Router::html($html);
+    } else {
+        Router::html("<h2>Vista independiente no encontrada.</h2>", 404);
+    }
+};
+
 // --- Rutas de Mastodon API ---
 $router->get('/.well-known/nodeinfo', [MastodonApiController::class, 'wellKnownNodeinfo']);
 $router->get('/nodeinfo/2.0', [MastodonApiController::class, 'nodeinfo20']);
@@ -431,6 +647,25 @@ $router->get('/@:username', $renderFrontend);
 $router->get('/list_:id', $renderFrontend);
 $router->get('/tag_:tag', $renderFrontend);
 $router->get('/search-results', $renderFrontend);
+
+// --- Cliente Web MPA: Páginas Independientes (/p/...) ---
+$router->get('/p', function() { header('Location: /p/public'); exit; });
+$router->get('/p/public', $renderPagesFrontend);
+$router->get('/p/home', $renderPagesFrontend);
+$router->get('/p/catchup', $renderPagesFrontend);
+$router->get('/p/local', $renderPagesFrontend);
+$router->get('/p/bookmarks', $renderPagesFrontend);
+$router->get('/p/direct', $renderPagesFrontend);
+$router->get('/p/notifications', $renderPagesFrontend);
+$router->get('/p/lists', $renderPagesFrontend);
+$router->get('/p/collections', $renderPagesFrontend);
+$router->get('/p/followed-hashtags', $renderPagesFrontend);
+$router->get('/p/profile', $renderPagesFrontend);
+$router->get('/p/@:username', $renderPagesFrontend);
+$router->get('/p/list_:id', $renderPagesFrontend);
+$router->get('/p/tag_:tag', $renderPagesFrontend);
+$router->get('/p/search-results', $renderPagesFrontend);
+$router->get('/p/statuses/:id', $renderPagesFrontend);
 
 
 // --- Panel de Administración Centralizado ---
