@@ -21,6 +21,7 @@ $basePath = $basePath ?? '/p';
     <style>
     <?php include __DIR__ . '/pages.css'; ?>
     main.main-content > div[id^="tab-"] { display: block !important; }
+    #modal-composer .composer-card { border: none !important; margin-bottom: 0 !important; padding: 0 !important; background: transparent !important; }
     </style>
 </head>
 <body>
@@ -278,6 +279,24 @@ $basePath = $basePath ?? '/p';
             <img id="image-viewer-img" src="" style="max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
         </div>
     </div>
+
+    <?php if (!empty($contentView) && $contentView !== 'feed.php'): ?>
+    <!-- Modal Composer para responder o publicar en páginas independientes (Notificaciones, Hilos, etc.) -->
+    <div id="modal-composer" class="modal-overlay" style="display: none; z-index: 2500;" onclick="if(event.target === this) closeComposerModal()">
+        <div class="modal-card" style="max-width: 580px; width: 95%; padding: 0; background: var(--bg-color, #1a1e28); overflow: visible; border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 10px 40px rgba(0,0,0,0.6);">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px; border-bottom: 1px solid var(--border-color);">
+                <h3 class="modal-title" style="margin: 0; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+                    <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary);">reply</span>
+                    <span id="modal-composer-title">Responder</span>
+                </h3>
+                <span onclick="closeComposerModal()" style="cursor: pointer; color: var(--text-muted); font-size: 20px; line-height: 1; padding: 2px 6px;">✕</span>
+            </div>
+            <div style="padding: 15px;">
+                <?php include __DIR__ . '/composer.php'; ?>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
 
     <script>
     <?php include __DIR__ . '/pages.js'; ?>

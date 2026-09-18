@@ -299,8 +299,8 @@ function initPublicView() {
         `;
     }
     
-    // Ocultar composer en feed
-    const composer = document.querySelector('#tab-feed .composer-card');
+    // Ocultar composer
+    const composer = document.querySelector('.composer-card');
     if (composer) {
         composer.style.display = 'none';
     }
@@ -1318,14 +1318,33 @@ function initQuoteToot(id, handle, uri) {
     quoteTootId = id;
     replyToId = null;
     editTootId = null;
-    document.getElementById('composer-context').style.display = 'flex';
-    document.getElementById('composer-context-text').innerText = `Citando publicación de @${handle}`;
+    const ctx = document.getElementById('composer-context');
+    if (ctx) ctx.style.display = 'flex';
+    const ctxText = document.getElementById('composer-context-text');
+    if (ctxText) ctxText.innerText = `Citando publicación de @${handle}`;
     
     const textarea = document.getElementById('composer-text');
-    textarea.value = '';
-    textarea.focus();
-    updateCharCount();
-    showTab('feed');
+    if (textarea) {
+        textarea.value = '';
+        updateCharCount();
+    }
+    
+    const modalComposer = document.getElementById('modal-composer');
+    if (modalComposer) {
+        const modalTitle = document.getElementById('modal-composer-title');
+        if (modalTitle) modalTitle.innerText = `Citar publicación de @${handle}`;
+        modalComposer.style.display = 'flex';
+        if (textarea) textarea.focus();
+    } else {
+        const tabFeed = document.getElementById('tab-feed');
+        if (tabFeed) {
+            showTab('feed');
+            if (textarea) {
+                textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                textarea.focus();
+            }
+        }
+    }
 }
 
 function renderEmbeddedQuote(placeholderId, quotedToot) {
@@ -1634,18 +1653,25 @@ async function publishToot() {
             textarea.value = '';
             cancelComposerContext();
             
+            const modalComposer = document.getElementById('modal-composer');
+            if (modalComposer) {
+                modalComposer.style.display = 'none';
+            }
+            
             if (editTootId) {
-                loadTimeline(false);
+                if (document.getElementById('tab-feed')) {
+                    loadTimeline(false);
+                }
             } else {
-                if (currentTimeline === 'home' || currentTimeline === 'public' || currentTimeline === 'local') {
+                if ((currentTimeline === 'home' || currentTimeline === 'public' || currentTimeline === 'local') && document.getElementById('tab-feed')) {
                     const idInt = parseInt(newToot.id);
                     if (idInt > lastId) {
                         lastId = idInt;
                     }
                     prependToot(newToot, true);
-                } else if (currentTimeline === 'thread-view' && activeThreadId) {
+                } else if (currentTimeline === 'thread-view' && activeThreadId && typeof viewTootThread === 'function') {
                     viewTootThread(activeThreadId);
-                } else {
+                } else if (document.getElementById('tab-feed')) {
                     loadTimeline(false);
                 }
             }
@@ -3673,13 +3699,16 @@ async function deleteToot(statusId, btn) {
 function initReplyToToot(id, handle, visibility = 'public') {
     replyToId = id;
     editTootId = null;
-    document.getElementById('composer-context').style.display = 'flex';
-    document.getElementById('composer-context-text').innerText = `Respondiendo a @${handle}`;
+    const ctx = document.getElementById('composer-context');
+    if (ctx) ctx.style.display = 'flex';
+    const ctxText = document.getElementById('composer-context-text');
+    if (ctxText) ctxText.innerText = `Respondiendo a @${handle}`;
     
     const textarea = document.getElementById('composer-text');
-    textarea.value = `@${handle} `;
-    textarea.focus();
-    updateCharCount();
+    if (textarea) {
+        textarea.value = `@${handle} `;
+        updateCharCount();
+    }
     
     // Heredar la visibilidad de la publicación padre
     const visSelect = document.getElementById('composer-visibility');
@@ -3690,7 +3719,27 @@ function initReplyToToot(id, handle, visibility = 'public') {
         }
     }
     
-    showTab('feed');
+    const modalComposer = document.getElementById('modal-composer');
+    if (modalComposer) {
+        const modalTitle = document.getElementById('modal-composer-title');
+        if (modalTitle) modalTitle.innerText = `Responder a @${handle}`;
+        modalComposer.style.display = 'flex';
+        if (textarea) {
+            setTimeout(() => {
+                textarea.focus();
+                textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+            }, 50);
+        }
+    } else {
+        const tabFeed = document.getElementById('tab-feed');
+        if (tabFeed) {
+            showTab('feed');
+            if (textarea) {
+                textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                textarea.focus();
+            }
+        }
+    }
 }
 
 function initEditToot(id, content, sensitive, spoilerText, mediaAttachments = []) {
@@ -3773,25 +3822,50 @@ function initEditToot(id, content, sensitive, spoilerText, mediaAttachments = []
         }
     }
 
-    showTab('feed');
+    const modalComposer = document.getElementById('modal-composer');
+    if (modalComposer) {
+        const modalTitle = document.getElementById('modal-composer-title');
+        if (modalTitle) modalTitle.innerText = `Editar publicación`;
+        modalComposer.style.display = 'flex';
+        if (textarea) textarea.focus();
+    } else {
+        const tabFeed = document.getElementById('tab-feed');
+        if (tabFeed) {
+            showTab('feed');
+            if (textarea) {
+                textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                textarea.focus();
+            }
+        }
+    }
+}
+
+function closeComposerModal() {
+    cancelComposerContext();
 }
 
 function cancelComposerContext() {
     replyToId = null;
     editTootId = null;
     quoteTootId = null;
-    document.getElementById('composer-context').style.display = 'none';
-    document.getElementById('composer-text').value = '';
-    document.getElementById('composer-cw-container').style.display = 'none';
-    document.getElementById('composer-cw-btn').classList.remove('active');
-    document.getElementById('composer-cw-text').value = '';
+    const ctx = document.getElementById('composer-context');
+    if (ctx) ctx.style.display = 'none';
+    const textarea = document.getElementById('composer-text');
+    if (textarea) textarea.value = '';
+    const cwContainer = document.getElementById('composer-cw-container');
+    if (cwContainer) cwContainer.style.display = 'none';
+    const cwBtn = document.getElementById('composer-cw-btn');
+    if (cwBtn) cwBtn.classList.remove('active');
+    const cwText = document.getElementById('composer-cw-text');
+    if (cwText) cwText.value = '';
     
     // Limpiar archivos multimedia subidos
     composerUploadedMediaIds = [];
-    document.getElementById('composer-media-preview').innerHTML = '';
+    const previewContainer = document.getElementById('composer-media-preview');
+    if (previewContainer) previewContainer.innerHTML = '';
     
     // Cerrar y limpiar encuesta
-    closeComposerPoll();
+    if (typeof closeComposerPoll === 'function') closeComposerPoll();
     
     // Restablecer visibilidad por defecto a public
     const visSelect = document.getElementById('composer-visibility');
@@ -3803,7 +3877,11 @@ function cancelComposerContext() {
     }
     
     updateCharCount();
-    switchTimeline('home');
+    
+    const modalComposer = document.getElementById('modal-composer');
+    if (modalComposer) {
+        modalComposer.style.display = 'none';
+    }
 }
 
 function toggleComposerCW() {
