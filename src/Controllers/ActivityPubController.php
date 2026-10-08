@@ -511,11 +511,25 @@ XML;
 
         // Procesar in_reply_to_id
         $inReplyToUri = $object['inReplyTo'] ?? null;
+        if (is_array($inReplyToUri)) {
+            $inReplyToUri = $inReplyToUri['id'] ?? $inReplyToUri[0] ?? null;
+        }
+        if (!is_string($inReplyToUri) || empty($inReplyToUri)) {
+            $inReplyToUri = null;
+        }
+
         $inReplyToId = null;
         if ($inReplyToUri) {
             $stmtReply = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
             $stmtReply->execute([$inReplyToUri]);
             $inReplyToId = $stmtReply->fetchColumn() ?: null;
+            if (!$inReplyToId) {
+                try {
+                    $inReplyToId = self::fetchAndRegisterRemoteStatus($inReplyToUri);
+                } catch (\Throwable $e) {
+                    self::log("handleCreate: no se pudo pre-resolver inReplyTo '$inReplyToUri': " . $e->getMessage());
+                }
+            }
         }
 
         $stmtIns = $db->prepare("
@@ -820,26 +834,12 @@ XML;
         // Si no existe o está desactualizado, debemos resolver el actor para obtener su inbox, public_key y estadísticas
         self::log("getOrRegisterRemoteActor: Resolviendo actor remoto vía petición HTTP: $actorUrl");
         try {
-            $ch = curl_init($actorUrl);
-            $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-            curl_setopt_array($ch, [
-                CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_HTTPHEADER => [
-                    "Accept: application/activity+json, application/ld+json",
-                    "User-Agent: KutSocial/1.0; (+https://$domain)"
-                ],
-                CURLOPT_TIMEOUT => 15,
-                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
-                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
-            ]);
-            $resp = curl_exec($ch);
-            $curlErr = curl_error($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            self::log("getOrRegisterRemoteActor: HTTP status: $httpCode" . ($curlErr ? ", Curl Error: $curlErr" : ''));
-            if ($resp === false) {
-                self::log("getOrRegisterRemoteActor: Curl failed for $actorUrl");
+            $resp = self::executeSignedGet($actorUrl);
+            if (!$resp) {
+                $resp = self::executeSimpleGet($actorUrl);
+            }
+            if ($resp === false || !$resp) {
+                self::log("getOrRegisterRemoteActor: Falló la petición HTTP para $actorUrl");
                 return $account ?: null;
             }
 
@@ -1458,6 +1458,13 @@ XML;
         $mediaJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
 
         $inReplyToUri = $object['inReplyTo'] ?? null;
+        if (is_array($inReplyToUri)) {
+            $inReplyToUri = $inReplyToUri['id'] ?? $inReplyToUri[0] ?? null;
+        }
+        if (!is_string($inReplyToUri) || empty($inReplyToUri)) {
+            $inReplyToUri = null;
+        }
+
         $inReplyToId = null;
         if ($inReplyToUri) {
             $stmtReply = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
@@ -1698,7 +1705,44 @@ XML;
     /**
      * Envía una petición GET firmada mediante HTTP Signatures a un servidor remoto.
      */
-    public static function executeSignedGet(string $url): ?string {
+    /**
+     * Realiza una petición GET simple con cabeceras ActivityPub y seguimiento de redirecciones.
+     */
+    public static function executeSimpleGet(string $url): ?string {
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => [
+                "Accept: application/activity+json, application/ld+json",
+                "User-Agent: KutSocial/1.0; (+https://$domain)"
+            ],
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 4,
+            CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+            CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
+        ]);
+        $resp = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($httpCode === 200 && $resp) {
+            return $resp;
+        }
+        return null;
+    }
+
+    /**
+     * Realiza una petición GET firmada con HTTP Signature (RSA SHA256).
+     * Si la instancia responde con redirección, re-firma para la nueva ruta.
+     * Si falla, recurre a executeSimpleGet como fallback.
+     */
+    public static function executeSignedGet(string $url, int $redirectDepth = 0): ?string {
+        if ($redirectDepth > 3) {
+            return self::executeSimpleGet($url);
+        }
+
         $db = Database::connect();
         
         // 1. Obtener una clave privada local para firmar
@@ -1706,7 +1750,12 @@ XML;
         $stmt->execute();
         $account = $stmt->fetch();
         if (!$account || empty($account['private_key'])) {
-            self::log("executeSignedGet: No se encontró cuenta local con clave privada para firmar.");
+            self::log("executeSignedGet: No se encontró cuenta local con clave privada para firmar, usando GET simple.");
+            return self::executeSimpleGet($url);
+        }
+
+        $u = parse_url($url);
+        if (empty($u['host'])) {
             return null;
         }
 
@@ -1714,11 +1763,6 @@ XML;
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         $keyId = "$proto://$domain/users/{$account['username']}#main-key";
-
-        $u = parse_url($url);
-        if (empty($u['host'])) {
-            return null;
-        }
 
         $date = gmdate('D, d M Y H:i:s') . ' GMT';
         $path = empty($u['path']) ? '/' : $u['path'];
@@ -1732,7 +1776,7 @@ XML;
         $sig = '';
         if (!openssl_sign($signingString, $sig, $privateKey, OPENSSL_ALGO_SHA256)) {
             self::log("executeSignedGet: Error al firmar la petición RSA.");
-            return null;
+            return self::executeSimpleGet($url);
         }
 
         $sigHeader = sprintf(
@@ -1751,23 +1795,32 @@ XML;
                 "User-Agent: KutSocial/1.0; (+https://$domain)"
             ],
             CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER => true,
             CURLOPT_TIMEOUT => 8,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 4,
+            CURLOPT_FOLLOWLOCATION => false, // Gestionamos redirección manualmente para re-firmar correctamente
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
             CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
         ]);
 
-        $resp = curl_exec($ch);
+        $rawResponse = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
+        $redirectUrl = curl_getinfo($ch, CURLINFO_REDIRECT_URL);
         curl_close($ch);
 
-        if ($httpCode !== 200 || !$resp) {
-            self::log("executeSignedGet FAILED to $url. HTTP $httpCode");
-            return null;
+        // Si es una redirección HTTP, re-firmar hacia la nueva URL
+        if (in_array($httpCode, [301, 302, 303, 307, 308]) && !empty($redirectUrl)) {
+            return self::executeSignedGet($redirectUrl, $redirectDepth + 1);
         }
 
-        return $resp;
+        $body = $rawResponse ? substr($rawResponse, $headerSize) : null;
+
+        if ($httpCode === 200 && $body) {
+            return $body;
+        }
+
+        self::log("executeSignedGet falló con HTTP $httpCode para $url. Intentando executeSimpleGet...");
+        return self::executeSimpleGet($url);
     }
 
     /**
@@ -1811,7 +1864,10 @@ XML;
                             }
 
                             $inReplyToUri = $object['inReplyTo'] ?? null;
-                            if ($inReplyToUri) {
+                            if (is_array($inReplyToUri)) {
+                                $inReplyToUri = $inReplyToUri['id'] ?? $inReplyToUri[0] ?? null;
+                            }
+                            if ($inReplyToUri && is_string($inReplyToUri)) {
                                 $parentStatusId = self::fetchAndRegisterRemoteStatus($inReplyToUri);
                                 if ($parentStatusId) {
                                     $stmtUpdate = $db->prepare("UPDATE statuses SET in_reply_to_id = ? WHERE id = ?");

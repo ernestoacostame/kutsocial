@@ -3314,30 +3314,70 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
         min-width: 200px;
     `;
 
-    menu.innerHTML = '<div style="padding: 8px 16px; font-size: 13px; color: var(--text-muted);">Cargando...</div>';
-    document.body.appendChild(menu);
-    activeTootOptionsMenu = menu;
+    menu.innerHTML = '';
+
+    // Opción: Abrir página original
+    const postUrl = toot.url || toot.uri;
+    if (postUrl) {
+        const optOpen = document.createElement('button');
+        optOpen.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">open_in_new</span> Abrir página original';
+        setupMenuBtn(optOpen, () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            window.open(postUrl, '_blank', 'noopener,noreferrer');
+        });
+        menu.appendChild(optOpen);
+
+        // Opción: Copiar enlace
+        const optCopy = document.createElement('button');
+        optCopy.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">content_copy</span> Copiar enlace';
+        setupMenuBtn(optCopy, () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(postUrl).then(() => {
+                    alert('Enlace copiado al portapapeles');
+                }).catch(() => {
+                    prompt('Copia el enlace manualmente:', postUrl);
+                });
+            } else {
+                prompt('Copia el enlace manualmente:', postUrl);
+            }
+        });
+        menu.appendChild(optCopy);
+    }
+
+    // Opción: Ver perfil
+    const optProfile = document.createElement('button');
+    optProfile.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">person</span> Ver perfil';
+    setupMenuBtn(optProfile, () => {
+        menu.remove();
+        activeTootOptionsMenu = null;
+        viewProfile(account.id);
+    });
+    menu.appendChild(optProfile);
+
+    // Separador para moderación / relaciones
+    const separator = document.createElement('div');
+    separator.style = 'height: 1px; background: #2f3037; margin: 4px 0;';
+    menu.appendChild(separator);
+
+    const relLoading = document.createElement('div');
+    relLoading.style = 'padding: 6px 16px; font-size: 12px; color: var(--text-muted);';
+    relLoading.innerText = 'Cargando opciones...';
+    menu.appendChild(relLoading);
 
     try {
         const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${account.id}`, {
             headers: { 'Authorization': `Bearer ${token}` }
         });
+        if (relLoading.parentNode) {
+            relLoading.remove();
+        }
         if (!relRes.ok) throw new Error("Failed to load relationship");
         const rels = await relRes.json();
         const rel = rels[0];
         if (!rel || activeTootOptionsMenu !== menu) return;
-
-        menu.innerHTML = '';
-
-        // Option: View Profile
-        const optProfile = document.createElement('button');
-        optProfile.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">person</span> Ver perfil';
-        setupMenuBtn(optProfile, () => {
-            menu.remove();
-            activeTootOptionsMenu = null;
-            viewProfile(account.id);
-        });
-        menu.appendChild(optProfile);
 
         // Option: Mute
         const optMute = document.createElement('button');
@@ -3427,8 +3467,10 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
         }
 
     } catch (err) {
+        if (relLoading.parentNode) {
+            relLoading.remove();
+        }
         console.error(err);
-        menu.innerHTML = '<div style="padding: 8px 16px; font-size: 13px; color: var(--error);">Error al cargar opciones</div>';
     }
 
     setTimeout(() => {
