@@ -20,7 +20,7 @@ $basePath = $basePath ?? '';
     
     <style>
     <?php include __DIR__ . '/pages.css'; ?>
-    main.main-content > div[id^="tab-"] { display: block !important; }
+    #tab-<?= htmlspecialchars($section) ?> { display: block; }
     #modal-composer .composer-card { border: none !important; margin-bottom: 0 !important; padding: 0 !important; background: transparent !important; }
     </style>
 </head>

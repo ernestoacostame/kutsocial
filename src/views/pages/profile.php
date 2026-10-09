@@ -1,15 +1,17 @@
 <div id="tab-profile" class="composer-card">
-    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
-        <h2 style="margin: 0; font-size: 18px;">⚙️ Ajustes de Cuenta & Datos</h2>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button type="button" id="btn-subtab-profile-edit" onclick="switchProfileSettingsTab('edit')" class="btn-subtab active" style="padding: 7px 14px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color); background: var(--primary); color: white; cursor: pointer; font-weight: 600;">
-                👤 Perfil
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 20px; gap: 15px; flex-wrap: wrap;">
+        <h2 style="margin: 0; font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+            <span class="material-icons-outlined" style="color: var(--primary);">tune</span> Ajustes de Cuenta & Datos
+        </h2>
+        <div class="pill-toggle-group" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); flex-shrink: 0;">
+            <button type="button" id="btn-subtab-profile-edit" onclick="switchProfileSettingsTab('edit')" class="profile-subtab-btn active">
+                <span>👤</span> <span>Perfil</span>
             </button>
-            <button type="button" id="btn-subtab-profile-privacy" onclick="switchProfileSettingsTab('privacy')" class="btn-subtab" style="padding: 7px 14px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: var(--text-color); cursor: pointer;">
-                🔒 Privacidad
+            <button type="button" id="btn-subtab-profile-privacy" onclick="switchProfileSettingsTab('privacy')" class="profile-subtab-btn">
+                <span>🔒</span> <span>Privacidad</span>
             </button>
-            <button type="button" id="btn-subtab-profile-import" onclick="switchProfileSettingsTab('import')" class="btn-subtab" style="padding: 7px 14px; font-size: 13px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: var(--text-color); cursor: pointer;">
-                📥 Importar & Exportar
+            <button type="button" id="btn-subtab-profile-import" onclick="switchProfileSettingsTab('import')" class="profile-subtab-btn">
+                <span>📥</span> <span>Importar & Exportar</span>
             </button>
         </div>
     </div>

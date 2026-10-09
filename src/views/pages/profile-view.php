@@ -1,4 +1,4 @@
-<div id="tab-profile-view" style="display: none;">
+<div id="tab-profile-view" data-account-id="<?= htmlspecialchars((string)($activeProfileViewId ?? ($localUser['id'] ?? '')))" ?> style="display: none;">
     <!-- Back Header -->
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px; cursor: pointer; color: var(--text-muted); font-weight: 500;" onclick="goBackToFeed()">
         <span style="font-size: 18px;">←</span> <span>Atrás</span>
@@ -61,11 +61,11 @@
             </div>
 
             <div style="display: flex; gap: 24px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
-                <div onclick="loadUsersList('followers', activeProfileViewId || window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID || (currentProfileData && currentProfileData.id))" style="cursor: pointer;">
+                <div onclick="loadUsersList('followers')" style="cursor: pointer;" title="Ver lista de seguidores">
                     <div id="profile-view-followers-count" class="stat-num">0</div>
                     <div class="stat-label" style="text-decoration: underline; text-decoration-style: dotted;">Seguidores</div>
                 </div>
-                <div onclick="loadUsersList('following', activeProfileViewId || window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID || (currentProfileData && currentProfileData.id))" style="cursor: pointer;">
+                <div onclick="loadUsersList('following')" style="cursor: pointer;" title="Ver lista de seguidos">
                     <div id="profile-view-following-count" class="stat-num">0</div>
                     <div class="stat-label" style="text-decoration: underline; text-decoration-style: dotted;">Siguiendo</div>
                 </div>

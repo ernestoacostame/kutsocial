@@ -1274,6 +1274,41 @@ button:hover {
     background: rgba(255, 255, 255, 0.05) !important;
     transform: none !important;
 }
+
+/* Pestañas horizontales reducidas en Ajustes de Cuenta & Datos */
+.profile-subtab-btn {
+    width: auto !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 6px 14px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    border-radius: 7px !important;
+    border: none !important;
+    background: transparent !important;
+    color: var(--text-muted) !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+    box-shadow: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    white-space: nowrap !important;
+}
+
+.profile-subtab-btn:hover {
+    color: var(--text-color) !important;
+    background: rgba(255, 255, 255, 0.06) !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.profile-subtab-btn.active {
+    background: var(--primary) !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35) !important;
+}
 .tag-follow-card {
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border-color);

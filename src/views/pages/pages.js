@@ -2550,14 +2550,8 @@ function switchProfileSettingsTab(subtab = 'edit') {
         if (btn) {
             if (t === subtab) {
                 btn.classList.add('active');
-                btn.style.background = 'var(--primary)';
-                btn.style.color = '#fff';
-                btn.style.fontWeight = '600';
             } else {
                 btn.classList.remove('active');
-                btn.style.background = 'rgba(255,255,255,0.05)';
-                btn.style.color = 'var(--text-color)';
-                btn.style.fontWeight = 'normal';
             }
         }
     });
@@ -2896,12 +2890,20 @@ async function processQueueNow() {
 
 async function loadUsersList(type, accountId) {
     if (!accountId) {
-        accountId = activeProfileViewId || window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID || currentProfileData?.id;
+        accountId = (typeof activeProfileViewId !== 'undefined' && activeProfileViewId)
+            || (typeof lastLoadedProfile !== 'undefined' && lastLoadedProfile?.id)
+            || window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID
+            || document.getElementById('tab-profile-view')?.dataset?.accountId
+            || currentProfileData?.id;
     }
-    if (!accountId) return;
+    if (!accountId) {
+        console.warn('loadUsersList: No se pudo determinar el ID de la cuenta.');
+        return;
+    }
     
     if (document.getElementById('tab-users-list')) {
         showTab('users-list');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     
     const titleEl = document.getElementById('users-list-title');
@@ -3073,6 +3075,7 @@ async function handleUserListFollow(accountId, btn, doFollow) {
 
 function goBackFromUsersList() {
     showTab('profile-view');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 async function viewProfileByUrl(profileUrl) {
@@ -3099,6 +3102,12 @@ async function viewProfileByUrl(profileUrl) {
 // VISTA DE PERFIL Y SEGUIMIENTOS
 // ---------------------------
 function renderProfileData(account) {
+    if (!account) return;
+    activeProfileViewId = account.id;
+    lastLoadedProfile = account;
+    const tabProf = document.getElementById('tab-profile-view');
+    if (tabProf) tabProf.dataset.accountId = account.id;
+
     document.getElementById('profile-view-display-name').innerText = account.display_name || account.username;
     document.getElementById('profile-view-handle').innerText = `@${account.acct}`;
     document.getElementById('profile-view-followers-count').innerText = formatStatNumber(account.followers_count);
