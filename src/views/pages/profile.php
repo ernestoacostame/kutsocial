@@ -156,12 +156,6 @@
                     </div>
                     <button type="submit" style="width: auto; margin: 0; padding: 12px 24px; height: 44px;">Subir e Importar</button>
                 </div>
-                <div>
-                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-color); cursor: pointer; margin-top: 4px;">
-                        <input type="checkbox" id="import-mutual" name="mutual" value="1" style="width: auto;">
-                        <span>Establecer seguimiento mutuo automáticamente (garantiza que ambos usuarios se sigan mutuamente al importar)</span>
-                    </label>
-                </div>
             </form>
             <div id="import-status-msg" style="margin-top: 12px; font-size: 13.5px; font-weight: 600; text-align: center;"></div>
         </div>

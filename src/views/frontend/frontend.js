@@ -1775,8 +1775,11 @@ function updateRightSidebarVisibility(tabName, timeline = currentTimeline) {
     const appContainer = document.getElementById('app-container');
     if (!rightSidebar) return;
 
-    // Solo mostrar en Inicio, Timeline local, Ponerse al Día y Federación pública
-    const isAllowed = (tabName === 'feed' && ['home', 'local', 'public'].includes(timeline)) || tabName === 'catchup' || (timeline === 'catchup');
+    // Mostrar en Inicio, Timeline local, Ponerse al Día, Federación pública, Notificaciones y Mensajes privados
+    const isAllowed = (tabName === 'feed' && ['home', 'local', 'public', 'direct'].includes(timeline)) 
+        || tabName === 'catchup' 
+        || (timeline === 'catchup') 
+        || tabName === 'notifications';
 
     if (isAllowed) {
         rightSidebar.style.display = '';
@@ -2889,8 +2892,8 @@ async function loadUsersList(type, accountId) {
             if (ids.length > 0) {
                 const idsParam = ids.map(id => `id[]=${id}`).join('&');
                 try {
-                    const relRes = await fetch(`/api/v1/relationships?${idsParam}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
+                    const relRes = await fetch(`/api/v1/accounts/relationships?${idsParam}`, {
+                        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
                     });
                     if (relRes.ok) {
                         const rels = await relRes.json();
@@ -3214,7 +3217,7 @@ async function viewProfile(accountId, fromHashChange = false) {
 
     try {
         const res = await fetch(`/api/v1/accounts/${accountId}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
         });
         if (!res.ok) throw new Error("Error cargando perfil");
         const account = await res.json();
@@ -3788,7 +3791,7 @@ function setupMenuBtn(btn, onClick) {
 
 async function loadProfileStatuses(accountId) {
     try {
-        const headers = {};
+        const headers = { 'Accept': 'application/json' };
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }

@@ -166,8 +166,10 @@ $renderFrontend = function() {
         $activeThreadId = end($parts);
     }
 
-    // La columna derecha solo se muestra en Inicio, Timeline local, Catchup y Federación pública
-    $showRightSidebar = ($section === 'catchup') || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup']));
+    // La columna derecha solo se muestra en Inicio, Timeline local, Catchup, Federación pública, Notificaciones y Mensajes privados
+    $showRightSidebar = ($section === 'catchup') 
+        || ($section === 'notifications') 
+        || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup', 'direct']));
 
     $path = __DIR__ . '/src/views/frontend.html';
     if (file_exists($path)) {
@@ -393,8 +395,10 @@ $renderPagesFrontend = function() {
         $pageTitle = 'Conversación - KutSocial';
     }
 
-    // La columna derecha solo se muestra en Inicio, Timeline local, Catchup y Federación pública
-    $showRightSidebar = ($section === 'catchup') || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup']));
+    // La columna derecha se muestra en Inicio, Timeline local, Catchup, Federación pública, Notificaciones y Mensajes privados
+    $showRightSidebar = ($section === 'catchup') 
+        || ($section === 'notifications') 
+        || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup', 'direct']));
 
     $basePath = (str_starts_with($uri, '/p/') || $uri === '/p') ? '/p' : '';
     $path = __DIR__ . '/src/views/pages/layout.php';
@@ -494,6 +498,7 @@ $router->patch('/api/v1/profile', [MastodonApiController::class, 'patchProfile']
 $router->patch('/api/v1/accounts/update_credentials', [MastodonApiController::class, 'updateCredentials']);
 $router->post('/api/v1/accounts/update_credentials', [MastodonApiController::class, 'updateCredentials']);
 $router->get('/api/v1/accounts/relationships', [MastodonApiController::class, 'getRelationships']);
+$router->get('/api/v1/relationships', [MastodonApiController::class, 'getRelationships']);
 $router->get('/api/v1/accounts', [MastodonApiController::class, 'getAccounts']);
 $router->get('/api/v1/accounts/:id', [MastodonApiController::class, 'getAccountById']);
 $router->get('/api/v1/accounts/:id/statuses', [MastodonApiController::class, 'getAccountStatuses']);
@@ -563,7 +568,7 @@ $router->get('/users/:username/followers', [ActivityPubController::class, 'getFo
 $router->get('/users/:username/following', [ActivityPubController::class, 'getFollowing']);
 $router->get('/users/:username/statuses/:id', function($params) use ($renderPagesFrontend) {
     $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-    if (str_contains($accept, 'json')) {
+    if (str_contains($accept, 'application/activity+json') || str_contains($accept, 'application/ld+json')) {
         \KutSocial\Controllers\ActivityPubController::getStatus($params);
     } else {
         $renderPagesFrontend();
@@ -571,7 +576,7 @@ $router->get('/users/:username/statuses/:id', function($params) use ($renderPage
 });
 $router->get('/@:username', function($params) use ($renderPagesFrontend) {
     $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
-    if (str_contains($accept, 'json')) {
+    if (str_contains($accept, 'application/activity+json') || str_contains($accept, 'application/ld+json')) {
         \KutSocial\Controllers\ActivityPubController::getActor($params);
     } else {
         $renderPagesFrontend();

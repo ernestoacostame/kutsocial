@@ -6172,6 +6172,9 @@ HTML;
                         $targetAcc = $stmtAcc->fetch();
                         if ($targetAcc) {
                             $targetId = (int)$targetAcc['id'];
+                            if ($targetId === (int)$account['id']) {
+                                continue;
+                            }
                             $stmtFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
                             $stmtFollow->execute([$account['id'], $targetId]);
                             if (!$stmtFollow->fetchColumn()) {
@@ -6192,14 +6195,6 @@ HTML;
                                         'object' => $remoteActorUrl
                                     ];
                                     \KutSocial\Queue::enqueue('Follow', $followActivity, $targetAcc['inbox_url']);
-                                }
-                            }
-                            if ($mutual) {
-                                $stmtCheckRev = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-                                $stmtCheckRev->execute([$targetId, $account['id']]);
-                                if (!$stmtCheckRev->fetchColumn()) {
-                                    $stmtInsRev = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
-                                    $stmtInsRev->execute([$targetId, $account['id']]);
                                 }
                             }
                             $importedCount++;

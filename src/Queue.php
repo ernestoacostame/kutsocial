@@ -297,7 +297,10 @@ class Queue {
             throw new Exception("No se pudo resolver el actor remoto: $address");
         }
 
-        $targetId = $resolvedAcc['id'];
+        $targetId = (int)$resolvedAcc['id'];
+        if ($targetId === (int)$accountId) {
+            return;
+        }
         $isRemote = !empty($resolvedAcc['domain']);
         $status = $isRemote ? 'pending' : (($resolvedAcc['locked'] ?? 0) ? 'pending' : 'accepted');
         
@@ -323,16 +326,6 @@ class Queue {
                 ];
                 
                 \KutSocial\Queue::enqueue('Follow', $followActivity, $resolvedAcc['inbox_url']);
-            }
-        }
-
-        // Si se especificó seguimiento mutuo: establecer también que el actor remoto nos sigue
-        if ($mutual) {
-            $stmtCheckReverse = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-            $stmtCheckReverse->execute([$targetId, $accountId]);
-            if (!$stmtCheckReverse->fetchColumn()) {
-                $stmtRev = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
-                $stmtRev->execute([$targetId, $accountId]);
             }
         }
     }

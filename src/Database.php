@@ -114,6 +114,9 @@ class Database {
             if (!$hasAlsoKnownAs) {
                 $db->exec("ALTER TABLE accounts ADD COLUMN also_known_as TEXT NULL");
             }
+
+            // Limpieza de auto-seguimientos erróneos
+            $db->exec("DELETE FROM follows WHERE account_id = target_account_id");
         } catch (\Throwable $e) {
             // Ignorar fallos de alteración directa
         }
