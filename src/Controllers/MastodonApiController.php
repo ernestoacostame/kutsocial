@@ -1948,10 +1948,18 @@ HTML;
         // Consultar estadísticas en tiempo real en SQLite
         $db = Database::connect();
         
-        if (!empty($account['domain'])) {
+        $serverHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]);
+        $accDomain = !empty($account['domain']) ? strtolower(explode(':', $account['domain'])[0]) : '';
+        $isLocal = empty($accDomain) || $accDomain === $serverHost || !empty($account['password_hash']);
+        $isRemote = !$isLocal;
+
+        $lastStatusAt = null;
+
+        if ($isRemote) {
             $followersCount = (int)($account['followers_count'] ?? 0);
             $followingCount = (int)($account['following_count'] ?? 0);
             $statusesCount = (int)($account['statuses_count'] ?? 0);
+            $lastStatusAt = !empty($account['last_status_at']) ? date('Y-m-d', strtotime($account['last_status_at'])) : null;
         } else {
             // Contar seguidores recibidos
             $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'accepted'");
@@ -1967,12 +1975,18 @@ HTML;
             $stmtStatuses = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
             $stmtStatuses->execute([$accountId]);
             $statusesCount = (int)$stmtStatuses->fetchColumn();
+
+            // Fecha del último toot
+            $stmtLastStatus = $db->prepare("SELECT created_at FROM statuses WHERE account_id = ? ORDER BY id DESC LIMIT 1");
+            $stmtLastStatus->execute([$accountId]);
+            $lastCreated = $stmtLastStatus->fetchColumn();
+            $lastStatusAt = $lastCreated ? date('Y-m-d', strtotime($lastCreated)) : null;
         }
 
         return [
             'id' => (string)$accountId,
             'username' => $account['username'],
-            'acct' => $account['domain'] ? $account['username'] . '@' . $account['domain'] : $account['username'],
+            'acct' => ($isRemote && !empty($account['domain'])) ? $account['username'] . '@' . $account['domain'] : $account['username'],
             'display_name' => $account['display_name'] ?: $account['username'],
             'locked' => (bool)($account['locked'] ?? 0),
             'bot' => false,
@@ -1983,7 +1997,7 @@ HTML;
             'group' => false,
             'created_at' => date('c', strtotime($account['account_created_at'] ?? $account['created_at'] ?? 'now')),
             'note' => $bio,
-            'url' => (!empty($account['url']) && !empty($account['domain'])) ? $account['url'] : ($account['domain'] ? "https://{$account['domain']}/@{$account['username']}" : "$proto://$domain/@" . $account['username']),
+            'url' => ($isRemote && !empty($account['url'])) ? $account['url'] : ($isRemote ? "https://{$account['domain']}/@{$account['username']}" : "$proto://$domain/@" . $account['username']),
             'avatar' => $avatarUrl,
             'avatar_static' => $avatarUrl,
             'header' => $headerUrl,
@@ -1991,7 +2005,7 @@ HTML;
             'followers_count' => $followersCount,
             'following_count' => $followingCount,
             'statuses_count' => $statusesCount,
-            'last_status_at' => null,
+            'last_status_at' => $lastStatusAt,
             'emojis' => self::extractAccountEmojis($account),
             'fields' => $fields,
             'role' => [
@@ -2336,23 +2350,96 @@ HTML;
     }
 
     /**
-     * Endpoint GET /api/v1/accounts/:id
-     * Obtiene el perfil de cualquier cuenta por su ID
+     * Resuelve una cuenta a partir de su ID numérico o handle (@username o @user@domain)
      */
-    public static function getAccountById(array $params): void {
-        $id = (int)$params['id'];
-        $db = Database::connect();
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-        $stmt->execute([$id]);
-        $account = $stmt->fetch();
+    public static function findAccountByIdOrHandle(string|int $idOrHandle): ?array {
+        $idParam = trim((string)$idOrHandle);
+        if ($idParam === '') {
+            return null;
+        }
 
-        if (!$account) {
-            Router::json(['error' => 'Cuenta no encontrada'], 404);
+        $db = Database::connect();
+        if (is_numeric($idParam)) {
+            $stmt = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+            $stmt->execute([(int)$idParam]);
+            $acc = $stmt->fetch();
+            if ($acc) {
+                return $acc;
+            }
+        }
+
+        $cleanUser = ltrim($idParam, '@');
+        $parts = explode('@', $cleanUser);
+        $uName = $parts[0] ?? '';
+        $uDomain = $parts[1] ?? null;
+        $serverHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]);
+
+        if (empty($uDomain) || strtolower($uDomain) === $serverHost) {
+            $stmt = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = LOWER(?) AND (domain IS NULL OR domain = '' OR LOWER(domain) = ?) LIMIT 1");
+            $stmt->execute([$uName, $serverHost]);
+            $acc = $stmt->fetch();
+            if ($acc) {
+                return $acc;
+            }
+        } else {
+            $stmt = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = LOWER(?) AND LOWER(domain) = LOWER(?) LIMIT 1");
+            $stmt->execute([$uName, strtolower($uDomain)]);
+            $acc = $stmt->fetch();
+            if ($acc) {
+                return $acc;
+            }
+
+            try {
+                $acc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($uName . '@' . $uDomain);
+                if ($acc) {
+                    return $acc;
+                }
+            } catch (\Throwable $e) {
+                // Silenciosamente ignorar fallo de webfinger
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Endpoint GET /api/v1/accounts/lookup
+     * Permite a clientes como Mona e Ivory resolver cuentas rápidamente por handle/username
+     */
+    public static function lookupAccount(): void {
+        $acct = trim($_GET['acct'] ?? '');
+        if (empty($acct)) {
+            Router::json(['error' => 'Validation failed: acct parameter is required'], 422);
             return;
         }
 
-        if (!empty($account['domain'])) {
-            $lastUpdated = strtotime($account['updated_at']);
+        $account = self::findAccountByIdOrHandle($acct);
+        if (!$account) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        Router::json(self::formatAccount($account));
+    }
+
+    /**
+     * Endpoint GET /api/v1/accounts/:id
+     * Obtiene el perfil de cualquier cuenta por su ID numérico o handle (@username)
+     */
+    public static function getAccountById(array $params): void {
+        $idParam = $params['id'] ?? '';
+        $account = self::findAccountByIdOrHandle($idParam);
+
+        if (!$account) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        $serverHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]);
+        $isRemote = !empty($account['domain']) && strtolower($account['domain']) !== $serverHost;
+
+        if ($isRemote) {
+            $lastUpdated = strtotime($account['updated_at'] ?? 'now');
             if (time() - $lastUpdated >= 300) {
                 $updatedAccount = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($account['username'] . '@' . $account['domain']);
                 if ($updatedAccount) {
@@ -2585,19 +2672,25 @@ HTML;
      * Obtiene las publicaciones creadas por una cuenta específica
      */
     public static function getAccountStatuses(array $params): void {
-        $id = (int)$params['id'];
+        $idParam = $params['id'] ?? '';
+        $account = self::findAccountByIdOrHandle($idParam);
+        if (!$account) {
+            Router::json([]);
+            return;
+        }
+
+        $id = (int)$account['id'];
         $db = Database::connect();
 
-        $stmtAccount = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-        $stmtAccount->execute([$id]);
-        $account = $stmtAccount->fetch();
+        $serverHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]);
+        $isRemote = !empty($account['domain']) && strtolower($account['domain']) !== $serverHost;
 
-        if ($account && !empty($account['domain'])) {
+        if ($isRemote) {
             $stmtCount = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
             $stmtCount->execute([$id]);
             $localCount = (int)$stmtCount->fetchColumn();
 
-            $lastUpdated = strtotime($account['updated_at']);
+            $lastUpdated = strtotime($account['updated_at'] ?? 'now');
             if ($localCount === 0 || (time() - $lastUpdated >= 300)) {
                 self::fetchAndImportRemoteStatuses($account);
             }
@@ -4604,7 +4697,16 @@ HTML;
         $relationships = [];
 
         foreach ($ids as $id) {
-            $relationships[] = self::getRelationshipObj($db, (int)$account['id'], (int)$id);
+            $targetAccId = is_numeric($id) ? (int)$id : 0;
+            if ($targetAccId === 0) {
+                $targetAcc = self::findAccountByIdOrHandle($id);
+                if ($targetAcc) {
+                    $targetAccId = (int)$targetAcc['id'];
+                }
+            }
+            if ($targetAccId > 0) {
+                $relationships[] = self::getRelationshipObj($db, (int)$account['id'], $targetAccId);
+            }
         }
 
         Router::json($relationships);
@@ -4617,19 +4719,18 @@ HTML;
             return;
         }
 
-        $targetId = (int)$params['id'];
+        $idParam = $params['id'] ?? '';
+        $targetAccount = self::findAccountByIdOrHandle($idParam);
+        if (!$targetAccount) {
+            Router::json(['error' => 'Cuenta no encontrada'], 404);
+            return;
+        }
+
+        $targetId = (int)$targetAccount['id'];
         $db = Database::connect();
 
         if ($targetId === (int)$account['id']) {
             Router::json(['error' => 'No puedes seguirte a ti mismo'], 400);
-            return;
-        }
-
-        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-        $stmtTarget->execute([$targetId]);
-        $targetAccount = $stmtTarget->fetch();
-        if (!$targetAccount) {
-            Router::json(['error' => 'Cuenta no encontrada'], 404);
             return;
         }
 
@@ -4693,12 +4794,15 @@ HTML;
             return;
         }
 
-        $targetId = (int)$params['id'];
-        $db = Database::connect();
+        $idParam = $params['id'] ?? '';
+        $targetAccount = self::findAccountByIdOrHandle($idParam);
+        if (!$targetAccount) {
+            Router::json(['error' => 'Cuenta no encontrada'], 404);
+            return;
+        }
 
-        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-        $stmtTarget->execute([$targetId]);
-        $targetAccount = $stmtTarget->fetch();
+        $targetId = (int)$targetAccount['id'];
+        $db = Database::connect();
 
         $stmt = $db->prepare("DELETE FROM follows WHERE account_id = ? AND target_account_id = ?");
         $stmt->execute([$account['id'], $targetId]);
@@ -5781,7 +5885,14 @@ HTML;
     }
 
     public static function getFollowers(array $params): void {
-        $id = (int)$params['id'];
+        $idParam = $params['id'] ?? '';
+        $account = self::findAccountByIdOrHandle($idParam);
+        if (!$account) {
+            Router::json([]);
+            return;
+        }
+
+        $id = (int)$account['id'];
         $db = Database::connect();
         $stmt = $db->prepare("SELECT a.* FROM accounts a JOIN follows f ON a.id = f.account_id WHERE f.target_account_id = ? AND f.status = 'accepted'");
         $stmt->execute([$id]);
@@ -5794,7 +5905,14 @@ HTML;
     }
 
     public static function getFollowing(array $params): void {
-        $id = (int)$params['id'];
+        $idParam = $params['id'] ?? '';
+        $account = self::findAccountByIdOrHandle($idParam);
+        if (!$account) {
+            Router::json([]);
+            return;
+        }
+
+        $id = (int)$account['id'];
         $db = Database::connect();
         $stmt = $db->prepare("SELECT a.* FROM accounts a JOIN follows f ON a.id = f.target_account_id WHERE f.account_id = ? AND f.status = 'accepted'");
         $stmt->execute([$id]);
@@ -6250,11 +6368,14 @@ HTML;
                         $targetAcc = $stmtAcc->fetch();
                         if ($targetAcc) {
                             $targetId = (int)$targetAcc['id'];
-                            $stmtFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-                            $stmtFollow->execute([$targetId, $account['id']]);
-                            if (!$stmtFollow->fetchColumn()) {
-                                $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
-                                $stmtIns->execute([$targetId, $account['id']]);
+                            // Solo cuentas locales pueden seguirse localmente
+                            if (empty($targetAcc['domain'])) {
+                                $stmtFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+                                $stmtFollow->execute([$targetId, $account['id']]);
+                                if (!$stmtFollow->fetchColumn()) {
+                                    $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
+                                    $stmtIns->execute([$targetId, $account['id']]);
+                                }
                             }
                             if ($mutual) {
                                 $stmtFollowBack = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
@@ -6286,16 +6407,18 @@ HTML;
                         }
                     }
 
-                    // Encolar resolución remota
-                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollower', ?, 'local', 'pending', datetime('now'))");
-                    $stmtJob->execute([
-                        json_encode([
-                            'account_id' => $account['id'],
-                            'address' => $address,
-                            'mutual' => $mutual
-                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-                    ]);
-                    $importedCount++;
+                    // Encolar solo cuentas locales (en ActivityPub las cuentas remotas no pueden forzarse a seguir)
+                    if (!str_contains($address, '@')) {
+                        $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollower', ?, 'local', 'pending', datetime('now'))");
+                        $stmtJob->execute([
+                            json_encode([
+                                'account_id' => $account['id'],
+                                'address' => $address,
+                                'mutual' => $mutual
+                            ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                        ]);
+                        $importedCount++;
+                    }
                 }
             }
             if ($importedCount > 0) {

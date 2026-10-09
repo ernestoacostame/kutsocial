@@ -141,7 +141,6 @@
                         <label for="import-type" style="margin-bottom: 6px;">Tipo de Dato</label>
                         <select id="import-type" name="type" style="width:100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; color: white; font-family: inherit;">
                             <option value="follows" style="background:#161c26;">👥 Seguidos (CSV)</option>
-                            <option value="followers" style="background:#161c26;">👤 Seguidores (CSV)</option>
                             <option value="lists" style="background:#161c26;">📋 Listas (CSV)</option>
                             <option value="mutes" style="background:#161c26;">🔇 Silenciados (CSV)</option>
                             <option value="blocks" style="background:#161c26;">🚫 Bloqueados (CSV)</option>

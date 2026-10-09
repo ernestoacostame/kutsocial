@@ -500,6 +500,7 @@ $router->post('/api/v1/accounts/update_credentials', [MastodonApiController::cla
 $router->get('/api/v1/accounts/relationships', [MastodonApiController::class, 'getRelationships']);
 $router->get('/api/v1/relationships', [MastodonApiController::class, 'getRelationships']);
 $router->get('/api/v1/accounts', [MastodonApiController::class, 'getAccounts']);
+$router->get('/api/v1/accounts/lookup', [MastodonApiController::class, 'lookupAccount']);
 $router->get('/api/v1/accounts/:id', [MastodonApiController::class, 'getAccountById']);
 $router->get('/api/v1/accounts/:id/statuses', [MastodonApiController::class, 'getAccountStatuses']);
 $router->post('/api/v1/accounts/:id/follow', [MastodonApiController::class, 'followAccount']);

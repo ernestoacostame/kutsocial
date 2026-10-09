@@ -370,12 +370,14 @@ class Queue {
 
         $remoteId = $resolvedAcc['id'];
         
-        // Registrar que el actor remoto nos sigue
-        $stmtCheck = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-        $stmtCheck->execute([$remoteId, $accountId]);
-        if (!$stmtCheck->fetchColumn()) {
-            $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
-            $stmtIns->execute([$remoteId, $accountId]);
+        // Solo registrar como seguidor si es una cuenta local del servidor (en ActivityPub las cuentas remotas no pueden forzarse a seguir)
+        if (empty($resolvedAcc['domain'])) {
+            $stmtCheck = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+            $stmtCheck->execute([$remoteId, $accountId]);
+            if (!$stmtCheck->fetchColumn()) {
+                $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
+                $stmtIns->execute([$remoteId, $accountId]);
+            }
         }
 
         // Si es mutuo, nosotros también lo seguimos

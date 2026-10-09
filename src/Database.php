@@ -117,6 +117,30 @@ class Database {
 
             // Limpieza de auto-seguimientos erróneos
             $db->exec("DELETE FROM follows WHERE account_id = target_account_id");
+
+            // Limpieza de falsos seguidores remotos (creados erróneamente por importación sin actividad federada de ActivityPub)
+            $db->exec("DELETE FROM follows 
+                WHERE (uri IS NULL OR uri = '') 
+                  AND target_account_id IN (SELECT id FROM accounts WHERE domain IS NULL OR domain = '') 
+                  AND account_id IN (SELECT id FROM accounts WHERE domain IS NOT NULL AND domain != '')");
+
+            // Limpieza de tareas erróneas de importación de seguidores en la cola
+            $db->exec("DELETE FROM jobs WHERE activity_type = 'ImportFollower'");
+
+            // Normalizar dominio de cuentas locales (evitar que tengan el dominio del servidor asignado como remoto)
+            $db->exec("UPDATE accounts SET domain = NULL WHERE domain = '' OR LOWER(domain) = 'localhost'");
+            if (!empty($_SERVER['HTTP_HOST'])) {
+                $hostClean = strtolower(explode(':', $_SERVER['HTTP_HOST'])[0]);
+                $stmtNorm = $db->prepare("UPDATE accounts SET domain = NULL WHERE LOWER(domain) = ?");
+                $stmtNorm->execute([$hostClean]);
+            }
+
+            // Sincronizar contadores reales en la tabla accounts para cuentas locales
+            $db->exec("UPDATE accounts SET
+                followers_count = (SELECT COUNT(*) FROM follows WHERE target_account_id = accounts.id AND status = 'accepted'),
+                following_count = (SELECT COUNT(*) FROM follows WHERE account_id = accounts.id AND status = 'accepted'),
+                statuses_count = (SELECT COUNT(*) FROM statuses WHERE account_id = accounts.id)
+                WHERE domain IS NULL OR domain = ''");
         } catch (\Throwable $e) {
             // Ignorar fallos de alteración directa
         }

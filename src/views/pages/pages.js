@@ -2965,9 +2965,9 @@ async function loadUsersList(type, accountId) {
         users.forEach(user => {
             const item = document.createElement('div');
             item.className = 'user-list-item';
-            item.style.cssText = 'display: flex; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(255,255,255,0.01);';
             
-            const avatarSrc = user.avatar || '/assets/default-avatar.png';
+            const rawAvatar = user.avatar || '/assets/default-avatar.png';
+            const avatarSrc = typeof proxyUrl === 'function' ? proxyUrl(rawAvatar) : rawAvatar;
             const isMe = myId && String(user.id) === String(myId);
             const rel = relationshipsMap[user.id];
             const following = rel?.following || false;
@@ -2979,10 +2979,32 @@ async function loadUsersList(type, accountId) {
             let badgeHTML = '';
             if (!isMe && rel) {
                 if (isMutual) {
-                    badgeHTML = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(99,102,241,0.15); color:#818cf8; font-weight:600; white-space:nowrap;">🤝 Mutuo</span>`;
+                    badgeHTML = `<span class="user-list-badge-mutual" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-weight:600; white-space:nowrap;">🤝 Mutuo</span>`;
                 } else if (followedBy) {
-                    badgeHTML = `<span style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(255,255,255,0.06); color:var(--text-muted); font-weight:500; white-space:nowrap;">Te sigue</span>`;
+                    badgeHTML = `<span class="user-list-badge-follows" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(255,255,255,0.06); border:1px solid var(--border-color); color:var(--text-muted); font-weight:500; white-space:nowrap;">Te sigue</span>`;
                 }
+            }
+
+            // Bio / resumen
+            let bioHTML = '';
+            if (user.note) {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = user.note;
+                const plainBio = (tmp.textContent || tmp.innerText || '').trim();
+                if (plainBio) {
+                    bioHTML = `<div class="user-list-bio">${escapeHTML(plainBio)}</div>`;
+                }
+            }
+
+            // Estadísticas (seguidores y publicaciones)
+            let statsHTML = '';
+            const fCount = user.followers_count !== undefined && user.followers_count !== null ? (typeof formatStatNumber === 'function' ? formatStatNumber(user.followers_count) : user.followers_count) : null;
+            const sCount = user.statuses_count !== undefined && user.statuses_count !== null ? (typeof formatStatNumber === 'function' ? formatStatNumber(user.statuses_count) : user.statuses_count) : null;
+            if (fCount !== null || sCount !== null) {
+                statsHTML = `<div class="user-list-stats">
+                    ${fCount !== null ? `<span><strong>${fCount}</strong> seguidores</span>` : ''}
+                    ${sCount !== null ? `<span><strong>${sCount}</strong> publicaciones</span>` : ''}
+                </div>`;
             }
 
             // Botón de acción
@@ -2990,24 +3012,36 @@ async function loadUsersList(type, accountId) {
             if (!isMe) {
                 const btnId = `user-list-follow-btn-${user.id}`;
                 if (following) {
-                    actionHTML = `<button id="${btnId}" onclick="handleUserListFollow('${user.id}', this, false)" style="margin:0; padding:6px 14px; font-size:12px; white-space:nowrap; background:rgba(255,255,255,0.06); border:1px solid var(--border-color); color:var(--text-color); border-radius:8px; cursor:pointer; min-width:100px;">Dejar de seguir</button>`;
+                    actionHTML = `<button type="button" id="${btnId}" onclick="handleUserListFollow('${user.id}', this, false)" class="user-list-action-btn btn-following" onmouseover="this.innerText='Dejar de seguir'" onmouseout="this.innerText='Siguiendo'">Siguiendo</button>`;
                 } else if (requested) {
-                    actionHTML = `<button id="${btnId}" disabled style="margin:0; padding:6px 14px; font-size:12px; white-space:nowrap; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); color:var(--text-muted); border-radius:8px; cursor:default; min-width:100px;">Pendiente</button>`;
+                    actionHTML = `<button type="button" id="${btnId}" disabled class="user-list-action-btn btn-pending">Pendiente</button>`;
                 } else {
-                    actionHTML = `<button id="${btnId}" onclick="handleUserListFollow('${user.id}', this, true)" style="margin:0; padding:6px 14px; font-size:12px; white-space:nowrap; background:var(--primary); border:none; color:white; border-radius:8px; cursor:pointer; min-width:100px;">Seguir</button>`;
+                    actionHTML = `<button type="button" id="${btnId}" onclick="handleUserListFollow('${user.id}', this, true)" class="user-list-action-btn btn-follow">Seguir</button>`;
                 }
             }
             
+            const displayName = user.display_name || user.username || 'Usuario';
+            
             item.innerHTML = `
-                <img src="${avatarSrc}" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover; cursor: pointer; flex-shrink:0;" onclick="viewProfile('${user.id}')">
-                <div style="flex: 1; min-width: 0; overflow: hidden;">
-                    <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-                        <span style="font-weight: 600; cursor: pointer; color: var(--text-color); font-size: 14px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" onclick="viewProfile('${user.id}')">${user.display_name}</span>
+                <img src="${avatarSrc}" 
+                     class="user-list-avatar" 
+                     alt="${escapeHTML(displayName)}" 
+                     title="@${escapeHTML(user.acct)} - ${escapeHTML(displayName)}" 
+                     onclick="viewProfile('${user.id}')">
+                <div class="user-list-info">
+                    <div class="user-list-name-row">
+                        <span class="user-list-name" onclick="viewProfile('${user.id}')" title="${escapeHTML(displayName)}">
+                            ${escapeHTML(displayName)}
+                        </span>
                         ${badgeHTML}
                     </div>
-                    <div style="color: var(--text-muted); font-size: 12.5px; cursor: pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" onclick="viewProfile('${user.id}')">@${user.acct}</div>
+                    <div class="user-list-handle" onclick="viewProfile('${user.id}')">
+                        @${escapeHTML(user.acct)}
+                    </div>
+                    ${bioHTML}
+                    ${statsHTML}
                 </div>
-                ${actionHTML}
+                ${actionHTML ? `<div class="user-list-actions">${actionHTML}</div>` : ''}
             `;
             container.appendChild(item);
         });
@@ -3032,44 +3066,44 @@ async function handleUserListFollow(accountId, btn, doFollow) {
         
         if (res.ok) {
             const data = await res.json();
-            const isNowFollowing = data.following;
-            const isRequested = data.requested;
+            const isNowFollowing = !!data.following;
+            const isRequested = !!data.requested;
             
             if (isNowFollowing) {
-                btn.innerText = 'Dejar de seguir';
-                btn.style.background = 'rgba(255,255,255,0.06)';
-                btn.style.border = '1px solid var(--border-color)';
-                btn.style.color = 'var(--text-color)';
+                btn.innerText = 'Siguiendo';
+                btn.className = 'user-list-action-btn btn-following';
+                btn.onmouseover = () => { btn.innerText = 'Dejar de seguir'; };
+                btn.onmouseout = () => { btn.innerText = 'Siguiendo'; };
                 btn.onclick = () => handleUserListFollow(accountId, btn, false);
             } else if (isRequested) {
                 btn.innerText = 'Pendiente';
-                btn.style.background = 'rgba(255,255,255,0.03)';
-                btn.style.border = '1px solid var(--border-color)';
-                btn.style.color = 'var(--text-muted)';
+                btn.className = 'user-list-action-btn btn-pending';
+                btn.onmouseover = null;
+                btn.onmouseout = null;
                 btn.onclick = null;
             } else {
                 btn.innerText = 'Seguir';
-                btn.style.background = 'var(--primary)';
-                btn.style.border = 'none';
-                btn.style.color = 'white';
+                btn.className = 'user-list-action-btn btn-follow';
+                btn.onmouseover = null;
+                btn.onmouseout = null;
                 btn.onclick = () => handleUserListFollow(accountId, btn, true);
             }
 
             // Actualizar badge de mutualidad
             const item = btn.closest('.user-list-item');
             if (item) {
-                const badgeContainer = item.querySelector('div[style*="flex-wrap"]');
-                if (badgeContainer) {
-                    const existingBadge = badgeContainer.querySelector('span[style*="border-radius:20px"]');
-                    const followedBy = data.followed_by;
+                const nameRow = item.querySelector('.user-list-name-row');
+                if (nameRow) {
+                    const existingBadge = nameRow.querySelector('.user-list-badge-mutual, .user-list-badge-follows');
+                    const followedBy = !!data.followed_by;
                     const isMutual = isNowFollowing && followedBy;
                     
                     if (existingBadge) existingBadge.remove();
                     
                     if (isMutual) {
-                        badgeContainer.insertAdjacentHTML('beforeend', `<span style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(99,102,241,0.15); color:#818cf8; font-weight:600; white-space:nowrap;">🤝 Mutuo</span>`);
+                        nameRow.insertAdjacentHTML('beforeend', `<span class="user-list-badge-mutual" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-weight:600; white-space:nowrap;">🤝 Mutuo</span>`);
                     } else if (followedBy) {
-                        badgeContainer.insertAdjacentHTML('beforeend', `<span style="display:inline-flex; align-items:center; gap:3px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(255,255,255,0.06); color:var(--text-muted); font-weight:500; white-space:nowrap;">Te sigue</span>`);
+                        nameRow.insertAdjacentHTML('beforeend', `<span class="user-list-badge-follows" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(255,255,255,0.06); border:1px solid var(--border-color); color:var(--text-muted); font-weight:500; white-space:nowrap;">Te sigue</span>`);
                     }
                 }
             }
