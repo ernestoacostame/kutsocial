@@ -525,6 +525,12 @@ async function initApp() {
     } else if (activeSection === 'profile-view') {
         if (activeProfileId) {
             viewProfile(activeProfileId, true);
+        } else {
+            const pathParts = window.location.pathname.split('/@');
+            if (pathParts.length > 1) {
+                const username = pathParts[1];
+                resolveAndOpenProfile(username);
+            }
         }
     } else if (activeSection === 'thread-view') {
         if (activeThreadId) {
@@ -3313,7 +3319,7 @@ async function viewProfile(accountId, fromHashChange = false) {
             document.getElementById('profile-view-manage-lists-btn').style.display = 'inline-block';
 
             const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${account.id}`, {
-                headers: { 'Authorization': `Bearer ${token}` }
+                headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
             });
             if (relRes.ok) {
                 const rels = await relRes.json();

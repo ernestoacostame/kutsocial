@@ -563,6 +563,7 @@ $router->get('/.well-known/webfinger', [ActivityPubController::class, 'webfinger
 $router->get('/.well-known/host-meta', [ActivityPubController::class, 'hostMeta']);
 $router->get('/users/:username', [ActivityPubController::class, 'getActor']);
 $router->post('/users/:username/inbox', [ActivityPubController::class, 'postInbox']);
+$router->post('/inbox', [ActivityPubController::class, 'postSharedInbox']);
 $router->get('/users/:username/outbox', [ActivityPubController::class, 'getOutbox']);
 $router->get('/users/:username/followers', [ActivityPubController::class, 'getFollowers']);
 $router->get('/users/:username/following', [ActivityPubController::class, 'getFollowing']);

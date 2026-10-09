@@ -47,7 +47,7 @@ XML;
         }
 
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
         $stmt->execute([$username]);
         $account = $stmt->fetch();
 
@@ -136,13 +136,14 @@ XML;
         }
 
         if ($avatarUrl) {
-            $ext = strtolower(pathinfo(parse_url($avatarUrl, PHP_URL_PATH), PATHINFO_EXTENSION));
+            $avatarPath = parse_url($avatarUrl, PHP_URL_PATH) ?? '';
+            $ext = strtolower(pathinfo($avatarPath, PATHINFO_EXTENSION));
             if ($ext === 'jpg' || $ext === 'jpeg') {
                 $mediaType = 'image/jpeg';
             } elseif ($ext === 'svg') {
                 $mediaType = 'image/svg+xml';
             } else {
-                $mediaType = 'image/' . $ext;
+                $mediaType = 'image/' . ($ext ?: 'jpeg');
             }
             $response['icon'] = [
                 'type' => 'Image',
@@ -152,13 +153,14 @@ XML;
         }
 
         if ($headerUrl) {
-            $ext = strtolower(pathinfo(parse_url($headerUrl, PHP_URL_PATH), PATHINFO_EXTENSION));
+            $headerPath = parse_url($headerUrl, PHP_URL_PATH) ?? '';
+            $ext = strtolower(pathinfo($headerPath, PATHINFO_EXTENSION));
             if ($ext === 'jpg' || $ext === 'jpeg') {
                 $mediaType = 'image/jpeg';
             } elseif ($ext === 'svg') {
                 $mediaType = 'image/svg+xml';
             } else {
-                $mediaType = 'image/' . $ext;
+                $mediaType = 'image/' . ($ext ?: 'jpeg');
             }
             $response['image'] = [
                 'type' => 'Image',
@@ -189,6 +191,10 @@ XML;
             }
         }
 
+        $response['endpoints'] = [
+            'sharedInbox' => "$proto://$domain/inbox"
+        ];
+
         return $response;
     }
 
@@ -198,7 +204,7 @@ XML;
     public static function getActor(array $params): void {
         $username = $params['username'] ?? '';
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
         $stmt->execute([$username]);
         $account = $stmt->fetch();
 
@@ -214,76 +220,99 @@ XML;
     }
 
     /**
+     * Endpoint de Shared Inbox: /inbox (Recibir actividades remotas para el servidor)
+     */
+    public static function postSharedInbox(): void {
+        $db = Database::connect();
+        $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
+        $localAccount = $stmtOwner->fetch();
+        if (!$localAccount) {
+            $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+            $localAccount = $stmtOwner->fetch();
+        }
+        if (!$localAccount) {
+            self::log("postSharedInbox: No se encontró cuenta local configurada");
+            Router::json(['error' => 'No hay cuenta local configurada'], 404);
+        }
+        self::postInbox(['username' => $localAccount['username']]);
+    }
+
+    /**
      * Endpoint de Inbox: /users/{username}/inbox (Recibir actividades remotas)
      */
     public static function postInbox(array $params): void {
-        $username = $params['username'] ?? '';
-        self::log("postInbox: Solicitud recibida para el actor local '$username'");
-        
-        $db = Database::connect();
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
-        $stmt->execute([$username]);
-        $account = $stmt->fetch();
+        try {
+            $username = $params['username'] ?? '';
+            self::log("postInbox: Solicitud recibida para el actor local '$username'");
+            
+            $db = Database::connect();
+            $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+            $stmt->execute([$username]);
+            $account = $stmt->fetch();
 
-        if (!$account) {
-            self::log("postInbox: Actor local '$username' no encontrado");
-            Router::json(['error' => 'Actor local no encontrado'], 404);
+            if (!$account) {
+                self::log("postInbox: Actor local '$username' no encontrado");
+                Router::json(['error' => 'Actor local no encontrado'], 404);
+            }
+
+            $body = file_get_contents('php://input');
+            $activity = json_decode($body, true);
+
+            if (!$activity) {
+                self::log("postInbox: JSON inválido recibido en el body");
+                Router::json(['error' => 'JSON inválido'], 400);
+            }
+
+            self::log("postInbox: Actividad recibida de tipo '" . ($activity['type'] ?? 'unknown') . "'");
+
+            // Verificar firma HTTP
+            if (!self::verifyHttpSignature($body)) {
+                self::log("postInbox: Error de verificación de firma HTTP para el actor local '$username'");
+                Router::json(['error' => 'Firma HTTP inválida'], 401);
+            }
+
+            $type = $activity['type'] ?? '';
+
+            switch ($type) {
+                case 'Follow':
+                    self::log("postInbox: Procesando actividad de Follow");
+                    self::handleFollow($account, $activity);
+                    break;
+                case 'Undo':
+                    self::log("postInbox: Procesando actividad de Undo");
+                    self::handleUndo($account, $activity);
+                    break;
+                case 'Accept':
+                    self::log("postInbox: Procesando actividad de Accept");
+                    self::handleAccept($account, $activity);
+                    break;
+                case 'Create':
+                    self::log("postInbox: Procesando actividad de Create");
+                    self::handleCreate($account, $activity);
+                    break;
+                case 'Like':
+                    self::log("postInbox: Procesando actividad de Like");
+                    self::handleLike($account, $activity);
+                    break;
+                case 'Announce':
+                    self::log("postInbox: Procesando actividad de Announce");
+                    self::handleAnnounce($account, $activity);
+                    break;
+                case 'Move':
+                    self::log("postInbox: Procesando actividad de Move");
+                    self::handleMove($account, $activity);
+                    break;
+                default:
+                    self::log("postInbox: Actividad de tipo '$type' no soportada, se responde 202");
+                    break;
+            }
+
+            http_response_code(202);
+            exit;
+        } catch (\Throwable $e) {
+            self::log("postInbox ERROR FATAL: " . $e->getMessage() . " en " . $e->getFile() . ":" . $e->getLine() . "\n" . $e->getTraceAsString());
+            Router::json(['error' => 'Error interno procesando bandeja de entrada: ' . $e->getMessage()], 500);
         }
-
-        $body = file_get_contents('php://input');
-        $activity = json_decode($body, true);
-
-        if (!$activity) {
-            self::log("postInbox: JSON inválido recibido en el body");
-            Router::json(['error' => 'JSON inválido'], 400);
-        }
-
-        self::log("postInbox: Actividad recibida de tipo '" . ($activity['type'] ?? 'unknown') . "'");
-
-        // Verificar firma HTTP
-        if (!self::verifyHttpSignature($body)) {
-            self::log("postInbox: Error de verificación de firma HTTP para el actor local '$username'");
-            Router::json(['error' => 'Firma HTTP inválida'], 401);
-        }
-
-        $type = $activity['type'] ?? '';
-
-        switch ($type) {
-            case 'Follow':
-                self::log("postInbox: Procesando actividad de Follow");
-                self::handleFollow($account, $activity);
-                break;
-            case 'Undo':
-                self::log("postInbox: Procesando actividad de Undo");
-                self::handleUndo($account, $activity);
-                break;
-            case 'Accept':
-                self::log("postInbox: Procesando actividad de Accept");
-                self::handleAccept($account, $activity);
-                break;
-            case 'Create':
-                self::log("postInbox: Procesando actividad de Create");
-                self::handleCreate($account, $activity);
-                break;
-            case 'Like':
-                self::log("postInbox: Procesando actividad de Like");
-                self::handleLike($account, $activity);
-                break;
-            case 'Announce':
-                self::log("postInbox: Procesando actividad de Announce");
-                self::handleAnnounce($account, $activity);
-                break;
-            case 'Move':
-                self::log("postInbox: Procesando actividad de Move");
-                self::handleMove($account, $activity);
-                break;
-            default:
-                self::log("postInbox: Actividad de tipo '$type' no soportada, se responde 202");
-                break;
-        }
-
-        http_response_code(202);
-        exit;
     }
 
     private static function handleMove(array $localAccount, array $activity): void {
@@ -449,8 +478,29 @@ XML;
             return;
         }
 
+        // Si el objeto es una URI, dereferenciarlo vía GET
+        if (is_string($object)) {
+            self::log("handleCreate: Objeto es una URI ('$object'), resolviendo vía GET...");
+            $objectJson = self::executeSignedGet($object);
+            if (!$objectJson) {
+                $objectJson = self::executeSimpleGet($object);
+            }
+            if ($objectJson) {
+                $decoded = json_decode($objectJson, true);
+                if (is_array($decoded)) {
+                    $object = $decoded;
+                }
+            }
+        }
+
+        if (!is_array($object)) {
+            self::log("handleCreate: Objeto de actividad no es un array válido");
+            return;
+        }
+
         $type = $object['type'] ?? '';
-        if ($type !== 'Note' && $type !== 'Question') {
+        $supportedTypes = ['Note', 'Question', 'Audio', 'Article', 'Page', 'Video', 'Document', 'Event'];
+        if (!in_array($type, $supportedTypes)) {
             self::log("handleCreate: Tipo de objeto '$type' no soportado en Create");
             return;
         }
@@ -485,6 +535,13 @@ XML;
         }
 
         $content = $object['content'] ?? '';
+        if (empty($content) && !empty($object['summary'])) {
+            $content = $object['summary'];
+        }
+        if (!empty($object['name']) && is_string($object['name']) && !str_contains($content, $object['name'])) {
+            $content = '<strong>' . htmlspecialchars($object['name'], ENT_QUOTES, 'UTF-8') . '</strong><br>' . $content;
+        }
+
         $createdAt = $object['published'] ?? date('c');
 
         // Determinar visibilidad usando el helper determineVisibility
@@ -493,87 +550,130 @@ XML;
         // Procesar adjuntos (media) con detección correcta de tipo
         $attachments = [];
         if (!empty($object['attachment'])) {
-            foreach ($object['attachment'] as $att) {
-                $attType = $att['type'] ?? '';
-                if ($attType === 'Document' || $attType === 'Image' || $attType === 'Video' || $attType === 'Audio') {
-                    $url = '';
-                    if (isset($att['url'])) {
-                        if (is_string($att['url'])) {
-                            $url = $att['url'];
-                        } elseif (is_array($att['url'])) {
-                            if (isset($att['url']['href'])) {
-                                $url = $att['url']['href'];
-                            } else {
-                                foreach ($att['url'] as $subUrl) {
-                                    if (is_array($subUrl) && isset($subUrl['href'])) {
-                                        $url = $subUrl['href'];
-                                        break;
-                                    } elseif (is_string($subUrl)) {
-                                        $url = $subUrl;
-                                        break;
+            $rawAttachments = $object['attachment'];
+            if (isset($rawAttachments['type']) || isset($rawAttachments['url']) || isset($rawAttachments['href'])) {
+                $rawAttachments = [$rawAttachments];
+            }
+            if (is_array($rawAttachments)) {
+                foreach ($rawAttachments as $att) {
+                    if (!is_array($att)) continue;
+                    $attType = $att['type'] ?? '';
+                    if ($attType === 'Document' || $attType === 'Image' || $attType === 'Video' || $attType === 'Audio' || $attType === 'Link') {
+                        $url = '';
+                        if (isset($att['url'])) {
+                            if (is_string($att['url'])) {
+                                $url = $att['url'];
+                            } elseif (is_array($att['url'])) {
+                                if (isset($att['url']['href'])) {
+                                    $url = $att['url']['href'];
+                                } else {
+                                    foreach ($att['url'] as $subUrl) {
+                                        if (is_array($subUrl) && isset($subUrl['href'])) {
+                                            $url = $subUrl['href'];
+                                            break;
+                                        } elseif (is_string($subUrl)) {
+                                            $url = $subUrl;
+                                            break;
+                                        }
                                     }
                                 }
                             }
+                        } elseif (isset($att['href']) && is_string($att['href'])) {
+                            $url = $att['href'];
                         }
-                    }
-                    if (empty($url)) {
-                        continue;
-                    }
 
-                    $description = $att['name'] ?? $att['summary'] ?? $att['description'] ?? '';
+                        if (empty($url)) {
+                            continue;
+                        }
 
-                    // Detectar tipo de media correctamente
-                    $mimeType = $att['mediaType'] ?? '';
-                    if (!empty($mimeType)) {
-                        $mediaApiType = \KutSocial\Controllers\MastodonApiController::detectMediaType($mimeType);
-                    } else {
-                        $mediaApiType = \KutSocial\Controllers\MastodonApiController::detectMediaTypeFromUrl($url);
+                        $description = $att['name'] ?? $att['summary'] ?? $att['description'] ?? '';
+
+                        // Detectar tipo de media correctamente
+                        $mimeType = $att['mediaType'] ?? $att['mimeType'] ?? '';
+                        if (!empty($mimeType)) {
+                            $mediaApiType = \KutSocial\Controllers\MastodonApiController::detectMediaType($mimeType);
+                        } else {
+                            $mediaApiType = \KutSocial\Controllers\MastodonApiController::detectMediaTypeFromUrl($url);
+                        }
+                        if ($attType === 'Audio') {
+                            $mediaApiType = 'audio';
+                        }
+
+                        // Para videos o audio, intentar obtener preview_url
+                        $previewUrl = $url;
+                        if ($mediaApiType === 'video' || $mediaApiType === 'audio') {
+                            $previewUrl = $att['icon']['url'] ?? $att['preview_url'] ?? $url;
+                        }
+
+                        $attachments[] = [
+                            'id' => bin2hex(random_bytes(6)),
+                            'type' => $mediaApiType,
+                            'url' => $url,
+                            'preview_url' => $previewUrl,
+                            'remote_url' => $url,
+                            'description' => $description,
+                            'blurhash' => $att['blurhash'] ?? null,
+                            'meta' => null
+                        ];
                     }
-
-                    // Para videos, intentar obtener preview_url del blurhash o del thumbnail
-                    $previewUrl = $url;
-                    if ($mediaApiType === 'video' || $mediaApiType === 'audio') {
-                        $previewUrl = $att['icon']['url'] ?? $att['preview_url'] ?? $url;
-                    }
-
-                    $attachments[] = [
-                        'id' => bin2hex(random_bytes(6)),
-                        'type' => $mediaApiType,
-                        'url' => $url,
-                        'preview_url' => $previewUrl,
-                        'remote_url' => $url,
-                        'description' => $description,
-                        'blurhash' => $att['blurhash'] ?? null,
-                        'meta' => null
-                    ];
                 }
             }
         }
+
+        // Si el objeto es Audio (o podcast) y no tiene adjuntos, extraer la URL de audio de 'url'
+        if ($type === 'Audio' && empty($attachments) && !empty($object['url'])) {
+            $audioUrl = '';
+            if (is_string($object['url'])) {
+                $audioUrl = $object['url'];
+            } elseif (is_array($object['url'])) {
+                $audioUrl = $object['url']['href'] ?? (isset($object['url'][0]) && is_string($object['url'][0]) ? $object['url'][0] : '');
+            }
+            if (!empty($audioUrl)) {
+                $attachments[] = [
+                    'id' => bin2hex(random_bytes(6)),
+                    'type' => 'audio',
+                    'url' => $audioUrl,
+                    'preview_url' => $audioUrl,
+                    'remote_url' => $audioUrl,
+                    'description' => $object['name'] ?? '',
+                    'blurhash' => null,
+                    'meta' => null
+                ];
+            }
+        }
+
         $mediaJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
 
         // Extraer emojis personalizados del campo tag
         $emojis = [];
         if (!empty($object['tag'])) {
-            foreach ($object['tag'] as $tag) {
-                $tagType = $tag['type'] ?? '';
-                if ($tagType === 'Emoji') {
-                    $shortcode = trim($tag['name'] ?? '', ':');
-                    $emojiUrl = '';
-                    if (!empty($tag['icon'])) {
-                        if (is_string($tag['icon'])) {
-                            $emojiUrl = $tag['icon'];
-                        } elseif (is_array($tag['icon'])) {
-                            $emojiUrl = $tag['icon']['url'] ?? '';
+            $rawTags = $object['tag'];
+            if (isset($rawTags['type']) || isset($rawTags['name'])) {
+                $rawTags = [$rawTags];
+            }
+            if (is_array($rawTags)) {
+                foreach ($rawTags as $tag) {
+                    if (!is_array($tag)) continue;
+                    $tagType = $tag['type'] ?? '';
+                    if ($tagType === 'Emoji') {
+                        $shortcode = trim($tag['name'] ?? '', ':');
+                        $emojiUrl = '';
+                        if (!empty($tag['icon'])) {
+                            if (is_string($tag['icon'])) {
+                                $emojiUrl = $tag['icon'];
+                            } elseif (is_array($tag['icon'])) {
+                                $emojiUrl = $tag['icon']['url'] ?? '';
+                            }
                         }
-                    }
-                    if (!empty($shortcode) && !empty($emojiUrl)) {
-                        $emojis[] = [
-                            'shortcode' => $shortcode,
-                            'url' => $emojiUrl,
-                            'static_url' => $emojiUrl,
-                            'visible_in_picker' => false,
-                            'category' => ''
-                        ];
+                        if (!empty($shortcode) && !empty($emojiUrl)) {
+                            $emojis[] = [
+                                'shortcode' => $shortcode,
+                                'url' => $emojiUrl,
+                                'static_url' => $emojiUrl,
+                                'visible_in_picker' => false,
+                                'category' => ''
+                            ];
+                        }
                     }
                 }
             }
@@ -631,7 +731,7 @@ XML;
     public static function getOutbox(array $params): void {
         $username = $params['username'] ?? '';
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
         $stmt->execute([$username]);
         $account = $stmt->fetch();
 
@@ -870,10 +970,19 @@ XML;
     public static function getOrRegisterRemoteActor(string $actorUrl): ?array {
         $db = Database::connect();
 
-        $host = parse_url($actorUrl, PHP_URL_HOST);
-        $pathParts = explode('/', parse_url($actorUrl, PHP_URL_PATH));
-        $usernameCandidate = end($pathParts);
-        $usernameCandidate = ltrim($usernameCandidate, "@");
+        $parsed = parse_url($actorUrl);
+        $host = $parsed['host'] ?? '';
+        $path = $parsed['path'] ?? '';
+        $pathParts = array_values(array_filter(explode('/', $path)));
+        $usernameCandidate = !empty($pathParts) ? end($pathParts) : 'actor';
+        if (is_string($usernameCandidate)) {
+            $usernameCandidate = ltrim($usernameCandidate, "@");
+            if (str_contains($usernameCandidate, '#')) {
+                $usernameCandidate = explode('#', $usernameCandidate)[0];
+            }
+        } else {
+            $usernameCandidate = 'actor';
+        }
 
         // Buscar por URL (que almacena el actorUrl) o inbox_url o (username y dominio)
         $stmt = $db->prepare("
@@ -894,7 +1003,7 @@ XML;
         $account = $stmt->fetch();
 
         if ($account) {
-            $lastUpdated = strtotime($account['updated_at']);
+            $lastUpdated = strtotime($account['updated_at'] ?? '2000-01-01');
             if (time() - $lastUpdated < 300) {
                 self::log("getOrRegisterRemoteActor: Actor remoto '{$account['username']}@$host' ya existe en DB local y está fresco");
                 return $account;
@@ -915,7 +1024,7 @@ XML;
             }
 
             $json = json_decode($resp, true);
-            if (!$json) {
+            if (!is_array($json)) {
                 self::log("getOrRegisterRemoteActor: JSON inválido devuelto por el actor remoto: " . substr($resp, 0, 200));
                 return $account ?: null;
             }
@@ -924,7 +1033,18 @@ XML;
             $displayName = $json['name'] ?? $preferredUsername;
             $note = $json['summary'] ?? '';
             $inbox = $json['inbox'] ?? '';
-            $publicKeyPem = $json['publicKey']['publicKeyPem'] ?? '';
+
+            $publicKeyPem = '';
+            if (!empty($json['publicKey'])) {
+                if (is_array($json['publicKey'])) {
+                    $publicKeyPem = $json['publicKey']['publicKeyPem'] ?? '';
+                } elseif (is_string($json['publicKey'])) {
+                    $publicKeyPem = self::fetchRemotePublicKey($json['publicKey']) ?? '';
+                }
+            }
+            if (empty($publicKeyPem) && !empty($json['publicKeyPem']) && is_string($json['publicKeyPem'])) {
+                $publicKeyPem = $json['publicKeyPem'];
+            }
 
             if (empty($publicKeyPem)) {
                 self::log("getOrRegisterRemoteActor: Clave pública ausente en el JSON del actor remoto");
@@ -967,7 +1087,12 @@ XML;
             // Extraer campos de perfil (attachment con type PropertyValue)
             $fields = [];
             if (!empty($json['attachment'])) {
-                foreach ($json['attachment'] as $attachment) {
+                $attList = is_array($json['attachment']) ? $json['attachment'] : [];
+                if (isset($attList['type'])) {
+                    $attList = [$attList];
+                }
+                foreach ($attList as $attachment) {
+                    if (!is_array($attachment)) continue;
                     $attType = $attachment['type'] ?? '';
                     if ($attType === 'PropertyValue') {
                         $fields[] = [
@@ -983,7 +1108,12 @@ XML;
             // Extraer emojis personalizados del perfil (tag con type Emoji)
             $emojis = [];
             if (!empty($json['tag'])) {
-                foreach ($json['tag'] as $tag) {
+                $tagList = is_array($json['tag']) ? $json['tag'] : [];
+                if (isset($tagList['type'])) {
+                    $tagList = [$tagList];
+                }
+                foreach ($tagList as $tag) {
+                    if (!is_array($tag)) continue;
                     $tagType = $tag['type'] ?? '';
                     if ($tagType === 'Emoji') {
                         $shortcode = trim($tag['name'] ?? '', ':');
@@ -1036,8 +1166,8 @@ XML;
             $stmtReload = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
             $stmtReload->execute([$account ? $account['id'] : $newId]);
             return $stmtReload->fetch();
-        } catch (\Exception $e) {
-            self::log("getOrRegisterRemoteActor: Excepción al resolver actor remoto: " . $e->getMessage());
+        } catch (\Throwable $e) {
+            self::log("getOrRegisterRemoteActor: Excepción al resolver actor remoto: " . $e->getMessage() . " en " . $e->getFile() . ":" . $e->getLine());
             return $account ?: null;
         }
     }
@@ -1050,6 +1180,13 @@ XML;
         $sigHeader = $headers['Signature'] ?? $headers['signature'] ?? '';
 
         if (empty($sigHeader)) {
+            $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+            if (stripos($authHeader, 'Signature ') === 0) {
+                $sigHeader = substr($authHeader, 10);
+            }
+        }
+
+        if (empty($sigHeader)) {
             self::log("verifyHttpSignature: Falta el encabezado Signature");
             return false;
         }
@@ -1058,19 +1195,23 @@ XML;
 
         // Parsear cabecera Signature: keyId="...",algorithm="...",headers="...",signature="..."
         $parts = [];
-        preg_match_all('/(keyId|algorithm|headers|signature)="([^"]+)"/', $sigHeader, $matches);
+        preg_match_all('/([a-zA-Z0-9_-]+)="([^"]+)"/', $sigHeader, $matches);
         if (empty($matches[1])) {
-            self::log("verifyHttpSignature: No se pudieron extraer campos de la cabecera Signature");
+            preg_match_all('/([a-zA-Z0-9_-]+)=["\']?([^",\s]+)["\']?/', $sigHeader, $matches);
+        }
+        if (!empty($matches[1])) {
+            foreach ($matches[1] as $idx => $key) {
+                $parts[$key] = $matches[2][$idx];
+            }
+        }
+
+        if (empty($parts['keyId']) || empty($parts['signature'])) {
+            self::log("verifyHttpSignature: Campos obligatorios keyId o signature ausentes");
             return false;
         }
 
-        foreach ($matches[1] as $idx => $key) {
-            $parts[$key] = $matches[2][$idx];
-        }
-
-        if (empty($parts['keyId']) || empty($parts['signature']) || empty($parts['headers'])) {
-            self::log("verifyHttpSignature: Campos keyId, signature, o headers ausentes");
-            return false;
+        if (empty($parts['headers'])) {
+            $parts['headers'] = 'date';
         }
 
         self::log("verifyHttpSignature: keyId '{$parts['keyId']}'");
@@ -1088,7 +1229,10 @@ XML;
         $headersLower = array_change_key_case($headers, CASE_LOWER);
         
         foreach ($headerNames as $headerName) {
-            $headerNameLower = strtolower($headerName);
+            $headerNameLower = strtolower(trim($headerName));
+            if (empty($headerNameLower)) {
+                continue;
+            }
             if ($headerNameLower === '(request-target)') {
                 $method = strtolower($_SERVER['REQUEST_METHOD'] ?? 'POST');
                 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -1097,12 +1241,20 @@ XML;
                     $uri .= '?' . $query;
                 }
                 $signedLines[] = "(request-target): $method $uri";
+            } elseif ($headerNameLower === 'host') {
+                $hostVal = $headersLower['host'] ?? $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
+                $signedLines[] = "host: $hostVal";
+            } elseif ($headerNameLower === 'date') {
+                $dateVal = $headersLower['date'] ?? $_SERVER['HTTP_DATE'] ?? '';
+                $signedLines[] = "date: $dateVal";
+            } elseif ($headerNameLower === 'digest') {
+                $digestVal = $headersLower['digest'] ?? $_SERVER['HTTP_DIGEST'] ?? '';
+                $signedLines[] = "digest: $digestVal";
+            } elseif ($headerNameLower === 'content-type') {
+                $ctVal = $headersLower['content-type'] ?? $_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? '';
+                $signedLines[] = "content-type: $ctVal";
             } else {
-                // PHP normaliza cabeceras (e.g. Content-Type -> HTTP_CONTENT_TYPE)
                 $key = 'HTTP_' . strtoupper(str_replace('-', '_', $headerNameLower));
-                if ($headerNameLower === 'content-type') $key = 'CONTENT_TYPE';
-                if ($headerNameLower === 'content-length') $key = 'CONTENT_LENGTH';
-                
                 $val = $headersLower[$headerNameLower] ?? $_SERVER[$key] ?? '';
                 $signedLines[] = "$headerNameLower: $val";
             }
@@ -1113,7 +1265,19 @@ XML;
 
         self::log("verifyHttpSignature: Cadena firmada construida:\n" . $signingString);
 
-        $ok = openssl_verify($signingString, $signatureVal, $publicKey, OPENSSL_ALGO_SHA256);
+        $keyRes = @openssl_pkey_get_public($publicKey);
+        if (!$keyRes) {
+            self::log("verifyHttpSignature: Clave pública inválida para OpenSSL");
+            return false;
+        }
+
+        $algo = OPENSSL_ALGO_SHA256;
+        $sigAlgo = strtolower($parts['algorithm'] ?? 'rsa-sha256');
+        if (str_contains($sigAlgo, 'sha512')) {
+            $algo = OPENSSL_ALGO_SHA512;
+        }
+
+        $ok = openssl_verify($signingString, $signatureVal, $keyRes, $algo);
         self::log("verifyHttpSignature: openssl_verify() retorno: " . $ok);
         return $ok === 1;
     }
@@ -1133,7 +1297,7 @@ XML;
             if (strtolower($host) === strtolower($currentHost)) {
                 if (preg_match('@^/users/([^/]+)@', $path, $matches)) {
                     $username = strtolower($matches[1]);
-                    $stmt = $db->prepare("SELECT public_key FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+                    $stmt = $db->prepare("SELECT public_key FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
                     $stmt->execute([$username]);
                     $publicKey = $stmt->fetchColumn();
                     if ($publicKey) {
@@ -1180,11 +1344,13 @@ XML;
             $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 5,
                 CURLOPT_HTTPHEADER => [
                     "Accept: application/activity+json, application/ld+json",
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
-                CURLOPT_TIMEOUT => 5,
+                CURLOPT_TIMEOUT => 8,
                 CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
                 CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
@@ -1200,17 +1366,19 @@ XML;
             }
 
             $json = json_decode($resp, true);
-            if (isset($json['publicKey']['publicKeyPem'])) {
-                self::log("fetchRemotePublicKey: Clave pública encontrada en publicKey.publicKeyPem");
-                return $json['publicKey']['publicKeyPem'];
+            if (is_array($json)) {
+                if (isset($json['publicKey']['publicKeyPem']) && is_string($json['publicKey']['publicKeyPem'])) {
+                    self::log("fetchRemotePublicKey: Clave pública encontrada en publicKey.publicKeyPem");
+                    return $json['publicKey']['publicKeyPem'];
+                }
+                if (isset($json['publicKeyPem']) && is_string($json['publicKeyPem'])) {
+                    self::log("fetchRemotePublicKey: Clave pública encontrada en publicKeyPem de la raíz");
+                    return $json['publicKeyPem'];
+                }
             }
-            if (isset($json['publicKeyPem'])) {
-                self::log("fetchRemotePublicKey: Clave pública encontrada en publicKeyPem de la raíz");
-                return $json['publicKeyPem'];
-            }
-            self::log("fetchRemotePublicKey: No se encontró publickKeyPem en la respuesta: " . substr($resp, 0, 200));
-        } catch (\Exception $e) {
-            self::log("fetchRemotePublicKey: Excepción: " . $e->getMessage());
+            self::log("fetchRemotePublicKey: No se encontró publicKeyPem en la respuesta: " . substr($resp, 0, 200));
+        } catch (\Throwable $e) {
+            self::log("fetchRemotePublicKey: Excepción: " . $e->getMessage() . " en " . $e->getFile() . ":" . $e->getLine());
         }
         return null;
     }
@@ -1437,7 +1605,8 @@ XML;
                 $actorUrl = $json['attributedTo'] ?? '';
             }
 
-            if (is_array($object) && isset($object['type']) && ($object['type'] === 'Note' || $object['type'] === 'Question')) {
+            $supportedStatusTypes = ['Note', 'Question', 'Audio', 'Article', 'Page', 'Video', 'Document', 'Event'];
+            if (is_array($object) && isset($object['type']) && in_array($object['type'], $supportedStatusTypes)) {
                 if (empty($actorUrl) && is_array($object) && isset($object['attributedTo'])) {
                     $actorUrl = $object['attributedTo'];
                 }
@@ -1449,7 +1618,7 @@ XML;
                 }
                 return self::saveRemoteStatus($object, $actorUrl);
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             self::log("fetchAndRegisterRemoteStatus Error: " . $e->getMessage());
         }
         return null;
@@ -1457,7 +1626,8 @@ XML;
 
     public static function saveRemoteStatus(array $object, string $actorUrl): ?int {
         $type = $object['type'] ?? '';
-        if ($type !== 'Note' && $type !== 'Question') {
+        $supportedStatusTypes = ['Note', 'Question', 'Audio', 'Article', 'Page', 'Video', 'Document', 'Event'];
+        if (!in_array($type, $supportedStatusTypes)) {
             return null;
         }
 
@@ -1526,6 +1696,24 @@ XML;
                 }
             }
         }
+        if ($type === 'Audio' && empty($attachments) && !empty($object['url'])) {
+            $audioUrl = is_string($object['url']) ? $object['url'] : ($object['url']['href'] ?? '');
+            if (!empty($audioUrl)) {
+                $attachments[] = [
+                    'id' => bin2hex(random_bytes(6)),
+                    'type' => 'audio',
+                    'url' => $audioUrl,
+                    'preview_url' => $audioUrl,
+                    'remote_url' => $audioUrl,
+                    'description' => $object['name'] ?? ''
+                ];
+            }
+        }
+
+        if (!empty($object['name']) && is_string($object['name']) && !str_contains($content, $object['name'])) {
+            $content = '<strong>' . htmlspecialchars($object['name'], ENT_QUOTES, 'UTF-8') . '</strong><br>' . $content;
+        }
+
         $mediaJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
 
         $inReplyToUri = $object['inReplyTo'] ?? null;
@@ -1573,7 +1761,7 @@ XML;
     public static function getFollowers(array $params): void {
         $username = $params['username'] ?? '';
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
         $stmt->execute([$username]);
         $account = $stmt->fetch();
 
@@ -1628,7 +1816,7 @@ XML;
     public static function getFollowing(array $params): void {
         $username = $params['username'] ?? '';
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
         $stmt->execute([$username]);
         $account = $stmt->fetch();
 
@@ -1687,7 +1875,7 @@ XML;
         $db = Database::connect();
         
         // 1. Obtener la cuenta local
-        $stmtAcc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmtAcc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
         $stmtAcc->execute([$username]);
         $account = $stmtAcc->fetch();
         if (!$account) {
@@ -1817,7 +2005,7 @@ XML;
         $db = Database::connect();
         
         // 1. Obtener una clave privada local para firmar
-        $stmt = $db->prepare("SELECT id, username, private_key FROM accounts WHERE private_key IS NOT NULL AND domain IS NULL LIMIT 1");
+        $stmt = $db->prepare("SELECT id, username, private_key FROM accounts WHERE private_key IS NOT NULL AND (domain IS NULL OR domain = '') LIMIT 1");
         $stmt->execute();
         $account = $stmt->fetch();
         if (!$account || empty($account['private_key'])) {
