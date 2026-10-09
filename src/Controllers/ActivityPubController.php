@@ -128,6 +128,13 @@ XML;
             ]
         ];
 
+        if (!empty($account['also_known_as'])) {
+            $aliases = array_values(array_filter(array_map('trim', explode("\n", str_replace(["\r", ","], "\n", $account['also_known_as'])))));
+            if (!empty($aliases)) {
+                $response['alsoKnownAs'] = $aliases;
+            }
+        }
+
         if ($avatarUrl) {
             $ext = strtolower(pathinfo(parse_url($avatarUrl, PHP_URL_PATH), PATHINFO_EXTENSION));
             if ($ext === 'jpg' || $ext === 'jpeg') {
@@ -266,6 +273,10 @@ XML;
                 self::log("postInbox: Procesando actividad de Announce");
                 self::handleAnnounce($account, $activity);
                 break;
+            case 'Move':
+                self::log("postInbox: Procesando actividad de Move");
+                self::handleMove($account, $activity);
+                break;
             default:
                 self::log("postInbox: Actividad de tipo '$type' no soportada, se responde 202");
                 break;
@@ -273,6 +284,66 @@ XML;
 
         http_response_code(202);
         exit;
+    }
+
+    private static function handleMove(array $localAccount, array $activity): void {
+        $oldActorUrl = $activity['actor'] ?? $activity['object'] ?? '';
+        $targetActorUrl = $activity['target'] ?? '';
+        
+        if (empty($oldActorUrl) || empty($targetActorUrl)) {
+            self::log("handleMove: Actividad Move con actor o target vacío");
+            return;
+        }
+
+        self::log("handleMove: Procesando migración de '$oldActorUrl' hacia '$targetActorUrl'");
+        $db = Database::connect();
+
+        $oldAccount = self::getOrRegisterRemoteActor($oldActorUrl);
+        $newAccount = self::getOrRegisterRemoteActor($targetActorUrl);
+
+        if (!$oldAccount || !$newAccount) {
+            self::log("handleMove: No se pudo resolver la cuenta antigua o la nueva");
+            return;
+        }
+
+        // 1. Si nosotros seguíamos a la cuenta vieja, seguir a la nueva
+        $stmtFollowing = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtFollowing->execute([$localAccount['id'], $oldAccount['id']]);
+        if ($stmtFollowing->fetchColumn()) {
+            $del = $db->prepare("DELETE FROM follows WHERE account_id = ? AND target_account_id = ?");
+            $del->execute([$localAccount['id'], $oldAccount['id']]);
+
+            $stmtNewFollow = $db->prepare("INSERT OR IGNORE INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'pending')");
+            $stmtNewFollow->execute([$localAccount['id'], $newAccount['id']]);
+
+            if (!empty($newAccount['inbox_url'])) {
+                $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+                $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                $localActorUrl = "$proto://$domainName/users/{$localAccount['username']}";
+                $remoteActorUrl = $newAccount['url'] ?? "$proto://{$newAccount['domain']}/users/{$newAccount['username']}";
+                $followId = $localActorUrl . '/activities/follow-' . bin2hex(random_bytes(8));
+
+                $followActivity = [
+                    '@context' => 'https://www.w3.org/ns/activitystreams',
+                    'id' => $followId,
+                    'type' => 'Follow',
+                    'actor' => $localActorUrl,
+                    'object' => $remoteActorUrl
+                ];
+                \KutSocial\Queue::enqueue('Follow', $followActivity, $newAccount['inbox_url']);
+                \KutSocial\Queue::triggerAsync($domainName);
+            }
+            self::log("handleMove: Seguimiento migrado a la nueva cuenta '{$newAccount['username']}@{$newAccount['domain']}'");
+        }
+
+        // 2. Si la cuenta vieja nos seguía, actualizar el seguidor a la nueva cuenta
+        $stmtFollower = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtFollower->execute([$oldAccount['id'], $localAccount['id']]);
+        if ($stmtFollower->fetchColumn()) {
+            $upd = $db->prepare("UPDATE follows SET account_id = ? WHERE account_id = ? AND target_account_id = ?");
+            $upd->execute([$newAccount['id'], $oldAccount['id'], $localAccount['id']]);
+            self::log("handleMove: Seguidor actualizado de cuenta vieja a nueva");
+        }
     }
 
     private static function handleAccept(array $localAccount, array $activity): void {

@@ -31,20 +31,30 @@ class Queue {
         $url = "$proto://$domain/cron.php?async=1";
 
         $executed = false;
+        // Detectar binario de PHP CLI si es posible
+        $phpBin = 'php';
+        if (defined('PHP_BINARY') && PHP_BINARY && is_executable(PHP_BINARY)) {
+            if (!str_contains(PHP_BINARY, 'fpm')) {
+                $phpBin = PHP_BINARY;
+            }
+        }
+
         // Ejecutar en segundo plano local por shell si es Unix (evita problemas de NAT Loopback local)
         $cronPath = realpath(__DIR__ . '/../cron.php');
         if ($cronPath && DIRECTORY_SEPARATOR === '/') {
             if (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions') ?: '')))) {
-                @exec("php " . escapeshellarg($cronPath) . " > /dev/null 2>&1 &");
-                $executed = true;
+                @exec(escapeshellcmd($phpBin) . " " . escapeshellarg($cronPath) . " > /dev/null 2>&1 &", $cmdOut, $retCode);
+                if ($retCode === 0) {
+                    $executed = true;
+                }
             }
         }
 
-        if (!$executed && function_exists('curl_init')) {
+        if (function_exists('curl_init')) {
             $ch = curl_init($url);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT_MS => 150, // Timeout ligeramente mayor para dar margen
+                CURLOPT_TIMEOUT => 2,
                 CURLOPT_NOSIGNAL => 1,
                 CURLOPT_SSL_VERIFYPEER => false,
                 CURLOPT_SSL_VERIFYHOST => false
@@ -53,14 +63,14 @@ class Queue {
             @curl_close($ch);
         }
 
-        // Registrar procesamiento al terminar el script de manera no bloqueante (si es posible con PHP-FPM)
+        // Registrar procesamiento al terminar el script de manera no bloqueante
         register_shutdown_function(function() {
             if (function_exists('fastcgi_finish_request')) {
                 @fastcgi_finish_request();
             }
             try {
-                // Procesar hasta 3 tareas de la cola de forma sincrónica/secuencial al final de la petición
-                self::process(3);
+                // Procesar hasta 25 tareas de la cola al terminar la petición
+                self::process(25);
             } catch (\Exception $e) {
                 // Silenciar errores
             }
@@ -100,7 +110,25 @@ class Queue {
             try {
                 if ($job['activity_type'] === 'ImportFollow') {
                     $payloadArr = json_decode($job['payload'], true);
-                    self::processImportFollow((int)$payloadArr['account_id'], $payloadArr['address']);
+                    self::processImportFollow((int)$payloadArr['account_id'], $payloadArr['address'], !empty($payloadArr['mutual']));
+                    
+                    $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
+                    $okStmt->execute([$job['id']]);
+                    continue;
+                }
+
+                if ($job['activity_type'] === 'ImportFollower') {
+                    $payloadArr = json_decode($job['payload'], true);
+                    self::processImportFollower((int)$payloadArr['account_id'], $payloadArr['address'], !empty($payloadArr['mutual']));
+                    
+                    $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
+                    $okStmt->execute([$job['id']]);
+                    continue;
+                }
+
+                if ($job['activity_type'] === 'ImportListItem') {
+                    $payloadArr = json_decode($job['payload'], true);
+                    self::processImportListItem((int)$payloadArr['account_id'], (int)$payloadArr['list_id'], $payloadArr['address']);
                     
                     $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
                     $okStmt->execute([$job['id']]);
@@ -232,7 +260,7 @@ class Queue {
     /**
      * Resuelve e importa un seguimiento remoto en segundo plano.
      */
-    private static function processImportFollow(int $accountId, string $address): void {
+    private static function processImportFollow(int $accountId, string $address, bool $mutual = false): void {
         $db = Database::connect();
         
         // 1. Obtener la cuenta local
@@ -242,14 +270,25 @@ class Queue {
         if (!$account) return;
 
         // 2. Resolver la cuenta a seguir
-        $address = ltrim(trim($address), '@');
+        $address = trim($address, " \t\n\r\0\x0B\"'");
+        $address = ltrim($address, '@');
+        if (empty($address)) return;
+
         $resolvedAcc = null;
         if (filter_var($address, FILTER_VALIDATE_URL)) {
             $resolvedAcc = \KutSocial\Controllers\ActivityPubController::getOrRegisterRemoteActor($address);
         } elseif (str_contains($address, '@')) {
-            $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
+            $parts = explode('@', $address);
+            $uName = strtolower($parts[0]);
+            $uDomain = strtolower($parts[1]);
+            $stmtExist = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = ? AND LOWER(domain) = ? LIMIT 1");
+            $stmtExist->execute([$uName, $uDomain]);
+            $resolvedAcc = $stmtExist->fetch();
+            if (!$resolvedAcc) {
+                $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
+            }
         } else {
-            $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+            $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
             $stmtLoc->execute([$address]);
             $resolvedAcc = $stmtLoc->fetch();
         }
@@ -285,6 +324,140 @@ class Queue {
                 
                 \KutSocial\Queue::enqueue('Follow', $followActivity, $resolvedAcc['inbox_url']);
             }
+        }
+
+        // Si se especificó seguimiento mutuo: establecer también que el actor remoto nos sigue
+        if ($mutual) {
+            $stmtCheckReverse = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+            $stmtCheckReverse->execute([$targetId, $accountId]);
+            if (!$stmtCheckReverse->fetchColumn()) {
+                $stmtRev = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
+                $stmtRev->execute([$targetId, $accountId]);
+            }
+        }
+    }
+
+    /**
+     * Resuelve e importa un seguidor en segundo plano.
+     */
+    private static function processImportFollower(int $accountId, string $address, bool $mutual = false): void {
+        $db = Database::connect();
+        
+        $stmtAcc = $db->prepare("SELECT id, username FROM accounts WHERE id = ? LIMIT 1");
+        $stmtAcc->execute([$accountId]);
+        $account = $stmtAcc->fetch();
+        if (!$account) return;
+
+        $address = trim($address, " \t\n\r\0\x0B\"'");
+        $address = ltrim($address, '@');
+        if (empty($address)) return;
+
+        $resolvedAcc = null;
+        if (filter_var($address, FILTER_VALIDATE_URL)) {
+            $resolvedAcc = \KutSocial\Controllers\ActivityPubController::getOrRegisterRemoteActor($address);
+        } elseif (str_contains($address, '@')) {
+            $parts = explode('@', $address);
+            $uName = strtolower($parts[0]);
+            $uDomain = strtolower($parts[1]);
+            $stmtExist = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = ? AND LOWER(domain) = ? LIMIT 1");
+            $stmtExist->execute([$uName, $uDomain]);
+            $resolvedAcc = $stmtExist->fetch();
+            if (!$resolvedAcc) {
+                $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
+            }
+        } else {
+            $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+            $stmtLoc->execute([$address]);
+            $resolvedAcc = $stmtLoc->fetch();
+        }
+
+        if (!$resolvedAcc) {
+            throw new Exception("No se pudo resolver el actor remoto seguidor: $address");
+        }
+
+        $remoteId = $resolvedAcc['id'];
+        
+        // Registrar que el actor remoto nos sigue
+        $stmtCheck = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtCheck->execute([$remoteId, $accountId]);
+        if (!$stmtCheck->fetchColumn()) {
+            $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
+            $stmtIns->execute([$remoteId, $accountId]);
+        }
+
+        // Si es mutuo, nosotros también lo seguimos
+        if ($mutual) {
+            $isRemote = !empty($resolvedAcc['domain']);
+            $status = $isRemote ? 'pending' : (($resolvedAcc['locked'] ?? 0) ? 'pending' : 'accepted');
+            
+            $stmtCheckFwd = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+            $stmtCheckFwd->execute([$accountId, $remoteId]);
+            if (!$stmtCheckFwd->fetchColumn()) {
+                $stmtInsFwd = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, ?)");
+                $stmtInsFwd->execute([$accountId, $remoteId, $status]);
+
+                if ($isRemote && !empty($resolvedAcc['inbox_url'])) {
+                    $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+                    $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                    $localActorUrl = "$proto://$domainName/users/{$account['username']}";
+                    $remoteActorUrl = $resolvedAcc['url'] ?? "$proto://{$resolvedAcc['domain']}/users/{$resolvedAcc['username']}";
+                    $followId = $localActorUrl . '/activities/follow-' . bin2hex(random_bytes(8));
+                    
+                    $followActivity = [
+                        '@context' => 'https://www.w3.org/ns/activitystreams',
+                        'id' => $followId,
+                        'type' => 'Follow',
+                        'actor' => $localActorUrl,
+                        'object' => $remoteActorUrl
+                    ];
+                    \KutSocial\Queue::enqueue('Follow', $followActivity, $resolvedAcc['inbox_url']);
+                }
+            }
+        }
+    }
+
+    /**
+     * Resuelve e inserta un miembro en una lista en segundo plano.
+     */
+    private static function processImportListItem(int $accountId, int $listId, string $address): void {
+        $db = Database::connect();
+        $address = trim($address, " \t\n\r\0\x0B\"'");
+        $address = ltrim($address, '@');
+        if (empty($address)) return;
+
+        $resolvedAcc = null;
+        if (filter_var($address, FILTER_VALIDATE_URL)) {
+            $resolvedAcc = \KutSocial\Controllers\ActivityPubController::getOrRegisterRemoteActor($address);
+        } elseif (str_contains($address, '@')) {
+            $parts = explode('@', $address);
+            $uName = strtolower($parts[0]);
+            $uDomain = strtolower($parts[1]);
+            $stmtExist = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = ? AND LOWER(domain) = ? LIMIT 1");
+            $stmtExist->execute([$uName, $uDomain]);
+            $resolvedAcc = $stmtExist->fetch();
+            if (!$resolvedAcc) {
+                $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
+            }
+        } else {
+            $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+            $stmtLoc->execute([$address]);
+            $resolvedAcc = $stmtLoc->fetch();
+        }
+
+        if (!$resolvedAcc) {
+            throw new Exception("No se pudo resolver el actor remoto para lista: $address");
+        }
+
+        $targetId = $resolvedAcc['id'];
+        
+        $stmtAdd = $db->prepare("INSERT OR IGNORE INTO list_accounts (list_id, account_id) VALUES (?, ?)");
+        $stmtAdd->execute([$listId, $targetId]);
+
+        // Asegurar que también lo seguimos para que sus publicaciones lleguen a la lista
+        $stmtCheck = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtCheck->execute([$accountId, $targetId]);
+        if (!$stmtCheck->fetchColumn()) {
+            self::processImportFollow($accountId, $address, false);
         }
     }
 }

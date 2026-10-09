@@ -627,7 +627,9 @@ $router->get('/api/v1/export/blocks', [MastodonApiController::class, 'exportBloc
 $router->get('/api/v1/export/domain_blocks', [MastodonApiController::class, 'exportDomainBlocks']);
 $router->get('/api/v1/export/bookmarks', [MastodonApiController::class, 'exportBookmarks']);
 $router->get('/api/v1/export/filters', [MastodonApiController::class, 'exportFilters']);
+$router->get('/api/v1/export/lists', [MastodonApiController::class, 'exportLists']);
 $router->post('/api/v1/import', [MastodonApiController::class, 'handleImport']);
+$router->post('/api/v1/queue/process', [MastodonApiController::class, 'processQueue']);
 
 // --- Cliente Web MPA (Páginas Independientes por defecto) ---
 $router->get('/', $renderPagesFrontend);

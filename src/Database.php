@@ -101,6 +101,19 @@ class Database {
                 $db->exec("ALTER TABLE statuses ADD COLUMN reblog_of_id INTEGER");
                 $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_id ON statuses(reblog_of_id)");
             }
+
+            // Asegurar que la columna also_known_as exista en la tabla accounts
+            $accCols = $db->query("PRAGMA table_info(accounts)")->fetchAll(\PDO::FETCH_ASSOC);
+            $hasAlsoKnownAs = false;
+            foreach ($accCols as $col) {
+                if (strcasecmp($col['name'], 'also_known_as') === 0) {
+                    $hasAlsoKnownAs = true;
+                    break;
+                }
+            }
+            if (!$hasAlsoKnownAs) {
+                $db->exec("ALTER TABLE accounts ADD COLUMN also_known_as TEXT NULL");
+            }
         } catch (\Throwable $e) {
             // Ignorar fallos de alteración directa
         }
@@ -399,6 +412,9 @@ class Database {
                     UNIQUE(account_id, endpoint)
                 )",
                 "CREATE INDEX IF NOT EXISTS idx_web_push_subscriptions_account_id ON web_push_subscriptions(account_id)"
+            ],
+            18 => [
+                "ALTER TABLE accounts ADD COLUMN also_known_as TEXT NULL"
             ]
         ];
     }

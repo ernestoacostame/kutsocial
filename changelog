@@ -1,0 +1,38 @@
+Se han solucionado los dos problemas reportados:
+
+1. Botón "Editar Perfil" y visualización de opciones
+
+# Apertura directa en Modal:
+
+Al pulsar el botón "Editar perfil" desde tu perfil (/@ernesto), ya no te redirige a una página en blanco. Ahora se abre instantáneamente una ventana modal (modal-edit-profile) que te permite modificar tu nombre, biografía, foto de portada, avatar, campos personalizados (metadatos), alias de migración y ajustes de privacidad directamente sin salir de la vista.
+
+Los cambios se guardan vía PATCH /api/v1/accounts/update_credentials y actualizan la interfaz al momento.
+
+# Corrección en la ruta /profile:
+
+En profile.php, el contenedor principal tenía hardcodeado style="display: none;", lo que provocaba que al acceder a https://ernestoacosta.org/profile las opciones no se visualizaran. Se eliminó esta restricción y ahora el formulario se renderiza y funciona adecuadamente tanto en MPA como en modal.
+
+2. Importación de CSV (Listas, Usuarios, Seguimiento Mutuo y Migración)
+
+# Soporte de UTF-8 BOM en CSVs:
+
+Mastodon suele exportar los archivos .csv con cabecera BOM (\xEF\xBB\xBF), lo que provocaba que la cabecera Account address no coincidiera y se descartaran filas o no se procesara el archivo completo. En MastodonApiController.php se limpia el BOM automáticamente.
+
+# Importación de Listas, Seguidores y Silenciados:
+
+Se añadió el procesamiento para importar .csv de Seguidores (followers), Listas (lists) y Silenciados (mutes), además de exportar lists.csv.
+
+# Establecimiento de Seguimiento Mutuo (Mutuals):
+
+Se agregó la casilla "Establecer seguimiento mutuo automáticamente" tanto en el formulario web como en el backend. Al marcarla e importar tus seguidos o seguidores, KutSocial crea la relación bidireccional inmediata y despacha la actividad ActivityPub Follow correspondiente.
+
+# Soporte oficial de Migración de Cuenta (Mastodon → KutSocial):
+
+1- alsoKnownAs: Mastodon exige obligatoriamente que la cuenta de destino en KutSocial declare en su Actor de ActivityPub la propiedad alsoKnownAs: ["https://antigua-instancia/users/tu_usuario"]. Si no está presente, Mastodon rechaza la migración de seguidores. Añadimos el campo also_known_as a la base de datos (Database.php) y al Actor (ActivityPubController.php), y puedes configurarlo desde los ajustes de tu perfil.
+
+2- Manejador de actividad Move: Implementamos la recepción del comando ActivityPub Move en la bandeja de entrada para migrar automáticamente seguidores y seguidos cuando una cuenta remota se muda a otra.
+
+# Cola de procesamiento más ágil y bajo demanda:
+
+Las tareas de importación en Queue.php ahora procesan un lote inmediato tras la subida del archivo.
+Se agregó un botón "⚡ Procesar Tareas Pendientes Ahora" en la sección de importación/exportación de tu perfil que ejecuta las tareas pendientes de la cola SQLite al instante si no deseas esperar el proceso en segundo plano.

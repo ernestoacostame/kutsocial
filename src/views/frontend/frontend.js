@@ -2286,7 +2286,6 @@ async function clearAllNotifications() {
 // Cargar valores de Perfil en el formulario de edición
 async function loadProfileFormValues() {
     if (!document.getElementById('tab-profile')) {
-        window.location.href = '/profile';
         return;
     }
     if (!currentProfileData) {
@@ -2301,32 +2300,48 @@ async function loadProfileFormValues() {
         }
     }
 
-    document.getElementById('profile-display-name').value = currentProfileData.display_name || '';
+    const dispEl = document.getElementById('profile-display-name');
+    if (dispEl) dispEl.value = currentProfileData.display_name || '';
     
-    let note = currentProfileData.note || '';
-    note = note.replace(/<\/p>\s*<p>/gi, '\n\n')
-               .replace(/<br\s*\/?>/gi, '\n')
-               .replace(/<p>/gi, '')
-               .replace(/<\/p>/gi, '');
-    document.getElementById('profile-note').value = note;
+    const noteEl = document.getElementById('profile-note');
+    if (noteEl) {
+        let note = currentProfileData.note || '';
+        note = note.replace(/<\/p>\s*<p>/gi, '\n\n')
+                   .replace(/<br\s*\/?>/gi, '\n')
+                   .replace(/<p>/gi, '')
+                   .replace(/<\/p>/gi, '');
+        noteEl.value = note;
+    }
+
+    const akaEl = document.getElementById('profile-also-known-as');
+    if (akaEl) akaEl.value = currentProfileData.also_known_as || '';
 
     // Restaurar estado de los checkboxes de privacidad
-    document.getElementById('profile-discoverable').checked = !!currentProfileData.discoverable;
-    document.getElementById('profile-auto-accept').checked = !currentProfileData.locked;
-    document.getElementById('profile-searchable').checked = !!currentProfileData.searchable;
-    document.getElementById('profile-indexable').checked = !!currentProfileData.indexable;
-    document.getElementById('profile-show-source').checked = !!currentProfileData.show_source;
+    const discEl = document.getElementById('profile-discoverable');
+    if (discEl) discEl.checked = !!currentProfileData.discoverable;
+    const autoEl = document.getElementById('profile-auto-accept');
+    if (autoEl) autoEl.checked = !currentProfileData.locked;
+    const searchEl = document.getElementById('profile-searchable');
+    if (searchEl) searchEl.checked = !!currentProfileData.searchable;
+    const idxEl = document.getElementById('profile-indexable');
+    if (idxEl) idxEl.checked = !!currentProfileData.indexable;
+    const srcEl = document.getElementById('profile-show-source');
+    if (srcEl) srcEl.checked = !!currentProfileData.show_source;
 
     for (let i = 0; i < 4; i++) {
-        document.getElementById(`field-name-${i}`).value = '';
-        document.getElementById(`field-value-${i}`).value = '';
-        document.getElementById(`field-verified-${i}`).innerText = '';
+        const fn = document.getElementById(`field-name-${i}`);
+        const fv = document.getElementById(`field-value-${i}`);
+        const fver = document.getElementById(`field-verified-${i}`);
+        if (fn) fn.value = '';
+        if (fv) fv.value = '';
+        if (fver) fver.innerText = '';
     }
 
     const fields = currentProfileData.fields || [];
     fields.forEach((f, idx) => {
         if (idx < 4) {
-            document.getElementById(`field-name-${idx}`).value = f.name || '';
+            const fn = document.getElementById(`field-name-${idx}`);
+            if (fn) fn.value = f.name || '';
             
             let val = f.value || '';
             if (val.includes('<a href=')) {
@@ -2335,20 +2350,182 @@ async function loadProfileFormValues() {
                     val = match[1];
                 }
             }
-            document.getElementById(`field-value-${idx}`).value = val;
+            const fv = document.getElementById(`field-value-${idx}`);
+            if (fv) fv.value = val;
 
-            if (f.verified_at) {
-                document.getElementById(`field-verified-${idx}`).innerText = '✓ Verificado';
-                document.getElementById(`field-verified-${idx}`).style.color = 'var(--secondary)';
-            } else {
-                document.getElementById(`field-verified-${idx}`).innerText = 'No verificado';
-                document.getElementById(`field-verified-${idx}`).style.color = 'var(--text-muted)';
+            const fver = document.getElementById(`field-verified-${idx}`);
+            if (fver) {
+                if (f.verified_at) {
+                    fver.innerText = '✓ Verificado';
+                    fver.style.color = 'var(--secondary)';
+                } else {
+                    fver.innerText = 'No verificado';
+                    fver.style.color = 'var(--text-muted)';
+                }
             }
         }
     });
 }
 
-// Interceptar submit del formulario de perfil
+// Modal Editar Perfil
+async function openEditProfileModal() {
+    const modal = document.getElementById('modal-edit-profile');
+    if (!modal) return;
+
+    if (!currentProfileData) {
+        try {
+            const res = await fetch('/api/v1/accounts/verify_credentials', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                currentProfileData = await res.json();
+            }
+        } catch (e) {
+            console.error("Error al cargar credenciales", e);
+        }
+    }
+
+    if (currentProfileData) {
+        const nameEl = document.getElementById('modal-profile-display-name');
+        if (nameEl) nameEl.value = currentProfileData.display_name || '';
+
+        const noteEl = document.getElementById('modal-profile-note');
+        if (noteEl) {
+            let note = currentProfileData.note || '';
+            note = note.replace(/<\/p>\s*<p>/gi, '\n\n')
+                       .replace(/<br\s*\/?>/gi, '\n')
+                       .replace(/<p>/gi, '')
+                       .replace(/<\/p>/gi, '');
+            noteEl.value = note;
+        }
+
+        const akaEl = document.getElementById('modal-profile-also-known-as');
+        if (akaEl) akaEl.value = currentProfileData.also_known_as || '';
+
+        const discEl = document.getElementById('modal-profile-discoverable');
+        if (discEl) discEl.checked = !!currentProfileData.discoverable;
+
+        const autoEl = document.getElementById('modal-profile-auto-accept');
+        if (autoEl) autoEl.checked = !currentProfileData.locked;
+
+        const searchEl = document.getElementById('modal-profile-searchable');
+        if (searchEl) searchEl.checked = !!currentProfileData.searchable;
+
+        const idxEl = document.getElementById('modal-profile-indexable');
+        if (idxEl) idxEl.checked = !!currentProfileData.indexable;
+
+        const srcEl = document.getElementById('modal-profile-show-source');
+        if (srcEl) srcEl.checked = !!currentProfileData.show_source;
+
+        // Custom fields
+        for (let i = 0; i < 4; i++) {
+            const fName = document.getElementById(`modal-field-name-${i}`);
+            const fVal = document.getElementById(`modal-field-value-${i}`);
+            if (fName) fName.value = '';
+            if (fVal) fVal.value = '';
+        }
+        const fields = currentProfileData.fields || [];
+        fields.forEach((f, idx) => {
+            if (idx < 4) {
+                const fName = document.getElementById(`modal-field-name-${idx}`);
+                const fVal = document.getElementById(`modal-field-value-${idx}`);
+                if (fName) fName.value = f.name || '';
+                if (fVal) {
+                    let val = f.value || '';
+                    if (val.includes('<a href=')) {
+                        const m = val.match(/href="([^"]+)"/);
+                        if (m) val = m[1];
+                    }
+                    fVal.value = val;
+                }
+            }
+        });
+    }
+
+    const statusDiv = document.getElementById('modal-profile-save-status');
+    if (statusDiv) statusDiv.innerText = '';
+
+    modal.style.display = 'flex';
+}
+
+function closeEditProfileModal() {
+    const modal = document.getElementById('modal-edit-profile');
+    if (modal) modal.style.display = 'none';
+}
+
+// Interceptar submit del formulario modal de perfil
+const modalProfileForm = document.getElementById('modal-profile-form');
+if (modalProfileForm) {
+    modalProfileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const statusDiv = document.getElementById('modal-profile-save-status');
+        const submitBtn = document.getElementById('modal-profile-submit-btn');
+        if (submitBtn) submitBtn.disabled = true;
+        if (statusDiv) {
+            statusDiv.innerText = 'Guardando cambios...';
+            statusDiv.style.color = 'var(--text-muted)';
+        }
+
+        const formData = new FormData(modalProfileForm);
+
+        try {
+            const response = await fetch('/api/v1/accounts/update_credentials', {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            if (response.ok) {
+                const updatedProfile = await response.json();
+                currentProfileData = updatedProfile;
+
+                const dispNameEl = document.getElementById('my-display-name');
+                if (dispNameEl) dispNameEl.innerText = updatedProfile.display_name;
+
+                if (updatedProfile.avatar) {
+                    const myAvEl = document.getElementById('my-avatar');
+                    if (myAvEl) myAvEl.src = updatedProfile.avatar;
+                    const compAvEl = document.getElementById('composer-avatar');
+                    if (compAvEl) compAvEl.src = updatedProfile.avatar;
+                }
+
+                if (activeProfileViewId && String(activeProfileViewId) === String(updatedProfile.id)) {
+                    renderProfileData(updatedProfile);
+                }
+
+                if (document.getElementById('tab-profile')) {
+                    loadProfileFormValues();
+                }
+
+                if (statusDiv) {
+                    statusDiv.innerText = '✓ Cambios guardados correctamente.';
+                    statusDiv.style.color = 'var(--secondary)';
+                }
+
+                setTimeout(() => {
+                    closeEditProfileModal();
+                }, 800);
+            } else {
+                const data = await response.json();
+                if (statusDiv) {
+                    statusDiv.innerText = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
+                    statusDiv.style.color = 'var(--error)';
+                }
+            }
+        } catch (err) {
+            if (statusDiv) {
+                statusDiv.innerText = 'Error al conectar al servidor.';
+                statusDiv.style.color = 'var(--error)';
+            }
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+        }
+    });
+}
+
+// Interceptar submit del formulario de perfil de la página
 const profileForm = document.getElementById('profile-form');
 if (profileForm) {
     profileForm.addEventListener('submit', async (e) => {
@@ -2385,6 +2562,10 @@ if (profileForm) {
                     if (compAvEl) {
                         compAvEl.src = updatedProfile.avatar;
                     }
+                }
+
+                if (activeProfileViewId && String(activeProfileViewId) === String(updatedProfile.id)) {
+                    renderProfileData(updatedProfile);
                 }
 
                 statusDiv.innerText = '✓ Cambios guardados correctamente.';
@@ -2507,6 +2688,41 @@ async function resendPendingFollows() {
     
     btn.disabled = false;
     btn.innerText = '🔄 Re-enviar Follows Pendientes';
+}
+
+// Procesar cola de fondo bajo demanda
+async function processQueueNow() {
+    const btn = document.getElementById('process-queue-btn');
+    const msg = document.getElementById('queue-status-msg');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = '⏳ Procesando...';
+    }
+    if (msg) {
+        msg.innerText = 'Procesando tareas pendientes...';
+        msg.style.color = 'var(--text-muted)';
+    }
+    try {
+        const res = await fetch('/api/v1/queue/process', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (msg) {
+            msg.innerText = `✓ ${data.message || 'Procesadas ' + (data.processed_count || 0) + ' tareas.'}`;
+            msg.style.color = 'var(--secondary)';
+        }
+    } catch (e) {
+        if (msg) {
+            msg.innerText = 'Error al ejecutar tareas de la cola: ' + e.message;
+            msg.style.color = 'var(--error)';
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = '⚡ Procesar Tareas Pendientes Ahora';
+        }
+    }
 }
 
 async function loadUsersList(type, accountId) {
@@ -2887,7 +3103,7 @@ async function viewProfile(accountId, fromHashChange = false) {
         } else if (currentProfileData && String(account.id) === String(currentProfileData.id)) {
             actionBtn.innerText = 'Editar perfil';
             actionBtn.style.background = 'rgba(255,255,255,0.06)';
-            actionBtn.onclick = () => showTab('profile');
+            actionBtn.onclick = () => openEditProfileModal();
             document.getElementById('profile-view-manage-lists-btn').style.display = 'none';
             
             const favSubtab = document.getElementById('profile-subtab-favourites');

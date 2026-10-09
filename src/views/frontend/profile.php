@@ -1,4 +1,4 @@
-<div id="tab-profile" style="display: none;" class="composer-card">
+<div id="tab-profile" class="composer-card">
     <h2 style="margin-bottom: 20px; font-size: 18px; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">Ajustes de Perfil</h2>
     
     <form id="profile-form" enctype="multipart/form-data">
@@ -17,6 +17,14 @@
         <div class="form-group" style="margin-bottom: 15px;">
             <label for="profile-note">Biografía (Texto plano)</label>
             <textarea id="profile-note" name="note" class="composer-textarea" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; height: 100px;" placeholder="Cuéntale algo al Fediverso..."><?= htmlspecialchars($localUser['note'] ?? '') ?></textarea>
+        </div>
+
+        <div class="form-group" style="margin-bottom: 15px;">
+            <label for="profile-also-known-as">Migración de Cuenta (alsoKnownAs)</label>
+            <input type="text" id="profile-also-known-as" name="also_known_as" placeholder="https://mastodon.social/users/tu_antiguo_usuario" value="<?= htmlspecialchars($localUser['also_known_as'] ?? '') ?>">
+            <small style="display: block; color: var(--text-muted); font-size: 11.5px; margin-top: 4px;">
+                URL del perfil de tu cuenta anterior en Mastodon para permitir la migración automática de tus seguidores hacia KutSocial.
+            </small>
         </div>
         
         <h3 style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Campos Personalizados (Metadatos de Verificación)</h3>
@@ -86,6 +94,7 @@
                 <button onclick="downloadExport('/api/v1/export/posts', 'posts.json')" style="margin: 0; padding: 10px; font-size: 13px;">📝 Exportar Posts (JSON)</button>
                 <button onclick="downloadExport('/api/v1/export/follows', 'following.csv')" style="margin: 0; padding: 10px; font-size: 13px;">👥 Exportar Follows (CSV)</button>
                 <button onclick="downloadExport('/api/v1/export/followers', 'followers.csv')" style="margin: 0; padding: 10px; font-size: 13px;">👤 Exportar Followers (CSV)</button>
+                <button onclick="downloadExport('/api/v1/export/lists', 'lists.csv')" style="margin: 0; padding: 10px; font-size: 13px;">📋 Exportar Listas (CSV)</button>
                 <button onclick="downloadExport('/api/v1/export/mutes', 'mutes.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🔇 Exportar Muteados (CSV)</button>
                 <button onclick="downloadExport('/api/v1/export/blocks', 'blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🚫 Exportar Bloqueados (CSV)</button>
                 <button onclick="downloadExport('/api/v1/export/domain_blocks', 'domain_blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🌐 Dominios Bloqueados (CSV)</button>
@@ -98,25 +107,46 @@
         <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px;">
             <h4 style="font-size: 13.5px; margin-bottom: 12px; color: var(--text-color);">Importar Datos de Mastodon / KutSocial</h4>
             <form id="import-form" style="display: flex; flex-direction: column; gap: 15px;">
-                <div style="display: flex; gap: 15px; align-items: flex-end;">
-                    <div style="flex: 1;">
+                <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 200px;">
                         <label for="import-type" style="margin-bottom: 6px;">Tipo de Dato</label>
                         <select id="import-type" name="type" style="width:100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; color: white; font-family: inherit;">
                             <option value="follows" style="background:#161c26;">👥 Seguidos (CSV)</option>
-                            <option value="bookmarks" style="background:#161c26;">🔖 Marcadores (CSV)</option>
+                            <option value="followers" style="background:#161c26;">👤 Seguidores (CSV)</option>
+                            <option value="lists" style="background:#161c26;">📋 Listas (CSV)</option>
+                            <option value="mutes" style="background:#161c26;">🔇 Silenciados (CSV)</option>
                             <option value="blocks" style="background:#161c26;">🚫 Bloqueados (CSV)</option>
                             <option value="domain_blocks" style="background:#161c26;">🌐 Dominios Bloqueados (CSV)</option>
+                            <option value="bookmarks" style="background:#161c26;">🔖 Marcadores (CSV)</option>
                             <option value="filters" style="background:#161c26;">📝 Filtros de Palabra (JSON)</option>
                         </select>
                     </div>
-                    <div style="flex: 2;">
+                    <div style="flex: 2; min-width: 250px;">
                         <label for="import-file" style="margin-bottom: 6px;">Archivo (CSV o JSON)</label>
-                        <input type="file" id="import-file" name="file" required style="padding: 9px 12px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: white; border-radius: 10px; font-family: inherit;">
+                        <input type="file" id="import-file" name="file" required style="padding: 9px 12px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: white; border-radius: 10px; font-family: inherit; width: 100%;">
                     </div>
                     <button type="submit" style="width: auto; margin: 0; padding: 12px 24px; height: 44px;">Importar</button>
                 </div>
+                <div>
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-color); cursor: pointer; margin-top: 4px;">
+                        <input type="checkbox" id="import-mutual" name="mutual" value="1" style="width: auto;">
+                        <span>Establecer seguimiento mutuo automáticamente (garantiza que ambos usuarios se sigan mutuamente al importar)</span>
+                    </label>
+                </div>
             </form>
             <div id="import-status-msg" style="margin-top: 12px; font-size: 13.5px; font-weight: 600; text-align: center;"></div>
+        </div>
+
+        <!-- Cola de Procesamiento -->
+        <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-top: 25px;">
+            <h4 style="font-size: 13.5px; margin-bottom: 8px; color: var(--text-color);">⚡ Cola de Procesamiento</h4>
+            <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 15px;">
+                Las importaciones masivas se procesan en segundo plano. Si quieres forzar la ejecución inmediata de las tareas pendientes de la cola, pulsa el botón:
+            </p>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <button id="process-queue-btn" onclick="processQueueNow()" style="margin: 0; padding: 12px 24px; font-size: 13px;">⚡ Procesar Tareas Pendientes Ahora</button>
+                <span id="queue-status-msg" style="font-size: 13px; font-weight: 600;"></span>
+            </div>
         </div>
 
         <!-- Re-enviar Follows Pendientes -->

@@ -189,6 +189,96 @@ $basePath = $basePath ?? '';
 
     </div>
 
+    <!-- Modal: Editar Perfil -->
+    <div id="modal-edit-profile" class="modal-overlay" style="display: none; z-index: 2500;" onclick="if(event.target === this) closeEditProfileModal()">
+        <div class="modal-card" style="max-width: 540px; max-height: 90vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+                <h3 class="modal-title" style="margin: 0;">✏️ Editar Perfil</h3>
+                <button type="button" onclick="closeEditProfileModal()" style="background: none; border: none; font-size: 22px; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            
+            <form id="modal-profile-form" enctype="multipart/form-data">
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: var(--text-color);">Imagen de Portada (Header)</label>
+                    <input type="file" id="modal-profile-header-input" name="header" accept="image/*" class="modal-input" style="padding: 7px 10px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: var(--text-color);">Imagen de Avatar</label>
+                    <input type="file" id="modal-profile-avatar-input" name="avatar" accept="image/*" class="modal-input" style="padding: 7px 10px;">
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="modal-profile-display-name" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: var(--text-color);">Nombre a Mostrar</label>
+                    <input type="text" id="modal-profile-display-name" name="display_name" class="modal-input" placeholder="Tu nombre">
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="modal-profile-note" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: var(--text-color);">Biografía</label>
+                    <textarea id="modal-profile-note" name="note" class="modal-input" style="height: 85px; resize: vertical;" placeholder="Cuéntale algo al Fediverso..."></textarea>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="modal-profile-also-known-as" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 5px; color: var(--text-color);">Migración de Cuenta (alsoKnownAs)</label>
+                    <input type="text" id="modal-profile-also-known-as" name="also_known_as" class="modal-input" placeholder="https://mastodon.social/users/tu_antiguo_usuario">
+                    <small style="display: block; color: var(--text-muted); font-size: 11.5px; margin-top: 4px;">
+                        URL de tu cuenta anterior en Mastodon para permitir que tus seguidores se migren automáticamente a KutSocial.
+                    </small>
+                </div>
+                
+                <h4 style="font-size: 12.5px; color: var(--text-muted); margin-top: 15px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Campos Personalizados (Metadatos)</h4>
+                <div id="modal-metadata-fields-container">
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <input type="text" id="modal-field-name-0" name="fields_attributes[0][name]" placeholder="Etiqueta (ej: Web)" class="modal-input" style="flex: 1;">
+                        <input type="text" id="modal-field-value-0" name="fields_attributes[0][value]" placeholder="Valor / URL" class="modal-input" style="flex: 2;">
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <input type="text" id="modal-field-name-1" name="fields_attributes[1][name]" placeholder="Etiqueta" class="modal-input" style="flex: 1;">
+                        <input type="text" id="modal-field-value-1" name="fields_attributes[1][value]" placeholder="Valor" class="modal-input" style="flex: 2;">
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <input type="text" id="modal-field-name-2" name="fields_attributes[2][name]" placeholder="Etiqueta" class="modal-input" style="flex: 1;">
+                        <input type="text" id="modal-field-value-2" name="fields_attributes[2][value]" placeholder="Valor" class="modal-input" style="flex: 2;">
+                    </div>
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <input type="text" id="modal-field-name-3" name="fields_attributes[3][name]" placeholder="Etiqueta" class="modal-input" style="flex: 1;">
+                        <input type="text" id="modal-field-value-3" name="fields_attributes[3][value]" placeholder="Valor" class="modal-input" style="flex: 2;">
+                    </div>
+                </div>
+
+                <h4 style="font-size: 12.5px; color: var(--text-muted); margin-top: 15px; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">Ajustes de Privacidad</h4>
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 10px 12px; border-radius: 8px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text-color);">
+                        <input type="checkbox" id="modal-profile-discoverable" name="discoverable" style="width: auto;">
+                        <span>Descubrible (Aparecer en directorio y sugerencias)</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text-color);">
+                        <input type="checkbox" id="modal-profile-auto-accept" name="auto_accept" style="width: auto;">
+                        <span>Aceptar seguidores automáticamente (sin aprobación manual)</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text-color);">
+                        <input type="checkbox" id="modal-profile-searchable" name="searchable" style="width: auto;">
+                        <span>Permitir búsquedas internas de tu perfil</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text-color);">
+                        <input type="checkbox" id="modal-profile-indexable" name="indexable" style="width: auto;">
+                        <span>Indexable por motores de búsqueda</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text-color);">
+                        <input type="checkbox" id="modal-profile-show-source" name="show_source" style="width: auto;">
+                        <span>Mostrar aplicación cliente de origen</span>
+                    </label>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
+                    <a href="/profile" style="font-size: 12.5px; color: var(--primary); text-decoration: underline;">Ajustes completos y exportación &rarr;</a>
+                    <div class="modal-actions" style="margin: 0;">
+                        <button type="button" class="modal-btn-cancel" onclick="closeEditProfileModal()">Cancelar</button>
+                        <button type="submit" class="modal-btn-confirm" id="modal-profile-submit-btn">Guardar Cambios</button>
+                    </div>
+                </div>
+                <div id="modal-profile-save-status" style="margin-top: 10px; font-size: 13px; text-align: center; font-weight: 600;"></div>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal: Información Técnica de Perfil -->
     <div id="modal-profile-tech-info" class="modal-overlay" style="display: none;">
         <div class="modal-card">

@@ -2002,7 +2002,8 @@ HTML;
                 'highlighted' => false
             ],
             'avatar_description' => $account['avatar_description'] ?? '',
-            'header_description' => $account['header_description'] ?? ''
+            'header_description' => $account['header_description'] ?? '',
+            'also_known_as' => !empty($account['also_known_as']) ? array_values(array_filter(array_map('trim', explode("\n", str_replace(["\r", ","], "\n", $account['also_known_as']))))) : []
         ];
     }
 
@@ -2188,6 +2189,13 @@ HTML;
         } else if ($_SERVER['REQUEST_METHOD'] === 'PATCH' && !str_contains($_SERVER['CONTENT_TYPE'] ?? '', 'json')) {
             $fieldsToUpdate[] = "show_source = ?";
             $params[] = 0;
+        }
+
+        // Migration Alias (alsoKnownAs)
+        $alsoKnownAs = $_POST['also_known_as'] ?? $body['also_known_as'] ?? null;
+        if ($alsoKnownAs !== null) {
+            $fieldsToUpdate[] = "also_known_as = ?";
+            $params[] = is_array($alsoKnownAs) ? implode("\n", array_map('trim', $alsoKnownAs)) : trim($alsoKnownAs);
         }
 
         if (!empty($fieldsToUpdate)) {
@@ -6035,6 +6043,8 @@ HTML;
 
         $filePath = $_FILES['file']['tmp_name'];
         $content = file_get_contents($filePath);
+        // Quitar BOM UTF-8 (\xEF\xBB\xBF) si existe
+        $content = preg_replace('/^\xEF\xBB\xBF/', '', $content);
         $db = Database::connect();
 
         $importedCount = 0;
@@ -6081,11 +6091,30 @@ HTML;
                 if (empty($row) || empty($row[0])) continue;
                 if ($header) {
                     $header = false;
-                    if (strtolower($row[0] ?? '') === 'account address') continue;
+                    $h = strtolower(trim($row[0] ?? ''));
+                    if ($h === 'account address' || $h === 'address' || $h === 'account') continue;
                 }
                 $address = trim($row[0]);
                 if (!empty($address)) {
                     $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES ('account', ?)");
+                    $stmt->execute([$address]);
+                    $importedCount++;
+                }
+            }
+        } elseif ($type === 'mutes') {
+            $lines = explode("\n", str_replace("\r", "", $content));
+            $header = true;
+            foreach ($lines as $line) {
+                $row = str_getcsv($line);
+                if (empty($row) || empty($row[0])) continue;
+                if ($header) {
+                    $header = false;
+                    $h = strtolower(trim($row[0] ?? ''));
+                    if ($h === 'account address' || $h === 'address' || $h === 'account') continue;
+                }
+                $address = trim($row[0], " \t\n\r\0\x0B\"'@");
+                if (!empty($address)) {
+                    $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES ('mute', ?)");
                     $stmt->execute([$address]);
                     $importedCount++;
                 }
@@ -6115,6 +6144,7 @@ HTML;
                 }
             }
         } elseif ($type === 'follows') {
+            $mutual = !empty($_POST['mutual']);
             $lines = explode("\n", str_replace("\r", "", $content));
             $header = true;
             foreach ($lines as $line) {
@@ -6122,38 +6152,227 @@ HTML;
                 if (empty($row) || empty($row[0])) continue;
                 if ($header) {
                     $header = false;
-                    if (strtolower($row[0] ?? '') === 'account address') continue;
+                    $h = strtolower(trim($row[0] ?? ''));
+                    if ($h === 'account address' || $h === 'address' || $h === 'account' || $h === 'acct' || $h === 'usuario') continue;
                 }
-                $address = trim($row[0]);
+                $address = trim($row[0], " \t\n\r\0\x0B\"'");
                 if (!empty($address)) {
-                    // Si ya existe la cuenta localmente y ya la seguimos, omitir
                     $cleanAddress = ltrim($address, '@');
                     $parts = explode('@', $cleanAddress);
                     $uname = $parts[0] ?? '';
                     $udomain = $parts[1] ?? null;
                     if (!empty($uname)) {
                         if ($udomain) {
-                            $stmtAcc = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                            $stmtAcc = $db->prepare("SELECT id, domain, inbox_url, url FROM accounts WHERE LOWER(username) = LOWER(?) AND LOWER(domain) = LOWER(?) LIMIT 1");
                             $stmtAcc->execute([$uname, $udomain]);
                         } else {
-                            $stmtAcc = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                            $stmtAcc = $db->prepare("SELECT id, domain, inbox_url, url FROM accounts WHERE LOWER(username) = LOWER(?) AND (domain IS NULL OR domain = '') LIMIT 1");
                             $stmtAcc->execute([$uname]);
                         }
-                        $targetId = $stmtAcc->fetchColumn();
-                        if ($targetId) {
+                        $targetAcc = $stmtAcc->fetch();
+                        if ($targetAcc) {
+                            $targetId = (int)$targetAcc['id'];
                             $stmtFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
                             $stmtFollow->execute([$account['id'], $targetId]);
-                            if ($stmtFollow->fetchColumn()) {
-                                continue; // Ya lo seguimos, omitir importación
+                            if (!$stmtFollow->fetchColumn()) {
+                                $isRemote = !empty($targetAcc['domain']);
+                                $status = $isRemote ? 'pending' : 'accepted';
+                                $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, ?)");
+                                $stmtIns->execute([$account['id'], $targetId, $status]);
+                                if ($isRemote && !empty($targetAcc['inbox_url'])) {
+                                    $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+                                    $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                                    $localActorUrl = "$proto://$domainName/users/{$account['username']}";
+                                    $remoteActorUrl = $targetAcc['url'] ?? "$proto://{$targetAcc['domain']}/users/{$targetAcc['username']}";
+                                    $followActivity = [
+                                        '@context' => 'https://www.w3.org/ns/activitystreams',
+                                        'id' => $localActorUrl . '/activities/follow-' . bin2hex(random_bytes(8)),
+                                        'type' => 'Follow',
+                                        'actor' => $localActorUrl,
+                                        'object' => $remoteActorUrl
+                                    ];
+                                    \KutSocial\Queue::enqueue('Follow', $followActivity, $targetAcc['inbox_url']);
+                                }
                             }
+                            if ($mutual) {
+                                $stmtCheckRev = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+                                $stmtCheckRev->execute([$targetId, $account['id']]);
+                                if (!$stmtCheckRev->fetchColumn()) {
+                                    $stmtInsRev = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
+                                    $stmtInsRev->execute([$targetId, $account['id']]);
+                                }
+                            }
+                            $importedCount++;
+                            continue;
                         }
                     }
 
-                    // Encolar de forma no bloqueante para evitar timeouts del servidor al resolver remotamente cada usuario
+                    // Encolar de forma asíncrona
                     $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollow', ?, 'local', 'pending', datetime('now'))");
                     $stmtJob->execute([
                         json_encode([
                             'account_id' => $account['id'],
+                            'address' => $address,
+                            'mutual' => $mutual
+                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                    ]);
+                    $importedCount++;
+                }
+            }
+            if ($importedCount > 0) {
+                try {
+                    \KutSocial\Queue::process(15);
+                } catch (\Exception $e) {}
+                $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                \KutSocial\Queue::triggerAsync($domainName);
+            }
+        } elseif ($type === 'followers') {
+            $mutual = !empty($_POST['mutual']);
+            $lines = explode("\n", str_replace("\r", "", $content));
+            $header = true;
+            foreach ($lines as $line) {
+                $row = str_getcsv($line);
+                if (empty($row) || empty($row[0])) continue;
+                if ($header) {
+                    $header = false;
+                    $h = strtolower(trim($row[0] ?? ''));
+                    if ($h === 'account address' || $h === 'address' || $h === 'account' || $h === 'acct' || $h === 'usuario' || $h === 'follower') continue;
+                }
+                $address = trim($row[0], " \t\n\r\0\x0B\"'");
+                if (!empty($address)) {
+                    $cleanAddress = ltrim($address, '@');
+                    $parts = explode('@', $cleanAddress);
+                    $uname = $parts[0] ?? '';
+                    $udomain = $parts[1] ?? null;
+                    if (!empty($uname)) {
+                        if ($udomain) {
+                            $stmtAcc = $db->prepare("SELECT id, domain, inbox_url, url FROM accounts WHERE LOWER(username) = LOWER(?) AND LOWER(domain) = LOWER(?) LIMIT 1");
+                            $stmtAcc->execute([$uname, $udomain]);
+                        } else {
+                            $stmtAcc = $db->prepare("SELECT id, domain, inbox_url, url FROM accounts WHERE LOWER(username) = LOWER(?) AND (domain IS NULL OR domain = '') LIMIT 1");
+                            $stmtAcc->execute([$uname]);
+                        }
+                        $targetAcc = $stmtAcc->fetch();
+                        if ($targetAcc) {
+                            $targetId = (int)$targetAcc['id'];
+                            $stmtFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+                            $stmtFollow->execute([$targetId, $account['id']]);
+                            if (!$stmtFollow->fetchColumn()) {
+                                $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
+                                $stmtIns->execute([$targetId, $account['id']]);
+                            }
+                            if ($mutual) {
+                                $stmtFollowBack = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+                                $stmtFollowBack->execute([$account['id'], $targetId]);
+                                if (!$stmtFollowBack->fetchColumn()) {
+                                    $isRemote = !empty($targetAcc['domain']);
+                                    $status = $isRemote ? 'pending' : 'accepted';
+                                    $stmtInsBack = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, ?)");
+                                    $stmtInsBack->execute([$account['id'], $targetId, $status]);
+
+                                    if ($isRemote && !empty($targetAcc['inbox_url'])) {
+                                        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+                                        $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                                        $localActorUrl = "$proto://$domainName/users/{$account['username']}";
+                                        $remoteActorUrl = $targetAcc['url'] ?? "$proto://{$targetAcc['domain']}/users/{$targetAcc['username']}";
+                                        $followActivity = [
+                                            '@context' => 'https://www.w3.org/ns/activitystreams',
+                                            'id' => $localActorUrl . '/activities/follow-' . bin2hex(random_bytes(8)),
+                                            'type' => 'Follow',
+                                            'actor' => $localActorUrl,
+                                            'object' => $remoteActorUrl
+                                        ];
+                                        \KutSocial\Queue::enqueue('Follow', $followActivity, $targetAcc['inbox_url']);
+                                    }
+                                }
+                            }
+                            $importedCount++;
+                            continue;
+                        }
+                    }
+
+                    // Encolar resolución remota
+                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollower', ?, 'local', 'pending', datetime('now'))");
+                    $stmtJob->execute([
+                        json_encode([
+                            'account_id' => $account['id'],
+                            'address' => $address,
+                            'mutual' => $mutual
+                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                    ]);
+                    $importedCount++;
+                }
+            }
+            if ($importedCount > 0) {
+                try {
+                    \KutSocial\Queue::process(15);
+                } catch (\Exception $e) {}
+                $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                \KutSocial\Queue::triggerAsync($domainName);
+            }
+        } elseif ($type === 'lists') {
+            $lines = explode("\n", str_replace("\r", "", $content));
+            $header = true;
+            $listsCache = [];
+            foreach ($lines as $line) {
+                $row = str_getcsv($line);
+                if (empty($row) || count($row) < 2) continue;
+                if ($header) {
+                    $header = false;
+                    $h0 = strtolower(trim($row[0] ?? ''));
+                    $h1 = strtolower(trim($row[1] ?? ''));
+                    if (($h0 === 'list name' || $h0 === 'list' || $h0 === 'lista') && ($h1 === 'account address' || $h1 === 'address' || $h1 === 'account' || $h1 === 'usuario')) continue;
+                }
+                $listTitle = trim($row[0]);
+                $address = trim($row[1], " \t\n\r\0\x0B\"'");
+                if (empty($listTitle) || empty($address)) continue;
+
+                if (!isset($listsCache[$listTitle])) {
+                    $stmtList = $db->prepare("SELECT id FROM lists WHERE account_id = ? AND LOWER(title) = LOWER(?) LIMIT 1");
+                    $stmtList->execute([$account['id'], $listTitle]);
+                    $lId = $stmtList->fetchColumn();
+                    if (!$lId) {
+                        $stmtInsList = $db->prepare("INSERT INTO lists (account_id, title) VALUES (?, ?)");
+                        $stmtInsList->execute([$account['id'], $listTitle]);
+                        $lId = (int)$db->lastInsertId();
+                    }
+                    $listsCache[$listTitle] = (int)$lId;
+                }
+                $listId = $listsCache[$listTitle];
+
+                $cleanAddress = ltrim($address, '@');
+                $parts = explode('@', $cleanAddress);
+                $uname = $parts[0] ?? '';
+                $udomain = $parts[1] ?? null;
+                $targetId = null;
+                if (!empty($uname)) {
+                    if ($udomain) {
+                        $stmtAcc = $db->prepare("SELECT id FROM accounts WHERE LOWER(username) = LOWER(?) AND LOWER(domain) = LOWER(?) LIMIT 1");
+                        $stmtAcc->execute([$uname, $udomain]);
+                    } else {
+                        $stmtAcc = $db->prepare("SELECT id FROM accounts WHERE LOWER(username) = LOWER(?) AND (domain IS NULL OR domain = '') LIMIT 1");
+                        $stmtAcc->execute([$uname]);
+                    }
+                    $targetId = $stmtAcc->fetchColumn();
+                }
+
+                if ($targetId) {
+                    $stmtAdd = $db->prepare("INSERT OR IGNORE INTO list_accounts (list_id, account_id) VALUES (?, ?)");
+                    $stmtAdd->execute([$listId, $targetId]);
+
+                    $stmtCheckFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+                    $stmtCheckFollow->execute([$account['id'], $targetId]);
+                    if (!$stmtCheckFollow->fetchColumn()) {
+                        $stmtInsF = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'pending')");
+                        $stmtInsF->execute([$account['id'], $targetId]);
+                    }
+                    $importedCount++;
+                } else {
+                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportListItem', ?, 'local', 'pending', datetime('now'))");
+                    $stmtJob->execute([
+                        json_encode([
+                            'account_id' => $account['id'],
+                            'list_id' => $listId,
                             'address' => $address
                         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
                     ]);
@@ -6161,6 +6380,9 @@ HTML;
                 }
             }
             if ($importedCount > 0) {
+                try {
+                    \KutSocial\Queue::process(15);
+                } catch (\Exception $e) {}
                 $domainName = $_SERVER['HTTP_HOST'] ?? 'localhost';
                 \KutSocial\Queue::triggerAsync($domainName);
             }
@@ -6170,6 +6392,57 @@ HTML;
             'success' => true,
             'imported' => $importedCount,
             'errors' => $errorCount
+        ]);
+    }
+
+    public static function exportLists(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("
+            SELECT l.title, a.username, a.domain
+            FROM list_accounts la
+            JOIN lists l ON la.list_id = l.id
+            JOIN accounts a ON la.account_id = a.id
+            WHERE l.account_id = ?
+            ORDER BY l.title ASC
+        ");
+        $stmt->execute([$account['id']]);
+        $rows = $stmt->fetchAll();
+
+        header('Content-Type: text/csv; charset=utf-8');
+        header('Content-Disposition: attachment; filename="lists.csv"');
+
+        $output = fopen('php://output', 'w');
+        fputcsv($output, ['List name', 'Account address']);
+
+        foreach ($rows as $row) {
+            $addr = $row['domain'] ? "{$row['username']}@{$row['domain']}" : $row['username'];
+            fputcsv($output, [$row['title'], $addr]);
+        }
+        fclose($output);
+        exit;
+    }
+
+    public static function processQueue(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $processed = \KutSocial\Queue::process(50);
+        $db = Database::connect();
+        $remaining = (int)$db->query("SELECT COUNT(*) FROM jobs WHERE status = 'pending'")->fetchColumn();
+
+        Router::json([
+            'success' => true,
+            'processed' => $processed,
+            'remaining' => $remaining
         ]);
     }
 
