@@ -57,3 +57,10 @@ Se incluyó users-list.php de manera permanente en layout.php (inicialmente ocul
 
 Se registró la ruta /users-list y /p/users-list en index.php para soportar también accesos directos o recargas de URL.
 Se protegieron las funciones loadUsersList en profile-view.php para resolver automáticamente el ID del usuario del perfil activo si el parámetro llega indefinido.
+
+5. Pestañas en Ajustes de Cuenta y acceso directo a Importar / Exportar Datos
+
+- Corrección de enrutamiento: En index.php, la condición str_starts_with($uri, '/p') interceptaba cualquier ruta que empezara con 'p' (como /profile o /public) y le quitaba 2 caracteres ('rofile'), haciendo que /profile cayera al feed público por defecto. Se corrigió para validar específicamente '/p/' o '/p'.
+- Pestañas organizadas en profile.php: Las opciones de importación y exportación estaban ubicadas al final de un formulario extenso de 15 campos de perfil. Se reorganizó profile.php en 3 pestañas superiores claras: 👤 Perfil, 🔒 Privacidad e 📥 Importar & Exportar.
+- Acceso directo en la barra lateral: Se agregó el botón 'Ajustes & Datos' en el menú de navegación lateral para acceder directamente a la configuración y herramientas de importación/exportación sin tener que pasar por el perfil público.
+- Enlace del modal: El enlace en la ventana de edición de perfil ahora indica explícitamente '📥 Importar y exportar datos →' y activa directamente la pestaña de importación (#import).

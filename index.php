@@ -275,8 +275,10 @@ $renderPagesFrontend = function() {
     // Determinar la sección activa según la ruta bajo /p
     $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
     $uri = rtrim($uri, '/');
-    if (str_starts_with($uri, '/p')) {
+    if (str_starts_with($uri, '/p/')) {
         $subUri = substr($uri, 2);
+    } elseif ($uri === '/p') {
+        $subUri = '/public';
     } else {
         $subUri = $uri;
     }
@@ -387,7 +389,7 @@ $renderPagesFrontend = function() {
         $pageTitle = 'Conversación - KutSocial';
     }
 
-    $basePath = str_starts_with($uri, '/p') ? '/p' : '';
+    $basePath = (str_starts_with($uri, '/p/') || $uri === '/p') ? '/p' : '';
     $path = __DIR__ . '/src/views/pages/layout.php';
     if (file_exists($path)) {
         ob_start();

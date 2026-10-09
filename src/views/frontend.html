@@ -117,8 +117,13 @@
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a href="/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= (($section === 'profile') || ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null))) ? 'active' : '' ?>">
+                        <a href="/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>">
                             <span class="material-icons-outlined">person</span> Mi Perfil
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="/profile" id="nav-settings" class="nav-link <?= ($section === 'profile') ? 'active' : '' ?>">
+                            <span class="material-icons-outlined">tune</span> Ajustes & Datos
                         </a>
                     </li>
                     <li class="nav-item" id="nav-admin-settings">
@@ -267,7 +272,7 @@
                 </div>
 
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
-                    <a href="/profile" onclick="goToFullProfileSettings(event)" style="font-size: 13px; color: var(--primary); text-decoration: underline; cursor: pointer;">Ajustes completos e importación &rarr;</a>
+                    <a href="/profile#import" onclick="goToFullProfileSettings(event, 'import')" style="font-size: 13px; color: var(--primary); text-decoration: underline; cursor: pointer;">📥 Importar y exportar datos &rarr;</a>
                     <div class="modal-actions" style="margin: 0;">
                         <button type="button" class="modal-btn-cancel" onclick="closeEditProfileModal()">Cancelar</button>
                         <button type="submit" class="modal-btn-confirm" id="modal-profile-submit-btn">Guardar Cambios</button>

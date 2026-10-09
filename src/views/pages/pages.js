@@ -541,6 +541,14 @@ async function initApp() {
         }
     } else {
         showTab(activeSection, true);
+        if (activeSection === 'profile') {
+            const hash = window.location.hash;
+            if (hash === '#import' || hash === '#import-form') {
+                switchProfileSettingsTab('import');
+            } else if (hash === '#privacy') {
+                switchProfileSettingsTab('privacy');
+            }
+        }
     }
 
     // Cargar e iniciar badge de notificaciones
@@ -1865,9 +1873,17 @@ function showTab(tabName, fromHashChange = false) {
         else if (currentTimeline.startsWith('list_') && navList) navList.classList.add('active');
         else if (currentTimeline.startsWith('tag_') && navHash) navHash.classList.add('active');
     } else if (tabName === 'profile') {
-        const navProf = document.getElementById('nav-profile');
-        if (navProf) navProf.classList.add('active');
+        const navSettings = document.getElementById('nav-settings');
+        if (navSettings) navSettings.classList.add('active');
         loadProfileFormValues();
+        const hash = window.location.hash;
+        if (hash === '#import' || hash === '#import-form') {
+            switchProfileSettingsTab('import');
+        } else if (hash === '#privacy') {
+            switchProfileSettingsTab('privacy');
+        } else {
+            switchProfileSettingsTab('edit');
+        }
     } else if (tabName === 'profile-view') {
         const navProf = document.getElementById('nav-profile');
         if (activeProfileViewId === currentProfileData?.id && navProf) {
@@ -2506,7 +2522,29 @@ function closeEditProfileModal() {
     if (modal) modal.style.display = 'none';
 }
 
-function goToFullProfileSettings(event) {
+function switchProfileSettingsTab(subtab = 'edit') {
+    const tabs = ['edit', 'privacy', 'import'];
+    tabs.forEach(t => {
+        const content = document.getElementById('subtab-content-profile-' + t);
+        const btn = document.getElementById('btn-subtab-profile-' + t);
+        if (content) content.style.display = (t === subtab) ? 'block' : 'none';
+        if (btn) {
+            if (t === subtab) {
+                btn.classList.add('active');
+                btn.style.background = 'var(--primary)';
+                btn.style.color = '#fff';
+                btn.style.fontWeight = '600';
+            } else {
+                btn.classList.remove('active');
+                btn.style.background = 'rgba(255,255,255,0.05)';
+                btn.style.color = 'var(--text-color)';
+                btn.style.fontWeight = 'normal';
+            }
+        }
+    });
+}
+
+function goToFullProfileSettings(event, section = 'import') {
     if (event) {
         event.preventDefault();
         event.stopPropagation();
@@ -2514,17 +2552,30 @@ function goToFullProfileSettings(event) {
     closeEditProfileModal();
 
     const base = window.KUTSOCIAL_BASE_PATH || '';
-    const targetUrl = base + '/profile';
+    const targetUrl = base + '/profile#' + section;
 
     const tabProfile = document.getElementById('tab-profile');
     if (tabProfile && typeof showTab === 'function') {
         showTab('profile');
-        const importSection = document.getElementById('import-form') || tabProfile;
-        importSection.scrollIntoView({ behavior: 'smooth' });
+        switchProfileSettingsTab(section);
+        window.location.hash = section;
+        const targetEl = document.getElementById('subtab-content-profile-' + section) || tabProfile;
+        targetEl.scrollIntoView({ behavior: 'smooth' });
     } else {
         window.location.href = targetUrl;
     }
 }
+
+window.addEventListener('hashchange', () => {
+    const hash = window.location.hash;
+    if (hash === '#import' || hash === '#import-form') {
+        if (typeof switchProfileSettingsTab === 'function') switchProfileSettingsTab('import');
+    } else if (hash === '#privacy') {
+        if (typeof switchProfileSettingsTab === 'function') switchProfileSettingsTab('privacy');
+    } else if (hash === '#edit') {
+        if (typeof switchProfileSettingsTab === 'function') switchProfileSettingsTab('edit');
+    }
+});
 
 // Interceptar submit del formulario modal de perfil
 const modalProfileForm = document.getElementById('modal-profile-form');
@@ -2604,8 +2655,15 @@ if (profileForm) {
     profileForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const statusDiv = document.getElementById('profile-save-status');
-        statusDiv.innerText = 'Guardando cambios...';
-        statusDiv.style.color = 'var(--text-muted)';
+        const privStatusDiv = document.getElementById('profile-privacy-save-status');
+        if (statusDiv) {
+            statusDiv.innerText = 'Guardando cambios...';
+            statusDiv.style.color = 'var(--text-muted)';
+        }
+        if (privStatusDiv) {
+            privStatusDiv.innerText = 'Guardando cambios...';
+            privStatusDiv.style.color = 'var(--text-muted)';
+        }
 
         const formData = new FormData(profileForm);
 
@@ -2641,18 +2699,37 @@ if (profileForm) {
                     renderProfileData(updatedProfile);
                 }
 
-                statusDiv.innerText = '✓ Cambios guardados correctamente.';
-                statusDiv.style.color = 'var(--secondary)';
+                if (statusDiv) {
+                    statusDiv.innerText = '✓ Cambios guardados correctamente.';
+                    statusDiv.style.color = 'var(--secondary)';
+                }
+                if (privStatusDiv) {
+                    privStatusDiv.innerText = '✓ Preferencias guardadas correctamente.';
+                    privStatusDiv.style.color = 'var(--secondary)';
+                }
 
                 loadProfileFormValues();
             } else {
                 const data = await response.json();
-                statusDiv.innerText = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
-                statusDiv.style.color = 'var(--error)';
+                const msg = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
+                if (statusDiv) {
+                    statusDiv.innerText = msg;
+                    statusDiv.style.color = 'var(--error)';
+                }
+                if (privStatusDiv) {
+                    privStatusDiv.innerText = msg;
+                    privStatusDiv.style.color = 'var(--error)';
+                }
             }
         } catch (err) {
-            statusDiv.innerText = 'Error al conectar al servidor.';
-            statusDiv.style.color = 'var(--error)';
+            if (statusDiv) {
+                statusDiv.innerText = 'Error al conectar al servidor.';
+                statusDiv.style.color = 'var(--error)';
+            }
+            if (privStatusDiv) {
+                privStatusDiv.innerText = 'Error al conectar al servidor.';
+                privStatusDiv.style.color = 'var(--error)';
+            }
         }
     });
 }
