@@ -971,7 +971,7 @@ XML;
         $db = Database::connect();
 
         $parsed = parse_url($actorUrl);
-        $host = $parsed['host'] ?? '';
+        $host = strtolower($parsed['host'] ?? '');
         $path = $parsed['path'] ?? '';
         $pathParts = array_values(array_filter(explode('/', $path)));
         $usernameCandidate = !empty($pathParts) ? end($pathParts) : 'actor';
@@ -984,10 +984,22 @@ XML;
             $usernameCandidate = 'actor';
         }
 
-        // Buscar por URL (que almacena el actorUrl) o inbox_url o (username y dominio)
+        // Si el actor pertenece al servidor local, NUNCA registrarlo como remoto ni crear duplicados
+        $serverHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]);
+        if (empty($host) || $host === $serverHost || $host === 'localhost') {
+            $stmtLocal = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = LOWER(?) AND (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' LIMIT 1");
+            $stmtLocal->execute([$usernameCandidate]);
+            $localAcc = $stmtLocal->fetch();
+            if ($localAcc) {
+                return $localAcc;
+            }
+        }
+
+        // Buscar por URL (que almacena el actorUrl) o inbox_url o (username y dominio) o cuenta local
         $stmt = $db->prepare("
             SELECT * FROM accounts 
             WHERE (username = ? AND domain = ?) 
+               OR (LOWER(username) = LOWER(?) AND (domain IS NULL OR domain = '') AND password_hash IS NOT NULL)
                OR url = ? 
                OR inbox_url = ? 
                OR inbox_url = ?
@@ -996,6 +1008,7 @@ XML;
         $stmt->execute([
             $usernameCandidate,
             $host,
+            $usernameCandidate,
             $actorUrl,
             $actorUrl . '/inbox',
             $actorUrl
@@ -1391,6 +1404,17 @@ XML;
         }
         $username = strtolower($parts[0]);
         $domain = strtolower($parts[1]);
+
+        $serverHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]);
+        if ($domain === $serverHost || $domain === 'localhost') {
+            $db = Database::connect();
+            $stmt = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = LOWER(?) AND (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' LIMIT 1");
+            $stmt->execute([$username]);
+            $localAcc = $stmt->fetch();
+            if ($localAcc) {
+                return $localAcc;
+            }
+        }
 
         $url = "https://$domain/.well-known/webfinger?resource=acct:$username@$domain";
         self::log("resolveWebfinger: Resolviendo $acct vía $url");

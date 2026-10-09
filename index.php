@@ -63,10 +63,10 @@ $renderFrontend = function() {
     $db = Database::connect();
     
     // Obtener datos del usuario propietario local (único usuario del cliente)
-    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
+    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' AND username = 'iam' LIMIT 1");
     $localUser = $stmtOwner->fetch();
     if (!$localUser) {
-        $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+        $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' ORDER BY id ASC LIMIT 1");
         $localUser = $stmtOwner->fetch();
     }
     
@@ -141,6 +141,13 @@ $renderFrontend = function() {
     } elseif (str_starts_with($uri, '/tag_')) {
         $section = 'feed';
         $currentTimeline = substr($uri, 1); // e.g. tag_linux
+    } elseif (preg_match('#^/@([^/]+)/(?:statuses/)?([0-9a-zA-Z]+)$#', $uri, $tootMatch)) {
+        $section = 'thread-view';
+        $activeThreadId = $tootMatch[2];
+    } elseif (str_contains($uri, '/statuses/')) {
+        $section = 'thread-view';
+        $parts = explode('/', $uri);
+        $activeThreadId = end($parts);
     } elseif (str_starts_with($uri, '/@')) {
         $section = 'profile-view';
         $usernameWithAt = substr($uri, 2);
@@ -160,10 +167,6 @@ $renderFrontend = function() {
             }
             $activeProfileViewId = $stmt->fetchColumn() ?: null;
         }
-    } elseif (str_contains($uri, '/statuses/')) {
-        $section = 'thread-view';
-        $parts = explode('/', $uri);
-        $activeThreadId = end($parts);
     }
 
     // La columna derecha solo se muestra en Inicio, Timeline local, Catchup, Federación pública, Notificaciones y Mensajes privados
@@ -253,10 +256,10 @@ $renderPagesFrontend = function() {
     $db = Database::connect();
     
     // Obtener datos del usuario propietario local
-    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
+    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' AND username = 'iam' LIMIT 1");
     $localUser = $stmtOwner->fetch();
     if (!$localUser) {
-        $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
+        $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' ORDER BY id ASC LIMIT 1");
         $localUser = $stmtOwner->fetch();
     }
     
@@ -367,6 +370,17 @@ $renderPagesFrontend = function() {
         $currentTimeline = substr($subUri, 1);
         $contentView = 'feed.php';
         $pageTitle = '#' . substr($currentTimeline, 4) . ' - KutSocial';
+    } elseif (preg_match('#^/@([^/]+)/(?:statuses/)?([0-9a-zA-Z]+)$#', $subUri, $tootMatch)) {
+        $section = 'thread-view';
+        $contentView = 'thread-view.php';
+        $activeThreadId = $tootMatch[2];
+        $pageTitle = 'Conversación - KutSocial';
+    } elseif (str_contains($subUri, '/statuses/')) {
+        $section = 'thread-view';
+        $contentView = 'thread-view.php';
+        $parts = explode('/', $subUri);
+        $activeThreadId = end($parts);
+        $pageTitle = 'Conversación - KutSocial';
     } elseif (str_starts_with($subUri, '/@')) {
         $section = 'profile-view';
         $contentView = 'profile-view.php';
@@ -387,12 +401,6 @@ $renderPagesFrontend = function() {
             $activeProfileViewId = $stmt->fetchColumn() ?: null;
         }
         $pageTitle = '@' . $usernameWithAt . ' - KutSocial';
-    } elseif (str_contains($subUri, '/statuses/')) {
-        $section = 'thread-view';
-        $contentView = 'thread-view.php';
-        $parts = explode('/', $subUri);
-        $activeThreadId = end($parts);
-        $pageTitle = 'Conversación - KutSocial';
     }
 
     // La columna derecha se muestra en Inicio, Timeline local, Catchup, Federación pública, Notificaciones y Mensajes privados
@@ -584,6 +592,22 @@ $router->get('/@:username', function($params) use ($renderPagesFrontend) {
         $renderPagesFrontend();
     }
 });
+$router->get('/@:username/:id', function($params) use ($renderPagesFrontend) {
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    if (str_contains($accept, 'application/activity+json') || str_contains($accept, 'application/ld+json')) {
+        \KutSocial\Controllers\ActivityPubController::getStatus($params);
+    } else {
+        $renderPagesFrontend();
+    }
+});
+$router->get('/@:username/statuses/:id', function($params) use ($renderPagesFrontend) {
+    $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
+    if (str_contains($accept, 'application/activity+json') || str_contains($accept, 'application/ld+json')) {
+        \KutSocial\Controllers\ActivityPubController::getStatus($params);
+    } else {
+        $renderPagesFrontend();
+    }
+});
 
 // --- Timelines, Posting & Streaming REST APIs ---
 $router->get('/api/v1/timelines/home', [MastodonApiController::class, 'getHomeTimeline']);
@@ -688,6 +712,8 @@ $router->get('/p/followed-hashtags', $renderPagesFrontend);
 $router->get('/p/profile', $renderPagesFrontend);
 $router->get('/p/users-list', $renderPagesFrontend);
 $router->get('/p/@:username', $renderPagesFrontend);
+$router->get('/p/@:username/:id', $renderPagesFrontend);
+$router->get('/p/@:username/statuses/:id', $renderPagesFrontend);
 $router->get('/p/list_:id', $renderPagesFrontend);
 $router->get('/p/tag_:tag', $renderPagesFrontend);
 $router->get('/p/search-results', $renderPagesFrontend);

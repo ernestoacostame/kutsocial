@@ -281,11 +281,18 @@ class Queue {
             $parts = explode('@', $address);
             $uName = strtolower($parts[0]);
             $uDomain = strtolower($parts[1]);
-            $stmtExist = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = ? AND LOWER(domain) = ? LIMIT 1");
-            $stmtExist->execute([$uName, $uDomain]);
-            $resolvedAcc = $stmtExist->fetch();
-            if (!$resolvedAcc) {
-                $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
+            $serverHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]);
+            if ($uDomain === $serverHost || $uDomain === 'localhost') {
+                $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                $stmtLoc->execute([$uName]);
+                $resolvedAcc = $stmtLoc->fetch();
+            } else {
+                $stmtExist = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = ? AND LOWER(domain) = ? LIMIT 1");
+                $stmtExist->execute([$uName, $uDomain]);
+                $resolvedAcc = $stmtExist->fetch();
+                if (!$resolvedAcc) {
+                    $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
+                }
             }
         } else {
             $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
@@ -302,7 +309,7 @@ class Queue {
             return;
         }
         $isRemote = !empty($resolvedAcc['domain']);
-        $status = $isRemote ? 'pending' : (($resolvedAcc['locked'] ?? 0) ? 'pending' : 'accepted');
+        $status = ($resolvedAcc['locked'] ?? 0) ? 'pending' : 'accepted';
         
         $stmtCheck = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
         $stmtCheck->execute([$accountId, $targetId]);
@@ -352,11 +359,18 @@ class Queue {
             $parts = explode('@', $address);
             $uName = strtolower($parts[0]);
             $uDomain = strtolower($parts[1]);
-            $stmtExist = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = ? AND LOWER(domain) = ? LIMIT 1");
-            $stmtExist->execute([$uName, $uDomain]);
-            $resolvedAcc = $stmtExist->fetch();
-            if (!$resolvedAcc) {
-                $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
+            $serverHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]);
+            if ($uDomain === $serverHost || $uDomain === 'localhost') {
+                $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                $stmtLoc->execute([$uName]);
+                $resolvedAcc = $stmtLoc->fetch();
+            } else {
+                $stmtExist = $db->prepare("SELECT * FROM accounts WHERE LOWER(username) = ? AND LOWER(domain) = ? LIMIT 1");
+                $stmtExist->execute([$uName, $uDomain]);
+                $resolvedAcc = $stmtExist->fetch();
+                if (!$resolvedAcc) {
+                    $resolvedAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger($address);
+                }
             }
         } else {
             $stmtLoc = $db->prepare("SELECT * FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
@@ -370,20 +384,18 @@ class Queue {
 
         $remoteId = $resolvedAcc['id'];
         
-        // Solo registrar como seguidor si es una cuenta local del servidor (en ActivityPub las cuentas remotas no pueden forzarse a seguir)
-        if (empty($resolvedAcc['domain'])) {
-            $stmtCheck = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-            $stmtCheck->execute([$remoteId, $accountId]);
-            if (!$stmtCheck->fetchColumn()) {
-                $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
-                $stmtIns->execute([$remoteId, $accountId]);
-            }
+        // Registrar relación de seguidor
+        $stmtCheck = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtCheck->execute([$remoteId, $accountId]);
+        if (!$stmtCheck->fetchColumn()) {
+            $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
+            $stmtIns->execute([$remoteId, $accountId]);
         }
 
         // Si es mutuo, nosotros también lo seguimos
         if ($mutual) {
             $isRemote = !empty($resolvedAcc['domain']);
-            $status = $isRemote ? 'pending' : (($resolvedAcc['locked'] ?? 0) ? 'pending' : 'accepted');
+            $status = ($resolvedAcc['locked'] ?? 0) ? 'pending' : 'accepted';
             
             $stmtCheckFwd = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
             $stmtCheckFwd->execute([$accountId, $remoteId]);

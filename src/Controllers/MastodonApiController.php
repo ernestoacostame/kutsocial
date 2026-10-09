@@ -1697,6 +1697,17 @@ HTML;
             // 1. Resolver actor remoto si es un recurso Webfinger o URL
             if ($resolve) {
                 if (filter_var($q, FILTER_VALIDATE_URL)) {
+                    if (str_contains($q, '/statuses/') || preg_match('#/@.+/\d+#', $q)) {
+                        try {
+                            $resolvedStatusId = \KutSocial\Controllers\ActivityPubController::fetchAndRegisterRemoteStatus($q);
+                            if ($resolvedStatusId) {
+                                $sRow = self::fetchStatusRow($db, (int)$resolvedStatusId);
+                                if ($sRow) {
+                                    $statuses[] = self::formatStatus($sRow, $currUserId);
+                                }
+                            }
+                        } catch (\Throwable $e) {}
+                    }
                     $resolvedAcc = \KutSocial\Controllers\ActivityPubController::getOrRegisterRemoteActor($q);
                     if ($resolvedAcc) {
                         $accounts[] = self::formatAccount($resolvedAcc);
@@ -1962,12 +1973,12 @@ HTML;
             $lastStatusAt = !empty($account['last_status_at']) ? date('Y-m-d', strtotime($account['last_status_at'])) : null;
         } else {
             // Contar seguidores recibidos
-            $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND status = 'accepted'");
+            $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND (status = 'accepted' OR status = 'pending')");
             $stmtFollowers->execute([$accountId]);
             $followersCount = (int)$stmtFollowers->fetchColumn();
 
             // Contar seguidos realizados
-            $stmtFollowing = $db->prepare("SELECT COUNT(*) FROM follows WHERE account_id = ? AND status = 'accepted'");
+            $stmtFollowing = $db->prepare("SELECT COUNT(*) FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending')");
             $stmtFollowing->execute([$accountId]);
             $followingCount = (int)$stmtFollowing->fetchColumn();
 
@@ -1993,8 +2004,12 @@ HTML;
             'discoverable' => (bool)($account['discoverable'] ?? 1),
             'searchable' => (bool)($account['searchable'] ?? 1),
             'indexable' => (bool)($account['indexable'] ?? 1),
+            'noindex' => !(bool)($account['indexable'] ?? 1),
             'show_source' => (bool)($account['show_source'] ?? 1),
             'group' => false,
+            'suspended' => false,
+            'limited' => false,
+            'moved' => null,
             'created_at' => date('c', strtotime($account['account_created_at'] ?? $account['created_at'] ?? 'now')),
             'note' => $bio,
             'url' => ($isRemote && !empty($account['url'])) ? $account['url'] : ($isRemote ? "https://{$account['domain']}/@{$account['username']}" : "$proto://$domain/@" . $account['username']),
@@ -2008,13 +2023,6 @@ HTML;
             'last_status_at' => $lastStatusAt,
             'emojis' => self::extractAccountEmojis($account),
             'fields' => $fields,
-            'role' => [
-                'id' => '1',
-                'name' => $account['role'] ?? 'user',
-                'color' => '',
-                'permissions' => '0',
-                'highlighted' => false
-            ],
             'avatar_description' => $account['avatar_description'] ?? '',
             'header_description' => $account['header_description'] ?? '',
             'also_known_as' => !empty($account['also_known_as']) ? array_values(array_filter(array_map('trim', explode("\n", str_replace(["\r", ","], "\n", $account['also_known_as']))))) : []
@@ -2053,6 +2061,13 @@ HTML;
             'note' => $account['note'] ?: '',
             'fields' => $rawFields,
             'follow_requests_count' => $followRequestsCount
+        ];
+        $formatted['role'] = [
+            'id' => 1,
+            'name' => $account['role'] ?? 'user',
+            'color' => '',
+            'permissions' => '0',
+            'highlighted' => false
         ];
 
         return $formatted;
@@ -2942,7 +2957,7 @@ HTML;
 
         $whereClauses = [
             "(
-                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
+                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending'))))
                 OR
                 (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
                 OR
@@ -3005,7 +3020,7 @@ HTML;
 
         $whereClauses = [
             "(
-                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
+                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending'))))
                 OR
                 (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
                 OR
@@ -3242,6 +3257,13 @@ HTML;
         ");
         $stmt->execute([$account['id'], $uri, $content, $visibility, $inReplyToId, $sensitive, $spoilerText, !empty($mediaAttachments) ? json_encode($mediaAttachments) : null, $language, $reblogOfId]);
         $newId = $db->lastInsertId();
+
+        $canonicalUri = "$proto://$domain/users/{$account['username']}/statuses/$newId";
+        try {
+            $stmtUpdateUri = $db->prepare("UPDATE statuses SET uri = ? WHERE id = ?");
+            $stmtUpdateUri->execute([$canonicalUri, $newId]);
+            $uri = $canonicalUri;
+        } catch (\Throwable $e) {}
 
         \KutSocial\NotificationHelper::fetchAndSaveLinkCard((int)$newId, $content);
         \KutSocial\NotificationHelper::notifyMentionOrReply((int)$newId);
@@ -3580,7 +3602,7 @@ HTML;
                 exit;
             }
             $whereClauses[] = "(
-                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
+                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending'))))
                 OR
                 (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
             )";
@@ -3857,8 +3879,21 @@ HTML;
      * Retorna un status individual por su ID.
      */
     public static function getSingleStatus(array $params): void {
-        $id = (int)$params['id'];
         $db = Database::connect();
+        $idParam = $params['id'] ?? '';
+        $id = 0;
+        if (is_numeric($idParam)) {
+            $id = (int)$idParam;
+        } else {
+            $stmtFind = $db->prepare("SELECT id FROM statuses WHERE uri = ? OR uri LIKE ? LIMIT 1");
+            $stmtFind->execute([$idParam, "%$idParam%"]);
+            $id = (int)($stmtFind->fetchColumn() ?: 0);
+        }
+
+        if ($id <= 0) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
 
         $account = null;
         $currUserId = null;
@@ -4216,31 +4251,24 @@ HTML;
             $headerUrl = $proto . '://' . $domain . $headerUrl;
         }
   
-        $account = [
-            'id' => (string)$row['account_id'],
+        $accountData = [
+            'id' => $row['account_id'],
             'username' => $row['username'],
-            'acct' => $row['domain'] ? $row['username'] . '@' . $row['domain'] : $row['username'],
-            'display_name' => $row['display_name'] ?: $row['username'],
-            'locked' => (bool)($row['locked'] ?? 0),
-            'bot' => false,
-            'discoverable' => (bool)($row['discoverable'] ?? 1),
-            'group' => false,
-            'created_at' => date('c', strtotime($row['account_created_at'] ?? $row['created_at'] ?? 'now')),
-            'note' => self::formatAccountNote($row['note'] ?? '', !empty($row['domain'])),
-            'url' => (!empty($row['account_url']) && !empty($row['domain'])) ? $row['account_url'] : ($row['domain'] ? "$proto://{$row['domain']}/users/{$row['username']}" : "$proto://$domain/users/" . $row['username']),
+            'domain' => $row['domain'],
+            'display_name' => $row['display_name'],
+            'note' => $row['note'] ?? '',
             'avatar' => $avatarUrl,
-            'avatar_static' => $avatarUrl,
             'header' => $headerUrl,
-            'header_static' => $headerUrl,
-            'followers_count' => 0,
-            'following_count' => 0,
-            'statuses_count' => 0,
-            'last_status_at' => null,
-            'emojis' => self::extractAccountEmojis($row),
-            'fields' => [],
             'avatar_description' => $row['avatar_description'] ?? '',
-            'header_description' => $row['header_description'] ?? ''
+            'header_description' => $row['header_description'] ?? '',
+            'locked' => $row['locked'] ?? 0,
+            'discoverable' => $row['discoverable'] ?? 1,
+            'account_created_at' => $row['account_created_at'] ?? $row['created_at'] ?? 'now',
+            'emojis' => $row['account_emojis'] ?? $row['emojis'] ?? null,
+            'fields' => $row['fields'] ?? null,
+            'url' => $row['account_url'] ?? null
         ];
+        $account = self::formatAccount($accountData);
  
         $db = Database::connect();
  
@@ -4463,7 +4491,25 @@ HTML;
                 $inReplyToAccountId = (string)$inReplyToAccountId;
             }
         }
- 
+
+        $isRemote = !empty($row['domain']) && strtolower(explode(':', $row['domain'])[0]) !== strtolower(explode(':', $domain)[0]);
+
+        $statusWebUrl = null;
+        if ($isRemote) {
+            $statusUri = $row['status_uri'] ?? '';
+            if (preg_match('#^https?://([^/]+)/users/([^/]+)/statuses/([^/]+)$#i', $statusUri, $m)) {
+                $statusWebUrl = "https://{$m[1]}/@{$m[2]}/{$m[3]}";
+            } elseif (!empty($statusUri)) {
+                $statusWebUrl = $statusUri;
+            } else {
+                $statusWebUrl = "$proto://$domain/@{$row['username']}/{$row['status_id']}";
+            }
+        } else {
+            $statusWebUrl = "$proto://$domain/@{$row['username']}/{$row['status_id']}";
+        }
+
+        $canonicalUri = !empty($row['status_uri']) ? $row['status_uri'] : "$proto://$domain/users/{$row['username']}/statuses/{$row['status_id']}";
+
         return [
             'id' => (string)$row['status_id'],
             'created_at' => date('c', strtotime($row['status_created_at'])),
@@ -4473,8 +4519,8 @@ HTML;
             'spoiler_text' => $row['spoiler_text'] ?? '',
             'visibility' => $row['status_visibility'] ?? 'public',
             'language' => $row['language'] ?? 'es',
-            'uri' => $row['status_uri'],
-            'url' => $row['status_uri'],
+            'uri' => $canonicalUri,
+            'url' => $statusWebUrl,
             'replies_count' => $repCount,
             'reblogs_count' => $reblogsCount,
             'favourites_count' => $favCount,
@@ -4487,6 +4533,9 @@ HTML;
             ] : null,
             'muted' => false,
             'bookmarked' => $bookmarked,
+            'pinned' => false,
+            'edited_at' => null,
+            'filtered' => [],
             'content' => $formattedContent,
             'text' => $rawStatusContent,
             'account' => $account,
@@ -4640,18 +4689,23 @@ HTML;
             }
         }
 
+        $targetLocked = (bool)($targetAcc['locked'] ?? 0);
+        $isFollowing = ($followStatus === 'accepted' || (!$targetLocked && !empty($followStatus)));
+        $isFollowedBy = ($followedByStatus === 'accepted' || !empty($followedByStatus));
+        $isRequested = ($followStatus === 'pending' && $targetLocked);
+
         return [
             'id' => (string)$targetId,
-            'following' => ($followStatus === 'accepted' || $followStatus === 'pending'),
+            'following' => $isFollowing,
             'showing_reblogs' => true,
             'notifying' => false,
             'languages' => null,
-            'followed_by' => ($followedByStatus === 'accepted'),
+            'followed_by' => $isFollowedBy,
             'blocking' => $blocking,
             'blocked_by' => false,
             'muting' => $muting,
             'muting_notifications' => $muting,
-            'requested' => ($followStatus === 'pending'),
+            'requested' => $isRequested,
             'domain_blocking' => $domainBlocking,
             'endorsement' => false,
             'note' => ''
@@ -4688,15 +4742,20 @@ HTML;
             return;
         }
 
-        $ids = $_GET['id'] ?? [];
-        if (!is_array($ids)) {
-            $ids = [$ids];
+        $rawIds = $_GET['id'] ?? [];
+        $ids = [];
+        if (is_array($rawIds)) {
+            $ids = $rawIds;
+        } elseif (is_string($rawIds)) {
+            $ids = str_contains($rawIds, ',') ? explode(',', $rawIds) : [$rawIds];
         }
 
         $db = Database::connect();
         $relationships = [];
 
         foreach ($ids as $id) {
+            $id = trim((string)$id);
+            if ($id === '') continue;
             $targetAccId = is_numeric($id) ? (int)$id : 0;
             if ($targetAccId === 0) {
                 $targetAcc = self::findAccountByIdOrHandle($id);
@@ -4739,11 +4798,7 @@ HTML;
         $existing = $stmtCheck->fetchColumn();
 
         $isRemote = !empty($targetAccount['domain']);
-        if ($isRemote) {
-            $status = 'pending';
-        } else {
-            $status = ($targetAccount['locked'] ?? 0) ? 'pending' : 'accepted';
-        }
+        $status = ($targetAccount['locked'] ?? 0) ? 'pending' : 'accepted';
 
         if (!$existing) {
             $stmt = $db->prepare("
@@ -4929,8 +4984,21 @@ HTML;
     }
 
     public static function getStatusContext(array $params): void {
-        $id = (int)$params['id'];
         $db = Database::connect();
+        $idParam = $params['id'] ?? '';
+        $id = 0;
+        if (is_numeric($idParam)) {
+            $id = (int)$idParam;
+        } else {
+            $stmtFind = $db->prepare("SELECT id FROM statuses WHERE uri = ? OR uri LIKE ? LIMIT 1");
+            $stmtFind->execute([$idParam, "%$idParam%"]);
+            $id = (int)($stmtFind->fetchColumn() ?: 0);
+        }
+
+        if ($id <= 0) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
         
         $account = self::getAuthenticatedAccount();
         $currUserId = $account ? (int)$account['id'] : null;
@@ -4943,75 +5011,63 @@ HTML;
         $stmt->execute([$id]);
         $status = $stmt->fetch();
         if (!$status) {
-            Router::json(['error' => 'Status no encontrado'], 404);
+            Router::json(['error' => 'Record not found'], 404);
             return;
         }
 
         $statusFetcher = function($statusId) use ($db, $currUserId, $account) {
-            $stmt = $db->prepare("
-                SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                       s.visibility as status_visibility, s.created_at as status_created_at, 
-                       s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
-                       a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
-                       a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
-                       a.locked, a.discoverable
-                FROM statuses s
-                JOIN accounts a ON s.account_id = a.id
-                WHERE s.id = ?
-                LIMIT 1
-            ");
-            $stmt->execute([$statusId]);
-            $row = $stmt->fetch();
+            $row = self::fetchStatusRow($db, (int)$statusId);
+            if (!$row) {
+                return null;
+            }
             
-            if ($row) {
-                $statusVisibility = $row['status_visibility'] ?? 'public';
-                $statusAuthorId = (int)$row['account_id'];
-                
-                $authorized = false;
-                if ($statusVisibility === 'public' || $statusVisibility === 'unlisted') {
-                    $authorized = true;
-                } elseif ($statusVisibility === 'private') {
-                    if ($currUserId !== null) {
-                        if ($currUserId === $statusAuthorId) {
-                            $authorized = true;
-                        } else {
-                            $stmtFollowCheck = $db->prepare("SELECT 1 FROM follows WHERE account_id = ? AND target_account_id = ? AND status = 'accepted' LIMIT 1");
-                            $stmtFollowCheck->execute([$currUserId, $statusAuthorId]);
-                            $authorized = (bool)$stmtFollowCheck->fetchColumn();
-                        }
-                    }
-                } elseif ($statusVisibility === 'direct') {
-                    if ($currUserId !== null) {
-                        if ($currUserId === $statusAuthorId) {
-                            $authorized = true;
-                        } else {
-                            $username = $account['username'] ?? '';
-                            $actorUrlPattern = "/users/" . $username;
-                            $stContent = $row['status_content'] ?? $row['content'] ?? '';
-                            if (str_contains($stContent, $actorUrlPattern) ||
-                                preg_match('/@' . preg_quote($username, '/') . '\b/i', $stContent)) {
-                                $authorized = true;
-                            }
-                        }
+            $statusVisibility = $row['status_visibility'] ?? 'public';
+            $statusAuthorId = (int)$row['account_id'];
+            
+            $authorized = false;
+            if ($statusVisibility === 'public' || $statusVisibility === 'unlisted') {
+                $authorized = true;
+            } elseif ($statusVisibility === 'private') {
+                if ($currUserId !== null) {
+                    if ($currUserId === $statusAuthorId) {
+                        $authorized = true;
+                    } else {
+                        $stmtFollowCheck = $db->prepare("SELECT 1 FROM follows WHERE account_id = ? AND target_account_id = ? AND status = 'accepted' LIMIT 1");
+                        $stmtFollowCheck->execute([$currUserId, $statusAuthorId]);
+                        $authorized = (bool)$stmtFollowCheck->fetchColumn();
                     }
                 }
-                
-                if (!$authorized) {
-                    return null;
-                }
-
-                $filtered = self::filterStatuses([$row]);
-                if (empty($filtered)) {
-                    return null;
+            } elseif ($statusVisibility === 'direct') {
+                if ($currUserId !== null) {
+                    if ($currUserId === $statusAuthorId) {
+                        $authorized = true;
+                    } else {
+                        $username = $account['username'] ?? '';
+                        $actorUrlPattern = "/users/" . $username;
+                        $stContent = $row['status_content'] ?? $row['content'] ?? '';
+                        if (str_contains($stContent, $actorUrlPattern) ||
+                            preg_match('/@' . preg_quote($username, '/') . '\b/i', $stContent)) {
+                            $authorized = true;
+                        }
+                    }
                 }
             }
             
-            return $row ? self::formatStatus($row, $currUserId) : null;
+            if (!$authorized) {
+                return null;
+            }
+
+            $filtered = self::filterStatuses([$row]);
+            if (empty($filtered)) {
+                return null;
+            }
+
+            return self::formatStatus($row, $currUserId);
         };
 
         $mainStatus = $statusFetcher($id);
         if (!$mainStatus) {
-            Router::json(['error' => 'Status no encontrado'], 404);
+            Router::json(['error' => 'Record not found'], 404);
             return;
         }
 
@@ -5032,65 +5088,23 @@ HTML;
         while (!empty($replyQueue)) {
             $currentId = array_shift($replyQueue);
             
-            $stmtReplies = $db->prepare("
-                SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                       s.visibility as status_visibility, s.created_at as status_created_at, 
-                       s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
-                       a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
-                       a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
-                       a.locked, a.discoverable
-                FROM statuses s
-                JOIN accounts a ON s.account_id = a.id
-                WHERE s.in_reply_to_id = ?
-                ORDER BY s.id ASC
-            ");
+            $stmtReplies = $db->prepare("SELECT id FROM statuses WHERE in_reply_to_id = ? ORDER BY id ASC");
             $stmtReplies->execute([$currentId]);
-            $replies = self::filterStatuses($stmtReplies->fetchAll());
+            $replyIds = $stmtReplies->fetchAll(\PDO::FETCH_COLUMN) ?: [];
 
-            foreach ($replies as $row) {
-                $statusVisibility = $row['status_visibility'] ?? 'public';
-                $statusAuthorId = (int)$row['account_id'];
-                
-                $authorized = false;
-                if ($statusVisibility === 'public' || $statusVisibility === 'unlisted') {
-                    $authorized = true;
-                } elseif ($statusVisibility === 'private') {
-                    if ($currUserId !== null) {
-                        if ($currUserId === $statusAuthorId) {
-                            $authorized = true;
-                        } else {
-                            $stmtFollowCheck = $db->prepare("SELECT 1 FROM follows WHERE account_id = ? AND target_account_id = ? AND status = 'accepted' LIMIT 1");
-                            $stmtFollowCheck->execute([$currUserId, $statusAuthorId]);
-                            $authorized = (bool)$stmtFollowCheck->fetchColumn();
-                        }
-                    }
-                } elseif ($statusVisibility === 'direct') {
-                    if ($currUserId !== null) {
-                        if ($currUserId === $statusAuthorId) {
-                            $authorized = true;
-                        } else {
-                            $username = $account['username'] ?? '';
-                            $actorUrlPattern = "/users/" . $username;
-                            $stContent = $row['status_content'] ?? $row['content'] ?? '';
-                            if (str_contains($stContent, $actorUrlPattern) ||
-                                preg_match('/@' . preg_quote($username, '/') . '\b/i', $stContent)) {
-                                $authorized = true;
-                            }
-                        }
-                    }
-                }
-                
-                if ($authorized) {
-                    $descendants[] = self::formatStatus($row, $currUserId);
-                    $replyQueue[] = (int)$row['status_id'];
+            foreach ($replyIds as $repId) {
+                $repStatus = $statusFetcher((int)$repId);
+                if ($repStatus) {
+                    $descendants[] = $repStatus;
+                    $replyQueue[] = (int)$repId;
                 }
             }
         }
 
         Router::json([
             'status' => $mainStatus,
-            'ancestors' => $ancestors,
-            'descendants' => $descendants
+            'ancestors' => array_values($ancestors),
+            'descendants' => array_values($descendants)
         ]);
     }
 
@@ -5888,25 +5902,11 @@ HTML;
         $idParam = $params['id'] ?? '';
         $account = self::findAccountByIdOrHandle($idParam);
         if (!$account) {
-            Router::json([]);
-            return;
+            $authAcc = self::getAuthenticatedAccount();
+            if ($authAcc && ($idParam === (string)$authAcc['id'] || $idParam === $authAcc['username'] || empty($idParam))) {
+                $account = $authAcc;
+            }
         }
-
-        $id = (int)$account['id'];
-        $db = Database::connect();
-        $stmt = $db->prepare("SELECT a.* FROM accounts a JOIN follows f ON a.id = f.account_id WHERE f.target_account_id = ? AND f.status = 'accepted'");
-        $stmt->execute([$id]);
-        $rows = $stmt->fetchAll();
-        $accounts = [];
-        foreach ($rows as $row) {
-            $accounts[] = self::formatAccount($row);
-        }
-        Router::json($accounts);
-    }
-
-    public static function getFollowing(array $params): void {
-        $idParam = $params['id'] ?? '';
-        $account = self::findAccountByIdOrHandle($idParam);
         if (!$account) {
             Router::json([]);
             return;
@@ -5914,13 +5914,89 @@ HTML;
 
         $id = (int)$account['id'];
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT a.* FROM accounts a JOIN follows f ON a.id = f.target_account_id WHERE f.account_id = ? AND f.status = 'accepted'");
-        $stmt->execute([$id]);
+
+        $limit = min(80, max(1, (int)($_GET['limit'] ?? 40)));
+        $maxId = isset($_GET['max_id']) ? (int)$_GET['max_id'] : null;
+        $sinceId = isset($_GET['since_id']) ? (int)$_GET['since_id'] : null;
+
+        $sql = "SELECT a.* 
+                FROM accounts a 
+                JOIN follows f ON a.id = f.account_id 
+                WHERE f.target_account_id = ? 
+                  AND (f.status = 'accepted' OR f.status = 'pending' OR f.status IS NULL OR f.status = '')";
+        $queryParams = [$id];
+
+        if ($maxId) {
+            $sql .= " AND a.id < ?";
+            $queryParams[] = $maxId;
+        }
+        if ($sinceId) {
+            $sql .= " AND a.id > ?";
+            $queryParams[] = $sinceId;
+        }
+
+        $sql .= " ORDER BY f.id DESC LIMIT ?";
+        $queryParams[] = $limit;
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($queryParams);
         $rows = $stmt->fetchAll();
         $accounts = [];
         foreach ($rows as $row) {
             $accounts[] = self::formatAccount($row);
         }
+        self::setLinkHeader($accounts);
+        Router::json($accounts);
+    }
+
+    public static function getFollowing(array $params): void {
+        $idParam = $params['id'] ?? '';
+        $account = self::findAccountByIdOrHandle($idParam);
+        if (!$account) {
+            $authAcc = self::getAuthenticatedAccount();
+            if ($authAcc && ($idParam === (string)$authAcc['id'] || $idParam === $authAcc['username'] || empty($idParam))) {
+                $account = $authAcc;
+            }
+        }
+        if (!$account) {
+            Router::json([]);
+            return;
+        }
+
+        $id = (int)$account['id'];
+        $db = Database::connect();
+
+        $limit = min(80, max(1, (int)($_GET['limit'] ?? 40)));
+        $maxId = isset($_GET['max_id']) ? (int)$_GET['max_id'] : null;
+        $sinceId = isset($_GET['since_id']) ? (int)$_GET['since_id'] : null;
+
+        $sql = "SELECT a.* 
+                FROM accounts a 
+                JOIN follows f ON a.id = f.target_account_id 
+                WHERE f.account_id = ? 
+                  AND (f.status = 'accepted' OR f.status = 'pending' OR f.status IS NULL OR f.status = '')";
+        $queryParams = [$id];
+
+        if ($maxId) {
+            $sql .= " AND a.id < ?";
+            $queryParams[] = $maxId;
+        }
+        if ($sinceId) {
+            $sql .= " AND a.id > ?";
+            $queryParams[] = $sinceId;
+        }
+
+        $sql .= " ORDER BY f.id DESC LIMIT ?";
+        $queryParams[] = $limit;
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($queryParams);
+        $rows = $stmt->fetchAll();
+        $accounts = [];
+        foreach ($rows as $row) {
+            $accounts[] = self::formatAccount($row);
+        }
+        self::setLinkHeader($accounts);
         Router::json($accounts);
     }
 
@@ -5963,7 +6039,7 @@ HTML;
         $stmt = $db->prepare("
             SELECT a.username, a.domain FROM follows f
             JOIN accounts a ON f.target_account_id = a.id
-            WHERE f.account_id = ? AND f.status = 'accepted'
+            WHERE f.account_id = ? AND (f.status = 'accepted' OR f.status = 'pending' OR f.status IS NULL OR f.status = '')
         ");
         $stmt->execute([$account['id']]);
         $rows = $stmt->fetchAll();
@@ -6047,7 +6123,7 @@ HTML;
         $stmt = $db->prepare("
             SELECT a.username, a.domain FROM follows f
             JOIN accounts a ON f.account_id = a.id
-            WHERE f.target_account_id = ? AND f.status = 'accepted'
+            WHERE f.target_account_id = ? AND (f.status = 'accepted' OR f.status = 'pending' OR f.status IS NULL OR f.status = '')
         ");
         $stmt->execute([$account['id']]);
         $rows = $stmt->fetchAll();
@@ -6297,7 +6373,7 @@ HTML;
                             $stmtFollow->execute([$account['id'], $targetId]);
                             if (!$stmtFollow->fetchColumn()) {
                                 $isRemote = !empty($targetAcc['domain']);
-                                $status = $isRemote ? 'pending' : 'accepted';
+                                $status = ($targetAcc['locked'] ?? 0) ? 'pending' : 'accepted';
                                 $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, ?)");
                                 $stmtIns->execute([$account['id'], $targetId, $status]);
                                 if ($isRemote && !empty($targetAcc['inbox_url'])) {
@@ -6368,21 +6444,19 @@ HTML;
                         $targetAcc = $stmtAcc->fetch();
                         if ($targetAcc) {
                             $targetId = (int)$targetAcc['id'];
-                            // Solo cuentas locales pueden seguirse localmente
-                            if (empty($targetAcc['domain'])) {
-                                $stmtFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
-                                $stmtFollow->execute([$targetId, $account['id']]);
-                                if (!$stmtFollow->fetchColumn()) {
-                                    $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
-                                    $stmtIns->execute([$targetId, $account['id']]);
-                                }
+                            // Registrar relación de seguidor
+                            $stmtFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+                            $stmtFollow->execute([$targetId, $account['id']]);
+                            if (!$stmtFollow->fetchColumn()) {
+                                $stmtIns = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'accepted')");
+                                $stmtIns->execute([$targetId, $account['id']]);
                             }
                             if ($mutual) {
                                 $stmtFollowBack = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
                                 $stmtFollowBack->execute([$account['id'], $targetId]);
                                 if (!$stmtFollowBack->fetchColumn()) {
                                     $isRemote = !empty($targetAcc['domain']);
-                                    $status = $isRemote ? 'pending' : 'accepted';
+                                    $status = ($targetAcc['locked'] ?? 0) ? 'pending' : 'accepted';
                                     $stmtInsBack = $db->prepare("INSERT INTO follows (account_id, target_account_id, status) VALUES (?, ?, ?)");
                                     $stmtInsBack->execute([$account['id'], $targetId, $status]);
 
@@ -6407,18 +6481,16 @@ HTML;
                         }
                     }
 
-                    // Encolar solo cuentas locales (en ActivityPub las cuentas remotas no pueden forzarse a seguir)
-                    if (!str_contains($address, '@')) {
-                        $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollower', ?, 'local', 'pending', datetime('now'))");
-                        $stmtJob->execute([
-                            json_encode([
-                                'account_id' => $account['id'],
-                                'address' => $address,
-                                'mutual' => $mutual
-                            ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-                        ]);
-                        $importedCount++;
-                    }
+                    // Encolar importación de seguidor de forma asíncrona
+                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollower', ?, 'local', 'pending', datetime('now'))");
+                    $stmtJob->execute([
+                        json_encode([
+                            'account_id' => $account['id'],
+                            'address' => $address,
+                            'mutual' => $mutual
+                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                    ]);
+                    $importedCount++;
                 }
             }
             if ($importedCount > 0) {

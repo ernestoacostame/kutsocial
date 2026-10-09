@@ -194,7 +194,7 @@ class AdminController {
         $blocks = $db->query("SELECT * FROM moderation_blocks ORDER BY type ASC, target ASC")->fetchAll();
 
         // 4. Obtener lista de usuarios locales
-        $localUsers = $db->query("SELECT * FROM accounts WHERE domain IS NULL ORDER BY username ASC")->fetchAll();
+        $localUsers = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' ORDER BY username ASC")->fetchAll();
 
         // 5. Datos de actualizaciones (estilo KutPod)
         $updater = new UpdaterService();

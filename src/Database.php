@@ -118,15 +118,6 @@ class Database {
             // Limpieza de auto-seguimientos erróneos
             $db->exec("DELETE FROM follows WHERE account_id = target_account_id");
 
-            // Limpieza de falsos seguidores remotos (creados erróneamente por importación sin actividad federada de ActivityPub)
-            $db->exec("DELETE FROM follows 
-                WHERE (uri IS NULL OR uri = '') 
-                  AND target_account_id IN (SELECT id FROM accounts WHERE domain IS NULL OR domain = '') 
-                  AND account_id IN (SELECT id FROM accounts WHERE domain IS NOT NULL AND domain != '')");
-
-            // Limpieza de tareas erróneas de importación de seguidores en la cola
-            $db->exec("DELETE FROM jobs WHERE activity_type = 'ImportFollower'");
-
             // Normalizar dominio de cuentas locales (evitar que tengan el dominio del servidor asignado como remoto)
             $db->exec("UPDATE accounts SET domain = NULL WHERE domain = '' OR LOWER(domain) = 'localhost'");
             if (!empty($_SERVER['HTTP_HOST'])) {
@@ -135,10 +126,30 @@ class Database {
                 $stmtNorm->execute([$hostClean]);
             }
 
+            // Eliminar cuentas duplicadas locales erróneas (cuentas sin contraseña creadas por auto-resolución del actor local)
+            $stmtDup = $db->query("
+                SELECT id, username FROM accounts 
+                WHERE (domain IS NULL OR domain = '') 
+                  AND (password_hash IS NULL OR password_hash = '') 
+                  AND username IN (SELECT username FROM accounts WHERE password_hash IS NOT NULL AND password_hash != '')
+            ");
+            $dupAccounts = $stmtDup->fetchAll();
+            foreach ($dupAccounts as $dup) {
+                $dupId = (int)$dup['id'];
+                $db->exec("DELETE FROM follows WHERE account_id = $dupId OR target_account_id = $dupId");
+                $db->exec("DELETE FROM statuses WHERE account_id = $dupId");
+                $db->exec("DELETE FROM notifications WHERE account_id = $dupId");
+                $db->exec("DELETE FROM accounts WHERE id = $dupId");
+            }
+
+            // Normalizar estado de seguimientos existentes a accepted para que no queden bloqueados en pending
+            $db->exec("UPDATE follows SET status = 'accepted' 
+                WHERE (status IS NULL OR status = '' OR status = 'pending')");
+
             // Sincronizar contadores reales en la tabla accounts para cuentas locales
             $db->exec("UPDATE accounts SET
-                followers_count = (SELECT COUNT(*) FROM follows WHERE target_account_id = accounts.id AND status = 'accepted'),
-                following_count = (SELECT COUNT(*) FROM follows WHERE account_id = accounts.id AND status = 'accepted'),
+                followers_count = (SELECT COUNT(*) FROM follows WHERE target_account_id = accounts.id AND (status = 'accepted' OR status = 'pending')),
+                following_count = (SELECT COUNT(*) FROM follows WHERE account_id = accounts.id AND (status = 'accepted' OR status = 'pending')),
                 statuses_count = (SELECT COUNT(*) FROM statuses WHERE account_id = accounts.id)
                 WHERE domain IS NULL OR domain = ''");
         } catch (\Throwable $e) {
