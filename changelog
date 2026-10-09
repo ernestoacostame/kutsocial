@@ -36,3 +36,24 @@ Se agregó la casilla "Establecer seguimiento mutuo automáticamente" tanto en e
 
 Las tareas de importación en Queue.php ahora procesan un lote inmediato tras la subida del archivo.
 Se agregó un botón "⚡ Procesar Tareas Pendientes Ahora" en la sección de importación/exportación de tu perfil que ejecuta las tareas pendientes de la cola SQLite al instante si no deseas esperar el proceso en segundo plano.
+
+3. Actualización inmediata de listas y botón "📥 Importar"
+
+Al crear o eliminar una lista, KutSocial re-renderizaba una variable estática (KUTSOCIAL_USER_LISTS) generada una sola vez en la carga inicial del servidor en lugar de consultar la API en tiempo real.
+
+Solución:
+
+Se actualizó loadLists() (tanto en pages.js como en frontend.js) para consultar dinámicamente /api/v1/lists en el servidor y refrescar la barra lateral automáticamente. Al guardar una nueva lista (saveListModal) o borrar una existente (deleteSelectedList), ahora se espera la respuesta y se recargan las listas de inmediato sin necesidad de recargar la página (se aplicó la misma mejora preventiva a las colecciones).
+
+Se agregó el botón 📥 Importar al lado de + Nueva Lista en lists.php y frontend/lists.php. Se incorporó el modal de importación (#modal-import-lists) y la función handleListsImport, permitiendo subir archivos lists.csv (exportados de Mastodon o KutSocial) y reflejar las nuevas listas importadas en pantalla al instante.
+
+4. Solución al error "Not Found" en Seguidores y Siguiendo
+
+Al navegar por el perfil de un usuario en modo página (MPA, ej: /@usuario), solo se renderizaba la plantilla del perfil. Al hacer clic en "Seguidores" o "Siguiendo", showTab('users-list') no encontraba #tab-users-list en el DOM e intentaba redirigir a /users-list, ruta que no estaba registrada en el router y devolvía 404 Not Found.
+
+Solución:
+
+Se incluyó users-list.php de manera permanente en layout.php (inicialmente oculto), permitiendo que la navegación hacia Seguidores y Siguiendo sea instantánea dentro de la misma vista sin salir del perfil.
+
+Se registró la ruta /users-list y /p/users-list en index.php para soportar también accesos directos o recargas de URL.
+Se protegieron las funciones loadUsersList en profile-view.php para resolver automáticamente el ID del usuario del perfil activo si el parámetro llega indefinido.

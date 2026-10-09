@@ -131,6 +131,8 @@ $renderFrontend = function() {
         $section = 'followed-hashtags';
     } elseif ($uri === '/profile') {
         $section = 'profile';
+    } elseif ($uri === '/users-list') {
+        $section = 'users-list';
     } elseif ($uri === '/search-results') {
         $section = 'search-results';
     } elseif (str_starts_with($uri, '/list_')) {
@@ -339,6 +341,10 @@ $renderPagesFrontend = function() {
         $section = 'profile';
         $contentView = 'profile.php';
         $pageTitle = 'Editar Perfil - KutSocial';
+    } elseif ($subUri === '/users-list') {
+        $section = 'users-list';
+        $contentView = 'users-list.php';
+        $pageTitle = 'Usuarios - KutSocial';
     } elseif ($subUri === '/search-results') {
         $section = 'search-results';
         $contentView = 'search-results.php';
@@ -644,6 +650,7 @@ $router->get('/lists', $renderPagesFrontend);
 $router->get('/collections', $renderPagesFrontend);
 $router->get('/followed-hashtags', $renderPagesFrontend);
 $router->get('/profile', $renderPagesFrontend);
+$router->get('/users-list', $renderPagesFrontend);
 $router->get('/statuses/:id', $renderPagesFrontend);
 $router->get('/list_:id', $renderPagesFrontend);
 $router->get('/tag_:tag', $renderPagesFrontend);
@@ -662,6 +669,7 @@ $router->get('/p/lists', $renderPagesFrontend);
 $router->get('/p/collections', $renderPagesFrontend);
 $router->get('/p/followed-hashtags', $renderPagesFrontend);
 $router->get('/p/profile', $renderPagesFrontend);
+$router->get('/p/users-list', $renderPagesFrontend);
 $router->get('/p/@:username', $renderPagesFrontend);
 $router->get('/p/list_:id', $renderPagesFrontend);
 $router->get('/p/tag_:tag', $renderPagesFrontend);

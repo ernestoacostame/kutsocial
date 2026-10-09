@@ -2506,6 +2506,26 @@ function closeEditProfileModal() {
     if (modal) modal.style.display = 'none';
 }
 
+function goToFullProfileSettings(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    closeEditProfileModal();
+
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    const targetUrl = base + '/profile';
+
+    const tabProfile = document.getElementById('tab-profile');
+    if (tabProfile && typeof showTab === 'function') {
+        showTab('profile');
+        const importSection = document.getElementById('import-form') || tabProfile;
+        importSection.scrollIntoView({ behavior: 'smooth' });
+    } else {
+        window.location.href = targetUrl;
+    }
+}
+
 // Interceptar submit del formulario modal de perfil
 const modalProfileForm = document.getElementById('modal-profile-form');
 if (modalProfileForm) {
@@ -2779,14 +2799,24 @@ async function processQueueNow() {
 }
 
 async function loadUsersList(type, accountId) {
+    if (!accountId) {
+        accountId = activeProfileViewId || window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID || currentProfileData?.id;
+    }
     if (!accountId) return;
-    showTab('users-list');
+    
+    if (document.getElementById('tab-users-list')) {
+        showTab('users-list');
+    }
     
     const titleEl = document.getElementById('users-list-title');
-    titleEl.innerText = type === 'followers' ? 'Seguidores' : 'Siguiendo';
+    if (titleEl) {
+        titleEl.innerText = type === 'followers' ? 'Seguidores' : 'Siguiendo';
+    }
     
     const container = document.getElementById('users-list-container');
-    container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando usuarios...</div>';
+    if (container) {
+        container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando usuarios...</div>';
+    }
     
     try {
         const endpoint = type === 'followers' 
@@ -4627,10 +4657,24 @@ async function loadLists() {
         window.location.href = base + '/lists';
         return;
     }
-    if (window.KUTSOCIAL_USER_LISTS) {
-        allLists = window.KUTSOCIAL_USER_LISTS;
-    } else {
-        allLists = [];
+    try {
+        const res = await fetch('/api/v1/lists', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            allLists = await res.json();
+            window.KUTSOCIAL_USER_LISTS = allLists;
+        } else if (window.KUTSOCIAL_USER_LISTS) {
+            allLists = window.KUTSOCIAL_USER_LISTS;
+        } else {
+            allLists = [];
+        }
+    } catch (e) {
+        if (window.KUTSOCIAL_USER_LISTS) {
+            allLists = window.KUTSOCIAL_USER_LISTS;
+        } else {
+            allLists = [];
+        }
     }
     renderListsSidebar();
     
@@ -4789,7 +4833,7 @@ async function deleteSelectedList() {
         });
         if (res.ok) {
             selectedListId = null;
-            loadLists();
+            await loadLists();
         }
     } catch (e) {
         console.error(e);
@@ -4804,6 +4848,88 @@ function showCreateListModal() {
 
 function closeListModal() {
     document.getElementById('modal-manage-list').style.display = 'none';
+}
+
+function showImportListsModal() {
+    const modal = document.getElementById('modal-import-lists');
+    if (modal) {
+        const statusDiv = document.getElementById('lists-import-status');
+        if (statusDiv) statusDiv.innerText = '';
+        const fileInput = document.getElementById('lists-import-file');
+        if (fileInput) fileInput.value = '';
+        modal.style.display = 'flex';
+    }
+}
+
+function closeImportListsModal() {
+    const modal = document.getElementById('modal-import-lists');
+    if (modal) modal.style.display = 'none';
+}
+
+async function handleListsImport(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const fileInput = document.getElementById('lists-import-file');
+    const statusDiv = document.getElementById('lists-import-status');
+    const submitBtn = document.getElementById('lists-import-submit-btn');
+
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        if (statusDiv) {
+            statusDiv.innerText = 'Selecciona un archivo CSV.';
+            statusDiv.style.color = 'var(--error)';
+        }
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('type', 'lists');
+    formData.append('file', fileInput.files[0]);
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Importando...';
+    }
+    if (statusDiv) {
+        statusDiv.innerText = 'Procesando listas...';
+        statusDiv.style.color = 'var(--text-muted)';
+    }
+
+    try {
+        const response = await fetch('/api/v1/import', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (statusDiv) {
+                statusDiv.innerText = `✓ Listas importadas: ${data.imported || 0} registros procesados.`;
+                statusDiv.style.color = 'var(--secondary)';
+            }
+            await loadLists();
+            setTimeout(() => {
+                closeImportListsModal();
+            }, 1200);
+        } else {
+            const data = await response.json().catch(() => ({}));
+            if (statusDiv) {
+                statusDiv.innerText = 'Error al importar: ' + (data.error || 'Intenta de nuevo.');
+                statusDiv.style.color = 'var(--error)';
+            }
+        }
+    } catch (err) {
+        if (statusDiv) {
+            statusDiv.innerText = 'Error de conexión al importar listas.';
+            statusDiv.style.color = 'var(--error)';
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Subir e Importar';
+        }
+    }
 }
 
 async function saveListModal() {
@@ -4823,7 +4949,7 @@ async function saveListModal() {
             const newList = await res.json();
             selectedListId = newList.id;
             closeListModal();
-            loadLists();
+            await loadLists();
         } else {
             alert('Error al crear la lista');
         }
@@ -4844,10 +4970,24 @@ async function loadCollections() {
         window.location.href = base + '/collections';
         return;
     }
-    if (window.KUTSOCIAL_USER_COLLECTIONS) {
-        allCollections = window.KUTSOCIAL_USER_COLLECTIONS;
-    } else {
-        allCollections = [];
+    try {
+        const res = await fetch('/api/v1/collections', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            allCollections = await res.json();
+            window.KUTSOCIAL_USER_COLLECTIONS = allCollections;
+        } else if (window.KUTSOCIAL_USER_COLLECTIONS) {
+            allCollections = window.KUTSOCIAL_USER_COLLECTIONS;
+        } else {
+            allCollections = [];
+        }
+    } catch (e) {
+        if (window.KUTSOCIAL_USER_COLLECTIONS) {
+            allCollections = window.KUTSOCIAL_USER_COLLECTIONS;
+        } else {
+            allCollections = [];
+        }
     }
     renderCollectionsSidebar();
     
@@ -4971,7 +5111,7 @@ async function deleteSelectedCollection() {
         });
         if (res.ok) {
             selectedCollectionId = null;
-            loadCollections();
+            await loadCollections();
         }
     } catch (e) {
         console.error(e);
@@ -5007,7 +5147,7 @@ async function saveCollectionModal() {
             const newColl = await res.json();
             selectedCollectionId = newColl.id;
             closeCollectionModal();
-            loadCollections();
+            await loadCollections();
         } else {
             alert('Error al crear la colección');
         }

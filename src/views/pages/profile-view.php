@@ -61,11 +61,11 @@
             </div>
 
             <div style="display: flex; gap: 24px; margin-bottom: 20px; border-bottom: 1px solid var(--border-color); padding-bottom: 15px;">
-                <div onclick="loadUsersList('followers', activeProfileViewId)" style="cursor: pointer;">
+                <div onclick="loadUsersList('followers', activeProfileViewId || window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID || (currentProfileData && currentProfileData.id))" style="cursor: pointer;">
                     <div id="profile-view-followers-count" class="stat-num">0</div>
                     <div class="stat-label" style="text-decoration: underline; text-decoration-style: dotted;">Seguidores</div>
                 </div>
-                <div onclick="loadUsersList('following', activeProfileViewId)" style="cursor: pointer;">
+                <div onclick="loadUsersList('following', activeProfileViewId || window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID || (currentProfileData && currentProfileData.id))" style="cursor: pointer;">
                     <div id="profile-view-following-count" class="stat-num">0</div>
                     <div class="stat-label" style="text-decoration: underline; text-decoration-style: dotted;">Siguiendo</div>
                 </div>

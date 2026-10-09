@@ -3,7 +3,10 @@
         <h2 style="font-size: 18px; margin: 0; display: flex; align-items: center; gap: 8px;">
             <span class="material-icons-outlined" style="color: var(--primary);">list</span> Mis Listas
         </h2>
-        <button onclick="showCreateListModal()" class="btn-publish" style="width: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0; box-shadow: none;">+ Nueva Lista</button>
+        <div style="display: flex; gap: 8px; align-items: center;">
+            <button onclick="showImportListsModal()" class="btn-publish" style="width: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0; box-shadow: none; background: rgba(255,255,255,0.08); border: 1px solid var(--border-color); color: var(--text-color); cursor: pointer;">📥 Importar</button>
+            <button onclick="showCreateListModal()" class="btn-publish" style="width: auto; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; margin: 0; box-shadow: none;">+ Nueva Lista</button>
+        </div>
     </div>
     <div id="lists-layout" style="display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 20px;">
         <div id="lists-sidebar" style="border-right: 1px solid var(--border-color); padding-right: 15px; display: flex; flex-direction: column; gap: 8px; min-height: 200px;">

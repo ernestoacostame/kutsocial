@@ -158,6 +158,9 @@ $basePath = $basePath ?? '';
             } else {
                 echo '<div style="padding: 40px; text-align: center; color: var(--text-muted);">Página no encontrada.</div>';
             }
+            if ($contentView !== 'users-list.php' && file_exists(__DIR__ . '/users-list.php')) {
+                include __DIR__ . '/users-list.php';
+            }
             ?>
         </main>
 
@@ -268,7 +271,7 @@ $basePath = $basePath ?? '';
                 </div>
 
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
-                    <a href="/profile" style="font-size: 12.5px; color: var(--primary); text-decoration: underline;">Ajustes completos y exportación &rarr;</a>
+                    <a href="<?= $basePath ?? '' ?>/profile" onclick="goToFullProfileSettings(event)" style="font-size: 13px; color: var(--primary); text-decoration: underline; cursor: pointer;">Ajustes completos e importación &rarr;</a>
                     <div class="modal-actions" style="margin: 0;">
                         <button type="button" class="modal-btn-cancel" onclick="closeEditProfileModal()">Cancelar</button>
                         <button type="submit" class="modal-btn-confirm" id="modal-profile-submit-btn">Guardar Cambios</button>
@@ -321,6 +324,29 @@ $basePath = $basePath ?? '';
                 <button class="modal-btn-cancel" onclick="closeListModal()">Cancelar</button>
                 <button class="modal-btn-confirm" onclick="saveListModal()">Guardar</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal: Importar Listas -->
+    <div id="modal-import-lists" class="modal-overlay" style="display: none; z-index: 2500;" onclick="if(event.target === this) closeImportListsModal()">
+        <div class="modal-card" style="max-width: 440px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+                <h3 class="modal-title" style="margin: 0; font-size: 16px;">📥 Importar Listas (CSV)</h3>
+                <button type="button" onclick="closeImportListsModal()" style="background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer;">&times;</button>
+            </div>
+            <form id="lists-import-form" onsubmit="handleListsImport(event)">
+                <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 10px 0;">
+                    Selecciona un archivo <code>lists.csv</code> exportado desde Mastodon u otra instancia KutSocial.
+                </p>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <input type="file" id="lists-import-file" name="file" accept=".csv,text/csv" required class="modal-input" style="padding: 8px;">
+                </div>
+                <div class="modal-actions" style="margin: 0;">
+                    <button type="button" class="modal-btn-cancel" onclick="closeImportListsModal()">Cancelar</button>
+                    <button type="submit" class="modal-btn-confirm" id="lists-import-submit-btn">Subir e Importar</button>
+                </div>
+                <div id="lists-import-status" style="margin-top: 10px; font-size: 13px; text-align: center; font-weight: 600;"></div>
+            </form>
         </div>
     </div>
 
