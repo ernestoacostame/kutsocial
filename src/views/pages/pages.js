@@ -5337,13 +5337,12 @@ async function loadFollowedHashtags() {
         followedTags.forEach(tag => {
             const div = document.createElement('div');
             div.className = 'tag-follow-card';
-            div.style = "display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 15px;";
             div.innerHTML = `
-                <div style="cursor:pointer; display:flex; flex-direction:column; min-width:0; flex:1; margin-right:8px;" onclick="viewHashtagTimeline('${tag}')">
-                    <span style="font-weight:700; color:var(--text-color); font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">#${escapeHTML(tag)}</span>
-                    <span style="font-size:11px; color:var(--text-muted); margin-top:2px;">Ver publicaciones</span>
+                <div class="tag-follow-info" onclick="viewHashtagTimeline('${tag}')">
+                    <span class="tag-follow-name">#${escapeHTML(tag)}</span>
+                    <span class="tag-follow-sub">Ver publicaciones</span>
                 </div>
-                <button class="btn-publish" style="width:auto; white-space:nowrap; flex-shrink:0; padding: 4px 10px; font-size: 11px; margin: 0; background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color);" onclick="unfollowHashtag('${tag}', this.parentElement)">Dejar de seguir</button>
+                <button type="button" class="btn-unfollow-tag" onclick="unfollowHashtag('${tag}', this.parentElement)" title="Dejar de seguir hashtag">✕</button>
             `;
             container.appendChild(div);
         });
@@ -5388,10 +5387,11 @@ async function followHashtag(name) {
 async function unfollowHashtag(name, cardElement) {
     let btn = null;
     if (cardElement) {
-        btn = cardElement.tagName === 'BUTTON' ? cardElement : cardElement.querySelector('button');
+        btn = cardElement.tagName === 'BUTTON' ? cardElement : cardElement.querySelector('.btn-unfollow-tag') || cardElement.querySelector('button');
         if (btn) {
-            btn.innerText = 'Dejando...';
+            btn.innerHTML = '…';
             btn.disabled = true;
+            btn.style.opacity = '0.5';
         }
     }
     try {
@@ -5402,13 +5402,15 @@ async function unfollowHashtag(name, cardElement) {
         if (res.ok) {
             loadFollowedHashtags();
         } else if (btn) {
-            btn.innerText = 'Dejar de seguir';
+            btn.innerHTML = '✕';
             btn.disabled = false;
+            btn.style.opacity = '1';
         }
     } catch (e) {
         if (btn) {
-            btn.innerText = 'Dejar de seguir';
+            btn.innerHTML = '✕';
             btn.disabled = false;
+            btn.style.opacity = '1';
         }
     }
 }
