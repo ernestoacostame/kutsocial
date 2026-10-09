@@ -45,7 +45,7 @@
     </div>
 
     <!-- Layout Principal -->
-    <div id="app-container" class="app-layout">
+    <div id="app-container" class="app-layout <?= empty($showRightSidebar) ? 'no-right-sidebar' : '' ?>">
         
         <!-- Sidebar Izquierdo -->
         <aside class="sidebar">
@@ -166,7 +166,7 @@
         </main>
 
         <!-- Columna Derecha (Instancia) -->
-        <aside class="right-sidebar">
+        <aside class="right-sidebar" <?= empty($showRightSidebar) ? 'style="display: none;"' : '' ?>>
             <!-- Actualizaciones del Servidor -->
             <div class="widget-card">
                 <div class="update-indicator">
@@ -198,7 +198,7 @@
         <div class="modal-card" style="max-width: 540px; max-height: 90vh; overflow-y: auto;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
                 <h3 class="modal-title" style="margin: 0;">✏️ Editar Perfil</h3>
-                <button type="button" onclick="closeEditProfileModal()" style="background: none; border: none; font-size: 22px; color: var(--text-muted); cursor: pointer; line-height: 1;">&times;</button>
+                <button type="button" class="modal-close-btn" onclick="closeEditProfileModal()" aria-label="Cerrar">&times;</button>
             </div>
             
             <form id="modal-profile-form" enctype="multipart/form-data">
@@ -339,7 +339,7 @@
         <div class="modal-card" style="max-width: 440px;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
                 <h3 class="modal-title" style="margin: 0; font-size: 16px;">📥 Importar Listas (CSV)</h3>
-                <button type="button" onclick="closeImportListsModal()" style="background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer;">&times;</button>
+                <button type="button" class="modal-close-btn" onclick="closeImportListsModal()" aria-label="Cerrar">&times;</button>
             </div>
             <form id="lists-import-form" onsubmit="handleListsImport(event)">
                 <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 10px 0;">

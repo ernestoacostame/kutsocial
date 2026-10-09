@@ -1770,6 +1770,23 @@ function updateCharCount() {
     }
 }
 
+function updateRightSidebarVisibility(tabName, timeline = currentTimeline) {
+    const rightSidebar = document.querySelector('.right-sidebar');
+    const appContainer = document.getElementById('app-container');
+    if (!rightSidebar) return;
+
+    // Solo mostrar en Inicio, Timeline local, Ponerse al Día y Federación pública
+    const isAllowed = (tabName === 'feed' && ['home', 'local', 'public'].includes(timeline)) || tabName === 'catchup' || (timeline === 'catchup');
+
+    if (isAllowed) {
+        rightSidebar.style.display = '';
+        if (appContainer) appContainer.classList.remove('no-right-sidebar');
+    } else {
+        rightSidebar.style.display = 'none';
+        if (appContainer) appContainer.classList.add('no-right-sidebar');
+    }
+}
+
 function showTab(tabName, fromHashChange = false) {
     const tabElement = document.getElementById('tab-' + tabName);
     if (fromHashChange && tabElement && tabElement.style.display === 'block') {
@@ -1803,6 +1820,8 @@ function showTab(tabName, fromHashChange = false) {
     if (tabElement) {
         tabElement.style.display = 'block';
     }
+
+    updateRightSidebarVisibility(tabName, currentTimeline);
 
     if (tabName === 'feed') {
         const navPub = document.getElementById('nav-public');
@@ -4652,14 +4671,24 @@ async function loadLists() {
 
 function renderListsSidebar() {
     const sidebar = document.getElementById('lists-sidebar');
+    if (!sidebar) return;
     sidebar.innerHTML = '';
+    if (allLists.length === 0) {
+        sidebar.innerHTML = '<div style="font-size: 13px; color: var(--text-muted); padding: 25px 10px; text-align: center;">No tienes listas creadas ni importadas.</div>';
+        return;
+    }
     allLists.forEach(l => {
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'list-nav-btn' + (selectedListId === l.id ? ' active' : '');
+        btn.setAttribute('data-list-id', l.id);
         btn.onclick = () => selectList(l.id);
         btn.innerHTML = `
-            <span>📋 ${escapeHTML(l.title)}</span>
-            <span class="material-icons-outlined" style="font-size: 14px; opacity: 0.5;">chevron_right</span>
+            <span style="display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary); flex-shrink: 0;">list</span>
+                <span style="overflow: hidden; text-overflow: ellipsis;">${escapeHTML(l.title)}</span>
+            </span>
+            <span class="material-icons-outlined" style="font-size: 16px; opacity: 0.4; flex-shrink: 0;">chevron_right</span>
         `;
         sidebar.appendChild(btn);
     });
@@ -4668,8 +4697,9 @@ function renderListsSidebar() {
 async function selectList(id) {
     selectedListId = id;
     listActiveSubView = 'feed';
-    document.querySelectorAll('#lists-sidebar .list-nav-btn').forEach((btn, idx) => {
-        if (allLists[idx] && allLists[idx].id === id) {
+    document.querySelectorAll('#lists-sidebar .list-nav-btn').forEach((btn) => {
+        const btnId = parseInt(btn.getAttribute('data-list-id'));
+        if (btnId === id) {
             btn.classList.add('active');
         } else {
             btn.classList.remove('active');
@@ -4679,22 +4709,27 @@ async function selectList(id) {
     const list = allLists.find(l => l.id === id);
     if (!list) return;
 
-    document.getElementById('list-no-selection').style.display = 'none';
-    document.getElementById('list-detail-view').style.display = 'block';
-    document.getElementById('selected-list-title').innerText = list.title;
+    const noSel = document.getElementById('list-no-selection');
+    const detail = document.getElementById('list-detail-view');
+    const titleEl = document.getElementById('selected-list-title');
+    if (noSel) noSel.style.display = 'none';
+    if (detail) detail.style.display = 'block';
+    if (titleEl) titleEl.innerText = list.title;
     
     loadListTimelineView();
 }
 
 function loadListTimelineView() {
     listActiveSubView = 'feed';
-    document.getElementById('btn-list-timeline').style.background = 'var(--primary)';
-    document.getElementById('btn-list-members').style.background = 'rgba(255,255,255,0.06)';
+    const btnTimeline = document.getElementById('btn-list-timeline');
+    const btnMembers = document.getElementById('btn-list-members');
+    if (btnTimeline) btnTimeline.classList.add('active');
+    if (btnMembers) btnMembers.classList.remove('active');
     
     document.getElementById('list-members-container').style.display = 'none';
     const feedContainer = document.getElementById('list-feed-container');
     feedContainer.style.display = 'block';
-    feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando publicaciones de la lista...</div>';
+    feedContainer.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">Cargando publicaciones de la lista...</div>';
 
     fetch(`/api/v1/timelines/list/${selectedListId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -4703,7 +4738,7 @@ function loadListTimelineView() {
     .then(toots => {
         feedContainer.innerHTML = '';
         if (toots.length === 0) {
-            feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No hay publicaciones de miembros de esta lista.</div>';
+            feedContainer.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted); background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px;">No hay publicaciones de miembros de esta lista.</div>';
             return;
         }
         toots.forEach(toot => {
@@ -4712,19 +4747,21 @@ function loadListTimelineView() {
         });
     })
     .catch(e => {
-        feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar timeline de la lista.</div>';
+        feedContainer.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--error);">Error al cargar timeline de la lista.</div>';
     });
 }
 
 function loadListMembersView() {
     listActiveSubView = 'members';
-    document.getElementById('btn-list-timeline').style.background = 'rgba(255,255,255,0.06)';
-    document.getElementById('btn-list-members').style.background = 'var(--primary)';
+    const btnTimeline = document.getElementById('btn-list-timeline');
+    const btnMembers = document.getElementById('btn-list-members');
+    if (btnTimeline) btnTimeline.classList.remove('active');
+    if (btnMembers) btnMembers.classList.add('active');
     
     document.getElementById('list-feed-container').style.display = 'none';
     const membersContainer = document.getElementById('list-members-container');
     membersContainer.style.display = 'flex';
-    membersContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando miembros...</div>';
+    membersContainer.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">Cargando miembros...</div>';
 
     fetch(`/api/v1/lists/${selectedListId}/accounts`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -4733,21 +4770,21 @@ function loadListMembersView() {
     .then(accounts => {
         membersContainer.innerHTML = '';
         if (accounts.length === 0) {
-            membersContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Esta lista está vacía. Añade miembros desde sus perfiles.</div>';
+            membersContainer.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted); background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px;">Esta lista está vacía. Añade miembros desde sus perfiles.</div>';
             return;
         }
         accounts.forEach(acc => {
             const div = document.createElement('div');
-            div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; background: rgba(255,255,255,0.02); min-width: 0; gap: 15px;";
+            div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 16px; background: var(--card-bg); min-width: 0; gap: 15px;";
             div.innerHTML = `
-                <div style="display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; flex: 1;" onclick="viewProfile('${acc.id}')">
-                    <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">
+                <div style="display: flex; align-items: center; gap: 12px; cursor: pointer; min-width: 0; flex: 1;" onclick="viewProfile('${acc.id}')">
+                    <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">
                     <div class="user-info">
-                        <div class="user-name" style="font-size: 14px;">${escapeHTML(acc.display_name || acc.username)}</div>
-                        <div class="user-handle">@${escapeHTML(acc.acct)}</div>
+                        <div class="user-name" style="font-size: 14px; font-weight: 600;">${escapeHTML(acc.display_name || acc.username)}</div>
+                        <div class="user-handle" style="font-size: 12px; color: var(--text-muted);">@${escapeHTML(acc.acct)}</div>
                     </div>
                 </div>
-                <button class="btn-delete-item" onclick="removeFromList('${acc.id}', this)" title="Eliminar miembro de la lista">
+                <button type="button" class="btn-delete-item" onclick="removeFromList('${acc.id}', this)" title="Eliminar miembro de la lista" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; margin: 0; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; color: var(--error); cursor: pointer;">
                     <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
                 </button>
             `;
@@ -4755,7 +4792,7 @@ function loadListMembersView() {
         });
     })
     .catch(e => {
-        membersContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar miembros de la lista.</div>';
+        membersContainer.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--error);">Error al cargar miembros de la lista.</div>';
     });
 }
 
@@ -4964,14 +5001,24 @@ async function loadCollections() {
 
 function renderCollectionsSidebar() {
     const sidebar = document.getElementById('collections-sidebar');
+    if (!sidebar) return;
     sidebar.innerHTML = '';
+    if (allCollections.length === 0) {
+        sidebar.innerHTML = '<div style="font-size: 13px; color: var(--text-muted); padding: 25px 10px; text-align: center;">No tienes colecciones.</div>';
+        return;
+    }
     allCollections.forEach(c => {
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'list-nav-btn' + (selectedCollectionId === c.id ? ' active' : '');
+        btn.setAttribute('data-collection-id', c.id);
         btn.onclick = () => selectCollection(c.id);
         btn.innerHTML = `
-            <span>📁 ${escapeHTML(c.title || c.name)}</span>
-            <span class="material-icons-outlined" style="font-size: 14px; opacity: 0.5;">chevron_right</span>
+            <span style="display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary); flex-shrink: 0;">folder</span>
+                <span style="overflow: hidden; text-overflow: ellipsis;">${escapeHTML(c.title || c.name)}</span>
+            </span>
+            <span class="material-icons-outlined" style="font-size: 16px; opacity: 0.4; flex-shrink: 0;">chevron_right</span>
         `;
         sidebar.appendChild(btn);
     });
@@ -4979,8 +5026,9 @@ function renderCollectionsSidebar() {
 
 async function selectCollection(id) {
     selectedCollectionId = id;
-    document.querySelectorAll('#collections-sidebar .list-nav-btn').forEach((btn, idx) => {
-        if (allCollections[idx] && allCollections[idx].id === id) {
+    document.querySelectorAll('#collections-sidebar .list-nav-btn').forEach((btn) => {
+        const btnId = parseInt(btn.getAttribute('data-collection-id'));
+        if (btnId === id) {
             btn.classList.add('active');
         } else {
             btn.classList.remove('active');
@@ -4990,10 +5038,14 @@ async function selectCollection(id) {
     const collection = allCollections.find(c => c.id === id);
     if (!collection) return;
 
-    document.getElementById('collection-no-selection').style.display = 'none';
-    document.getElementById('collection-detail-view').style.display = 'block';
-    document.getElementById('selected-collection-title').innerText = collection.title || collection.name;
-    document.getElementById('selected-collection-desc').innerText = collection.description || 'Sin descripción';
+    const noSel = document.getElementById('collection-no-selection');
+    const detail = document.getElementById('collection-detail-view');
+    const titleEl = document.getElementById('selected-collection-title');
+    const descEl = document.getElementById('selected-collection-desc');
+    if (noSel) noSel.style.display = 'none';
+    if (detail) detail.style.display = 'block';
+    if (titleEl) titleEl.innerText = collection.title || collection.name;
+    if (descEl) descEl.innerText = collection.description || 'Sin descripción';
     
     loadCollectionAccounts();
 }

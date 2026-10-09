@@ -166,6 +166,9 @@ $renderFrontend = function() {
         $activeThreadId = end($parts);
     }
 
+    // La columna derecha solo se muestra en Inicio, Timeline local, Catchup y Federación pública
+    $showRightSidebar = ($section === 'catchup') || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup']));
+
     $path = __DIR__ . '/src/views/frontend.html';
     if (file_exists($path)) {
         // Evaluar frontend.html como PHP (permite los includes de las vistas)
@@ -190,6 +193,7 @@ $renderFrontend = function() {
         window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_HASHTAGS = " . json_encode($userHashtags, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.KUTSOCIAL_SHOW_RIGHT_SIDEBAR = " . ($showRightSidebar ? 'true' : 'false') . ";
         window.GIPHY_API_KEY = '{$giphyApiKey}';
     </script>
         ";
@@ -389,6 +393,9 @@ $renderPagesFrontend = function() {
         $pageTitle = 'Conversación - KutSocial';
     }
 
+    // La columna derecha solo se muestra en Inicio, Timeline local, Catchup y Federación pública
+    $showRightSidebar = ($section === 'catchup') || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup']));
+
     $basePath = (str_starts_with($uri, '/p/') || $uri === '/p') ? '/p' : '';
     $path = __DIR__ . '/src/views/pages/layout.php';
     if (file_exists($path)) {
@@ -413,6 +420,7 @@ $renderPagesFrontend = function() {
         window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_HASHTAGS = " . json_encode($userHashtags, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
+        window.KUTSOCIAL_SHOW_RIGHT_SIDEBAR = " . ($showRightSidebar ? 'true' : 'false') . ";
         window.GIPHY_API_KEY = '{$giphyApiKey}';
     </script>
         ";
