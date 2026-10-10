@@ -200,7 +200,7 @@ class NotificationHelper {
             }
 
             // 2. Buscar menciones en el contenido del post
-            $stmtLocal = $db->prepare("SELECT * FROM accounts WHERE domain IS NULL");
+            $stmtLocal = $db->prepare("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != ''");
             $stmtLocal->execute();
             $localUsers = $stmtLocal->fetchAll();
             foreach ($localUsers as $user) {

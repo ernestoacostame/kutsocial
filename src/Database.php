@@ -126,20 +126,23 @@ class Database {
                 $stmtNorm->execute([$hostClean]);
             }
 
-            // Eliminar cuentas duplicadas locales erróneas (cuentas sin contraseña creadas por auto-resolución del actor local)
-            $stmtDup = $db->query("
-                SELECT id, username FROM accounts 
+            // Eliminar cuentas fantasmas/duplicadas sin contraseña asignadas a dominio local
+            $stmtGhost = $db->query("
+                SELECT id FROM accounts 
                 WHERE (domain IS NULL OR domain = '') 
-                  AND (password_hash IS NULL OR password_hash = '') 
-                  AND username IN (SELECT username FROM accounts WHERE password_hash IS NOT NULL AND password_hash != '')
+                  AND (password_hash IS NULL OR password_hash = '')
             ");
-            $dupAccounts = $stmtDup->fetchAll();
-            foreach ($dupAccounts as $dup) {
-                $dupId = (int)$dup['id'];
-                $db->exec("DELETE FROM follows WHERE account_id = $dupId OR target_account_id = $dupId");
-                $db->exec("DELETE FROM statuses WHERE account_id = $dupId");
-                $db->exec("DELETE FROM notifications WHERE account_id = $dupId");
-                $db->exec("DELETE FROM accounts WHERE id = $dupId");
+            $ghostIds = $stmtGhost ? $stmtGhost->fetchAll(\PDO::FETCH_COLUMN) : [];
+            if (!empty($ghostIds)) {
+                $db->exec("PRAGMA foreign_keys = OFF;");
+                $ghostList = implode(',', array_map('intval', $ghostIds));
+                $db->exec("DELETE FROM follows WHERE account_id IN ($ghostList) OR target_account_id IN ($ghostList)");
+                $db->exec("DELETE FROM statuses WHERE account_id IN ($ghostList)");
+                $db->exec("DELETE FROM notifications WHERE account_id IN ($ghostList)");
+                $db->exec("DELETE FROM favourites WHERE account_id IN ($ghostList)");
+                $db->exec("DELETE FROM bookmarks WHERE account_id IN ($ghostList)");
+                $db->exec("DELETE FROM accounts WHERE id IN ($ghostList)");
+                $db->exec("PRAGMA foreign_keys = ON;");
             }
 
             // Normalizar estado de seguimientos existentes a accepted para que no queden bloqueados en pending

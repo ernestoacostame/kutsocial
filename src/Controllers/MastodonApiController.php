@@ -46,9 +46,9 @@ class MastodonApiController {
                 'streaming_api' => 'wss://' . $domain . '/api/v1/streaming'
             ],
             'stats' => [
-                'user_count' => self::getTableRowCount('accounts', "domain IS NULL"),
+                'user_count' => self::getTableRowCount('accounts', "(domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != ''"),
                 'status_count' => self::getTableRowCount('statuses'),
-                'domain_count' => self::getTableRowCount('accounts', "domain IS NOT NULL")
+                'domain_count' => self::getTableRowCount('accounts', "domain IS NOT NULL AND domain != ''")
             ],
             'thumbnail' => $base . '/assets/thumbnail.png',
             'languages' => ['es', 'en'],
@@ -134,7 +134,7 @@ class MastodonApiController {
             'description' => 'KutSocial: Alternativa ultraligera construida sobre PHP y SQLite.',
             'usage' => [
                 'users' => [
-                    'active_month' => self::getTableRowCount('accounts', "domain IS NULL")
+                    'active_month' => self::getTableRowCount('accounts', "(domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != ''")
                 ]
             ],
             'thumbnail' => [
@@ -223,7 +223,7 @@ class MastodonApiController {
     public static function nodeinfo20(): void {
         $db = Database::connect();
         
-        $userCount = self::getTableRowCount('accounts', "domain IS NULL");
+        $userCount = self::getTableRowCount('accounts', "(domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != ''");
         $statusCount = self::getTableRowCount('statuses');
 
         Router::json([
