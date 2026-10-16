@@ -10,14 +10,16 @@ class Queue {
      * Encola una actividad para entregar a un inbox remoto.
      */
     public static function enqueue(string $activityType, array $payload, string $inboxUrl): int {
-        $db = Database::connect();
-        $stmt = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES (?, ?, ?, 'pending', datetime('now'))");
-        $stmt->execute([
-            $activityType,
-            json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-            $inboxUrl
-        ]);
-        return (int)$db->lastInsertId();
+        return Database::executeWithRetry(function() use ($activityType, $payload, $inboxUrl) {
+            $db = Database::connect();
+            $stmt = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES (?, ?, ?, 'pending', datetime('now'))");
+            $stmt->execute([
+                $activityType,
+                json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                $inboxUrl
+            ]);
+            return (int)$db->lastInsertId();
+        });
     }
 
     /**
@@ -39,7 +41,7 @@ class Queue {
             }
         }
 
-        // Ejecutar en segundo plano local por shell si es Unix (evita problemas de NAT Loopback local)
+        // 1. Prioridad: Ejecutar en segundo plano local por shell si es Unix
         $cronPath = realpath(__DIR__ . '/../cron.php');
         if ($cronPath && DIRECTORY_SEPARATOR === '/') {
             if (function_exists('exec') && !in_array('exec', array_map('trim', explode(',', ini_get('disable_functions') ?: '')))) {
@@ -50,62 +52,84 @@ class Queue {
             }
         }
 
-        if (function_exists('curl_init')) {
+        // 2. Si CLI no pudo ejecutarse, intentar trigger web async por cURL
+        if (!$executed && function_exists('curl_init')) {
             $ch = curl_init($url);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_TIMEOUT => 2,
+                CURLOPT_TIMEOUT => 1,
                 CURLOPT_NOSIGNAL => 1,
                 CURLOPT_SSL_VERIFYPEER => false,
                 CURLOPT_SSL_VERIFYHOST => false
             ]);
             @curl_exec($ch);
             @curl_close($ch);
+            $executed = true;
         }
 
-        // Registrar procesamiento al terminar el script de manera no bloqueante
-        register_shutdown_function(function() {
-            if (function_exists('fastcgi_finish_request')) {
-                @fastcgi_finish_request();
-            }
-            try {
-                // Procesar hasta 25 tareas de la cola al terminar la petición
-                self::process(25);
-            } catch (\Exception $e) {
-                // Silenciar errores
-            }
-        });
+        // 3. Fallback: Solo registrar en shutdown si no se pudo invocar un proceso externo
+        if (!$executed) {
+            register_shutdown_function(function() {
+                if (function_exists('fastcgi_finish_request')) {
+                    @fastcgi_finish_request();
+                }
+                try {
+                    self::process(10);
+                } catch (\Exception $e) {
+                    // Silenciar errores
+                }
+            });
+        }
     }
 
     /**
      * Procesa una cantidad de tareas pendientes.
      */
     public static function process(int $limit = 10): int {
-        $db = Database::connect();
-        
-        // Liberar tareas atascadas en 'processing' por más de 10 minutos
-        try {
-            $db->exec("UPDATE jobs SET status = 'pending' WHERE status = 'processing' AND next_attempt <= datetime('now', '-10 minutes')");
-        } catch (\Exception $e) {}
-        
-        // Obtener tareas pendientes o fallidas con intentos menores a 5
-        $stmt = $db->prepare("
-            SELECT * FROM jobs 
-            WHERE (status = 'pending' OR status = 'failed') 
-              AND attempts < 5 
-              AND next_attempt <= datetime('now') 
-            LIMIT ?
-        ");
-        $stmt->bindValue(1, $limit, PDO::PARAM_INT);
-        $stmt->execute();
-        $jobs = $stmt->fetchAll();
+        // Mecanismo de exclusión mutua para evitar ejecuciones concurrentes de workers compitiendo por SQLite
+        $lockFile = dirname(Database::getDbPath()) . '/queue_worker.lock';
+        $lockFp = @fopen($lockFile, 'c');
+        if (!$lockFp || !@flock($lockFp, LOCK_EX | LOCK_NB)) {
+            if ($lockFp) {
+                @fclose($lockFp);
+            }
+            return 0;
+        }
 
-        $processed = 0;
-        foreach ($jobs as $job) {
-            $processed++;
-            // Marcar como en proceso
-            $upd = $db->prepare("UPDATE jobs SET status = 'processing', attempts = attempts + 1 WHERE id = ?");
-            $upd->execute([$job['id']]);
+        try {
+            $db = Database::connect();
+            
+            // Liberar tareas atascadas en 'processing' por más de 10 minutos
+            try {
+                Database::executeWithRetry(function() use ($db) {
+                    $db->exec("UPDATE jobs SET status = 'pending' WHERE status = 'processing' AND next_attempt <= datetime('now', '-10 minutes')");
+                });
+            } catch (\Exception $e) {}
+            
+            // Obtener tareas pendientes o fallidas con intentos menores a 5
+            $stmt = $db->prepare("
+                SELECT * FROM jobs 
+                WHERE (status = 'pending' OR status = 'failed') 
+                  AND attempts < 5 
+                  AND next_attempt <= datetime('now') 
+                LIMIT ?
+            ");
+            $stmt->bindValue(1, $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $jobs = $stmt->fetchAll();
+
+            $processed = 0;
+            foreach ($jobs as $job) {
+                $processed++;
+                // Marcar como en proceso
+                try {
+                    Database::executeWithRetry(function() use ($db, $job) {
+                        $upd = $db->prepare("UPDATE jobs SET status = 'processing', attempts = attempts + 1 WHERE id = ?");
+                        $upd->execute([$job['id']]);
+                    });
+                } catch (\Exception $e) {
+                    continue;
+                }
 
             try {
                 if ($job['activity_type'] === 'ImportFollow') {
@@ -191,6 +215,12 @@ class Queue {
                     // Si falla incluso al marcar como fallido (ej. base de datos bloqueada temporalmente),
                     // ignorar para que el worker no falle con un error fatal y pueda continuar en la siguiente ejecución.
                 }
+            }
+        }
+        } finally {
+            if ($lockFp) {
+                @flock($lockFp, LOCK_UN);
+                @fclose($lockFp);
             }
         }
 

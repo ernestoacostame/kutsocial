@@ -427,20 +427,26 @@ class NotificationHelper {
      * Extract the first link in content, parse it, and save the card.
      */
     public static function fetchAndSaveLinkCard(int $statusId, string $content): void {
-        if (preg_match_all('/\bhttps?:\/\/[^\s<"\']+/i', $content, $matches)) {
-            $urls = $matches[0];
-            foreach ($urls as $url) {
-                if (strpos($url, '/tags/') !== false || strpos($url, '/users/') !== false || strpos($url, '/@') !== false) {
-                    continue;
-                }
-                $card = self::fetchLinkCard($url);
-                if ($card) {
-                    $db = Database::connect();
-                    $stmt = $db->prepare("UPDATE statuses SET card = ? WHERE id = ?");
-                    $stmt->execute([json_encode($card, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $statusId]);
-                    break;
+        try {
+            if (preg_match_all('/\bhttps?:\/\/[^\s<"\']+/i', $content, $matches)) {
+                $urls = $matches[0];
+                foreach ($urls as $url) {
+                    if (strpos($url, '/tags/') !== false || strpos($url, '/users/') !== false || strpos($url, '/@') !== false) {
+                        continue;
+                    }
+                    $card = self::fetchLinkCard($url);
+                    if ($card) {
+                        $db = Database::connect();
+                        Database::executeWithRetry(function() use ($db, $card, $statusId) {
+                            $stmt = $db->prepare("UPDATE statuses SET card = ? WHERE id = ?");
+                            $stmt->execute([json_encode($card, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), $statusId]);
+                        });
+                        break;
+                    }
                 }
             }
+        } catch (\Throwable $e) {
+            error_log("Failed to fetch and save link card: " . $e->getMessage());
         }
     }
 

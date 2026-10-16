@@ -42,13 +42,16 @@ class Database {
             $pdo = new PDO($dsn, null, null, [
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_TIMEOUT => 30,
             ]);
 
-            // Optimización SQLite para concurrencia y seguridad
+            // Optimización SQLite para concurrencia y seguridad en modo WAL
             $pdo->exec("PRAGMA journal_mode=WAL;");
             $pdo->exec("PRAGMA synchronous=NORMAL;");
             $pdo->exec("PRAGMA foreign_keys=ON;");
-            $pdo->exec("PRAGMA busy_timeout=5000;");
+            $pdo->exec("PRAGMA busy_timeout=30000;");
+            $pdo->exec("PRAGMA cache_size=-20000;");
+            $pdo->exec("PRAGMA temp_store=MEMORY;");
 
             self::$instance = $pdo;
             return $pdo;
@@ -57,107 +60,144 @@ class Database {
         }
     }
 
+    /**
+     * Inicia una transacción inmediata de escritura en SQLite.
+     * En SQLite WAL, BEGIN IMMEDIATE previene deadlocks y errores 'database is locked'
+     * reservando el bloqueo de escritura antes de ejecutar consultas.
+     */
+    public static function beginTransactionImmediate(PDO $pdo): bool {
+        return $pdo->exec("BEGIN IMMEDIATE") !== false;
+    }
+
+    /**
+     * Ejecuta una operación con reintentos automáticos si ocurre SQLITE_BUSY / database is locked.
+     */
+    public static function executeWithRetry(callable $callback, int $maxRetries = 5, int $initialDelayMs = 50): mixed {
+        $attempt = 0;
+        while (true) {
+            $attempt++;
+            try {
+                return $callback();
+            } catch (\PDOException $e) {
+                $isLocked = str_contains(strtolower($e->getMessage()), 'database is locked') ||
+                            str_contains(strtolower($e->getMessage()), 'busy') ||
+                            (isset($e->errorInfo[1]) && $e->errorInfo[1] === 5);
+
+                if ($isLocked && $attempt < $maxRetries) {
+                    usleep(($initialDelayMs * 1000 * (1 << ($attempt - 1))) + rand(10000, 40000));
+                    continue;
+                }
+                throw $e;
+            }
+        }
+    }
+
     public static function runMigrations(): void {
+        static $alreadyRan = false;
+        if ($alreadyRan) {
+            return;
+        }
+        $alreadyRan = true;
+
+        $markerFile = dirname(self::$dbPath) . '/.schema_version_' . self::getVersion();
+        if (file_exists($markerFile)) {
+            return;
+        }
+
         $db = self::connect();
 
-        // Tabla interna de control de versiones de base de datos
-        $db->exec("CREATE TABLE IF NOT EXISTS schema_migrations (
-            version INTEGER PRIMARY KEY,
-            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )");
+        self::executeWithRetry(function() use ($db, $markerFile) {
+            // Tabla interna de control de versiones de base de datos
+            $db->exec("CREATE TABLE IF NOT EXISTS schema_migrations (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )");
 
-        $migrations = self::getMigrations();
-        $stmt = $db->query("SELECT version FROM schema_migrations");
-        $applied = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $migrations = self::getMigrations();
+            $stmt = $db->query("SELECT version FROM schema_migrations");
+            $applied = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        foreach ($migrations as $version => $queries) {
-            if (!in_array($version, $applied)) {
-                $db->beginTransaction();
-                try {
-                    foreach ($queries as $query) {
-                        $db->exec($query);
+            foreach ($migrations as $version => $queries) {
+                if (!in_array($version, $applied)) {
+                    self::beginTransactionImmediate($db);
+                    try {
+                        foreach ($queries as $query) {
+                            try {
+                                $db->exec($query);
+                            } catch (\PDOException $ex) {
+                                // Ignorar si la columna o índice ya existe
+                                $msg = strtolower($ex->getMessage());
+                                if (!str_contains($msg, 'duplicate column') && !str_contains($msg, 'already exists')) {
+                                    throw $ex;
+                                }
+                            }
+                        }
+                        $ins = $db->prepare("INSERT INTO schema_migrations (version) VALUES (?)");
+                        $ins->execute([$version]);
+                        $db->commit();
+                    } catch (Exception $e) {
+                        if ($db->inTransaction()) {
+                            $db->rollBack();
+                        }
+                        throw new Exception("Error aplicando migración versión $version: " . $e->getMessage());
                     }
-                    $ins = $db->prepare("INSERT INTO schema_migrations (version) VALUES (?)");
-                    $ins->execute([$version]);
-                    $db->commit();
-                } catch (Exception $e) {
-                    $db->rollBack();
-                    throw new Exception("Error aplicando migración versión $version: " . $e->getMessage());
                 }
             }
-        }
 
-        // Asegurar que la columna reblog_of_id exista en la tabla statuses (por si la versión 14 falló parcialmente)
-        try {
-            $cols = $db->query("PRAGMA table_info(statuses)")->fetchAll(\PDO::FETCH_ASSOC);
-            $hasReblogOfId = false;
-            foreach ($cols as $col) {
-                if (strcasecmp($col['name'], 'reblog_of_id') === 0) {
-                    $hasReblogOfId = true;
-                    break;
+            // Tareas de normalización y compatibilidad al actualizar
+            try {
+                $cols = $db->query("PRAGMA table_info(statuses)")->fetchAll(\PDO::FETCH_ASSOC);
+                $hasReblogOfId = false;
+                foreach ($cols as $col) {
+                    if (strcasecmp($col['name'], 'reblog_of_id') === 0) {
+                        $hasReblogOfId = true;
+                        break;
+                    }
                 }
-            }
-            if (!$hasReblogOfId) {
-                $db->exec("ALTER TABLE statuses ADD COLUMN reblog_of_id INTEGER");
-                $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_id ON statuses(reblog_of_id)");
-            }
-
-            // Asegurar que la columna also_known_as exista en la tabla accounts
-            $accCols = $db->query("PRAGMA table_info(accounts)")->fetchAll(\PDO::FETCH_ASSOC);
-            $hasAlsoKnownAs = false;
-            foreach ($accCols as $col) {
-                if (strcasecmp($col['name'], 'also_known_as') === 0) {
-                    $hasAlsoKnownAs = true;
-                    break;
+                if (!$hasReblogOfId) {
+                    $db->exec("ALTER TABLE statuses ADD COLUMN reblog_of_id INTEGER");
+                    $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_id ON statuses(reblog_of_id)");
                 }
+
+                // Asegurar columna also_known_as
+                $accCols = $db->query("PRAGMA table_info(accounts)")->fetchAll(\PDO::FETCH_ASSOC);
+                $hasAlsoKnownAs = false;
+                foreach ($accCols as $col) {
+                    if (strcasecmp($col['name'], 'also_known_as') === 0) {
+                        $hasAlsoKnownAs = true;
+                        break;
+                    }
+                }
+                if (!$hasAlsoKnownAs) {
+                    $db->exec("ALTER TABLE accounts ADD COLUMN also_known_as TEXT NULL");
+                }
+
+                // Limpieza de auto-seguimientos erróneos
+                $db->exec("DELETE FROM follows WHERE account_id = target_account_id");
+
+                // Normalizar dominio de cuentas locales
+                $db->exec("UPDATE accounts SET domain = NULL WHERE domain = '' OR LOWER(domain) = 'localhost'");
+                if (!empty($_SERVER['HTTP_HOST'])) {
+                    $hostClean = strtolower(explode(':', $_SERVER['HTTP_HOST'])[0]);
+                    $stmtNorm = $db->prepare("UPDATE accounts SET domain = NULL WHERE LOWER(domain) = ?");
+                    $stmtNorm->execute([$hostClean]);
+                }
+
+                // Normalizar estado de seguimientos existentes a accepted
+                $db->exec("UPDATE follows SET status = 'accepted' WHERE (status IS NULL OR status = '' OR status = 'pending')");
+
+                // Sincronizar contadores reales en la tabla accounts para cuentas locales
+                $db->exec("UPDATE accounts SET
+                    followers_count = (SELECT COUNT(*) FROM follows WHERE target_account_id = accounts.id AND (status = 'accepted' OR status = 'pending')),
+                    following_count = (SELECT COUNT(*) FROM follows WHERE account_id = accounts.id AND (status = 'accepted' OR status = 'pending')),
+                    statuses_count = (SELECT COUNT(*) FROM statuses WHERE account_id = accounts.id)
+                    WHERE domain IS NULL OR domain = ''");
+
+                @touch($markerFile);
+            } catch (\Throwable $e) {
+                // Silenciar fallos menores en tareas de limpieza
             }
-            if (!$hasAlsoKnownAs) {
-                $db->exec("ALTER TABLE accounts ADD COLUMN also_known_as TEXT NULL");
-            }
-
-            // Limpieza de auto-seguimientos erróneos
-            $db->exec("DELETE FROM follows WHERE account_id = target_account_id");
-
-            // Normalizar dominio de cuentas locales (evitar que tengan el dominio del servidor asignado como remoto)
-            $db->exec("UPDATE accounts SET domain = NULL WHERE domain = '' OR LOWER(domain) = 'localhost'");
-            if (!empty($_SERVER['HTTP_HOST'])) {
-                $hostClean = strtolower(explode(':', $_SERVER['HTTP_HOST'])[0]);
-                $stmtNorm = $db->prepare("UPDATE accounts SET domain = NULL WHERE LOWER(domain) = ?");
-                $stmtNorm->execute([$hostClean]);
-            }
-
-            // Eliminar cuentas fantasmas/duplicadas sin contraseña asignadas a dominio local
-            $stmtGhost = $db->query("
-                SELECT id FROM accounts 
-                WHERE (domain IS NULL OR domain = '') 
-                  AND (password_hash IS NULL OR password_hash = '')
-            ");
-            $ghostIds = $stmtGhost ? $stmtGhost->fetchAll(\PDO::FETCH_COLUMN) : [];
-            if (!empty($ghostIds)) {
-                $db->exec("PRAGMA foreign_keys = OFF;");
-                $ghostList = implode(',', array_map('intval', $ghostIds));
-                $db->exec("DELETE FROM follows WHERE account_id IN ($ghostList) OR target_account_id IN ($ghostList)");
-                $db->exec("DELETE FROM statuses WHERE account_id IN ($ghostList)");
-                $db->exec("DELETE FROM notifications WHERE account_id IN ($ghostList)");
-                $db->exec("DELETE FROM favourites WHERE account_id IN ($ghostList)");
-                $db->exec("DELETE FROM bookmarks WHERE account_id IN ($ghostList)");
-                $db->exec("DELETE FROM accounts WHERE id IN ($ghostList)");
-                $db->exec("PRAGMA foreign_keys = ON;");
-            }
-
-            // Normalizar estado de seguimientos existentes a accepted para que no queden bloqueados en pending
-            $db->exec("UPDATE follows SET status = 'accepted' 
-                WHERE (status IS NULL OR status = '' OR status = 'pending')");
-
-            // Sincronizar contadores reales en la tabla accounts para cuentas locales
-            $db->exec("UPDATE accounts SET
-                followers_count = (SELECT COUNT(*) FROM follows WHERE target_account_id = accounts.id AND (status = 'accepted' OR status = 'pending')),
-                following_count = (SELECT COUNT(*) FROM follows WHERE account_id = accounts.id AND (status = 'accepted' OR status = 'pending')),
-                statuses_count = (SELECT COUNT(*) FROM statuses WHERE account_id = accounts.id)
-                WHERE domain IS NULL OR domain = ''");
-        } catch (\Throwable $e) {
-            // Ignorar fallos de alteración directa
-        }
+        });
     }
 
     private static function getMigrations(): array {
@@ -456,6 +496,10 @@ class Database {
             ],
             18 => [
                 "ALTER TABLE accounts ADD COLUMN also_known_as TEXT NULL"
+            ],
+            19 => [
+                "ALTER TABLE statuses ADD COLUMN idempotency_key TEXT NULL",
+                "CREATE INDEX IF NOT EXISTS idx_statuses_idempotency_key ON statuses(account_id, idempotency_key)"
             ]
         ];
     }

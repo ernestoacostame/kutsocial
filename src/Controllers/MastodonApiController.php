@@ -3139,7 +3139,49 @@ HTML;
             return;
         }
 
+        $headers = Router::getAllHeaders();
+        $idempotencyKey = $headers['Idempotency-Key']
+            ?? $headers['idempotency-key']
+            ?? $_SERVER['HTTP_IDEMPOTENCY_KEY']
+            ?? null;
+        if ($idempotencyKey) {
+            $idempotencyKey = trim($idempotencyKey);
+        }
+
         $db = Database::connect();
+
+        // 1. Manejo de idempotencia: si el cliente (ej. Mona) reintenta la misma clave, devolver el status ya creado
+        if (!empty($idempotencyKey)) {
+            try {
+                $stmtCheckKey = $db->prepare("SELECT id FROM statuses WHERE account_id = ? AND idempotency_key = ? LIMIT 1");
+                $stmtCheckKey->execute([$account['id'], $idempotencyKey]);
+                $existingId = $stmtCheckKey->fetchColumn();
+                if ($existingId) {
+                    $existingRow = self::fetchStatusRow($db, (int)$existingId);
+                    Router::json(self::formatStatus($existingRow, (int)$account['id']));
+                    return;
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        // 2. Prevención de publicaciones duplicadas en caso de reenvío rápido desde borradores (<90s)
+        try {
+            $stmtDup = $db->prepare("
+                SELECT id FROM statuses 
+                WHERE account_id = ? 
+                  AND content = ? 
+                  AND (in_reply_to_id = ? OR (in_reply_to_id IS NULL AND ? IS NULL))
+                  AND created_at >= datetime('now', '-90 seconds')
+                ORDER BY id DESC LIMIT 1
+            ");
+            $stmtDup->execute([$account['id'], $content, $inReplyToId, $inReplyToId]);
+            $dupId = $stmtDup->fetchColumn();
+            if ($dupId) {
+                $dupRow = self::fetchStatusRow($db, (int)$dupId);
+                Router::json(self::formatStatus($dupRow, (int)$account['id']));
+                return;
+            }
+        } catch (\Throwable $e) {}
 
         if ($inReplyToId !== null) {
             $stmtCheckParent = $db->prepare("SELECT id FROM statuses WHERE id = ? LIMIT 1");
@@ -3233,8 +3275,6 @@ HTML;
             $quoteRow = $stmtQuote->fetch();
             if ($quoteRow) {
                 $reblogOfId = $quoteRow['id'];
-                // Si hay texto propio del usuario, es un Quote Post.
-                // Agregamos el enlace al post citado al final de la publicación para que Mona/Ice Cubes rendericen la cita.
                 if (!empty($content)) {
                     $hasLink = str_contains($content, $quoteRow['uri']);
                     if (!$hasLink) {
@@ -3250,23 +3290,59 @@ HTML;
             }
         }
 
-        // Insertar status
-        $stmt = $db->prepare("
-            INSERT INTO statuses (account_id, uri, content, visibility, in_reply_to_id, sensitive, spoiler_text, media_attachments, language, reblog_of_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-        ");
-        $stmt->execute([$account['id'], $uri, $content, $visibility, $inReplyToId, $sensitive, $spoilerText, !empty($mediaAttachments) ? json_encode($mediaAttachments) : null, $language, $reblogOfId]);
-        $newId = $db->lastInsertId();
+        // Inserción atómica del status mediante BEGIN IMMEDIATE y reintentos automáticos
+        $newId = Database::executeWithRetry(function() use ($db, $account, $uri, $content, $visibility, $inReplyToId, $sensitive, $spoilerText, $mediaAttachments, $language, $reblogOfId, $idempotencyKey) {
+            Database::beginTransactionImmediate($db);
+            try {
+                $stmt = $db->prepare("
+                    INSERT INTO statuses (account_id, uri, content, visibility, in_reply_to_id, sensitive, spoiler_text, media_attachments, language, reblog_of_id, idempotency_key, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ");
+                $stmt->execute([
+                    $account['id'], 
+                    $uri, 
+                    $content, 
+                    $visibility, 
+                    $inReplyToId, 
+                    $sensitive, 
+                    $spoilerText, 
+                    !empty($mediaAttachments) ? json_encode($mediaAttachments) : null, 
+                    $language, 
+                    $reblogOfId,
+                    $idempotencyKey
+                ]);
+                $insertedId = (int)$db->lastInsertId();
+                $db->commit();
+                return $insertedId;
+            } catch (\Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                throw $e;
+            }
+        });
 
         $canonicalUri = "$proto://$domain/users/{$account['username']}/statuses/$newId";
         try {
-            $stmtUpdateUri = $db->prepare("UPDATE statuses SET uri = ? WHERE id = ?");
-            $stmtUpdateUri->execute([$canonicalUri, $newId]);
+            Database::executeWithRetry(function() use ($db, $canonicalUri, $newId) {
+                $stmtUpdateUri = $db->prepare("UPDATE statuses SET uri = ? WHERE id = ?");
+                $stmtUpdateUri->execute([$canonicalUri, $newId]);
+            });
             $uri = $canonicalUri;
         } catch (\Throwable $e) {}
 
-        \KutSocial\NotificationHelper::fetchAndSaveLinkCard((int)$newId, $content);
-        \KutSocial\NotificationHelper::notifyMentionOrReply((int)$newId);
+        // Operaciones accesorias protegidas (no deben romper la creación del estado)
+        try {
+            \KutSocial\NotificationHelper::fetchAndSaveLinkCard((int)$newId, $content);
+        } catch (\Throwable $e) {
+            error_log("KutSocial link card error: " . $e->getMessage());
+        }
+
+        try {
+            \KutSocial\NotificationHelper::notifyMentionOrReply((int)$newId);
+        } catch (\Throwable $e) {
+            error_log("KutSocial mention notification error: " . $e->getMessage());
+        }
 
         // Procesamiento de Encuestas (Polls)
         $pollData = $body['poll'] ?? null;
@@ -3280,290 +3356,298 @@ HTML;
                 $expiresIn = (int)($pollData['expires_in'] ?? 3600);
                 $expiresAt = date('Y-m-d H:i:s', time() + $expiresIn);
                 
-                $stmtPoll = $db->prepare("
-                    INSERT INTO polls (status_id, question, options_json, expires_at)
-                    VALUES (?, ?, ?, ?)
-                ");
-                $stmtPoll->execute([
-                    $newId,
-                    $content,
-                    json_encode(array_values($options), JSON_UNESCAPED_UNICODE),
-                    $expiresAt
-                ]);
+                try {
+                    Database::executeWithRetry(function() use ($db, $newId, $content, $options, $expiresAt) {
+                        $stmtPoll = $db->prepare("
+                            INSERT INTO polls (status_id, question, options_json, expires_at)
+                            VALUES (?, ?, ?, ?)
+                        ");
+                        $stmtPoll->execute([
+                            $newId,
+                            $content,
+                            json_encode(array_values($options), JSON_UNESCAPED_UNICODE),
+                            $expiresAt
+                        ]);
+                    });
+                } catch (\Throwable $e) {
+                    error_log("KutSocial poll error: " . $e->getMessage());
+                }
             }
         }
 
         // Obtener el status insertado con los datos de la cuenta
         $row = self::fetchStatusRow($db, $newId);
 
-        // FEDERACIÓN: Encolar la actividad Create Note
-        $actorUrl = "$proto://$domain/users/{$account['username']}";
-        
-        // 1. Procesar menciones
-        $mentionedActors = [];
-        $mentionedInboxes = [];
-        $tags = [];
-        preg_match_all('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/', $content, $mMatches, PREG_SET_ORDER);
-        foreach ($mMatches as $match) {
-            $mUsername = $match[1];
-            $mDomain = isset($match[2]) && !empty($match[2]) ? strtolower($match[2]) : null;
-            if ($mDomain !== null && strcasecmp($mDomain, $domain) === 0) {
-                $mDomain = null;
-            }
+        // FEDERACIÓN: Encolar la actividad Create Note de forma protegida
+        try {
+            $actorUrl = "$proto://$domain/users/{$account['username']}";
             
-            $mAcc = null;
-            if ($mDomain === null) {
-                $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
-                $stmtM->execute([$mUsername]);
-                $mAcc = $stmtM->fetch();
-            } else {
-                $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
-                $stmtM->execute([$mUsername, $mDomain]);
-                $mAcc = $stmtM->fetch();
-                if (!$mAcc) {
-                    try {
-                        $mAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger("@{$mUsername}@{$mDomain}");
-                    } catch (\Exception $e) {
-                        // Ignorar fallos de resolución
+            // 1. Procesar menciones
+            $mentionedActors = [];
+            $mentionedInboxes = [];
+            $tags = [];
+            preg_match_all('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/', $content, $mMatches, PREG_SET_ORDER);
+            foreach ($mMatches as $match) {
+                $mUsername = $match[1];
+                $mDomain = isset($match[2]) && !empty($match[2]) ? strtolower($match[2]) : null;
+                if ($mDomain !== null && strcasecmp($mDomain, $domain) === 0) {
+                    $mDomain = null;
+                }
+                
+                $mAcc = null;
+                if ($mDomain === null) {
+                    $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+                    $stmtM->execute([$mUsername]);
+                    $mAcc = $stmtM->fetch();
+                } else {
+                    $stmtM = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
+                    $stmtM->execute([$mUsername, $mDomain]);
+                    $mAcc = $stmtM->fetch();
+                    if (!$mAcc) {
+                        try {
+                            $mAcc = \KutSocial\Controllers\ActivityPubController::resolveWebfinger("@{$mUsername}@{$mDomain}");
+                        } catch (\Exception $e) {}
+                    }
+                }
+                
+                if ($mAcc) {
+                    $mActorUrl = $mAcc['domain'] 
+                        ? "https://{$mAcc['domain']}/users/{$mAcc['username']}"
+                        : "$proto://$domain/users/{$mAcc['username']}";
+                    if (!in_array($mActorUrl, $mentionedActors)) {
+                        $mentionedActors[] = $mActorUrl;
+                    }
+                    if (!empty($mAcc['inbox_url']) && !in_array($mAcc['inbox_url'], $mentionedInboxes)) {
+                        $mentionedInboxes[] = $mAcc['inbox_url'];
+                    }
+
+                    $mentionName = $mAcc['domain']
+                        ? "@{$mAcc['username']}@{$mAcc['domain']}"
+                        : "@{$mAcc['username']}";
+
+                    $tagExists = false;
+                    foreach ($tags as $t) {
+                        if (isset($t['href']) && $t['href'] === $mActorUrl) {
+                            $tagExists = true;
+                            break;
+                        }
+                    }
+                    if (!$tagExists) {
+                        $tags[] = [
+                            'type' => 'Mention',
+                            'href' => $mActorUrl,
+                            'name' => $mentionName
+                        ];
                     }
                 }
             }
-            
-            if ($mAcc) {
-                $mActorUrl = $mAcc['domain'] 
-                    ? "https://{$mAcc['domain']}/users/{$mAcc['username']}"
-                    : "$proto://$domain/users/{$mAcc['username']}";
-                if (!in_array($mActorUrl, $mentionedActors)) {
-                    $mentionedActors[] = $mActorUrl;
-                }
-                if (!empty($mAcc['inbox_url']) && !in_array($mAcc['inbox_url'], $mentionedInboxes)) {
-                    $mentionedInboxes[] = $mAcc['inbox_url'];
-                }
 
-                $mentionName = $mAcc['domain']
-                    ? "@{$mAcc['username']}@{$mAcc['domain']}"
-                    : "@{$mAcc['username']}";
-
-                $tagExists = false;
-                foreach ($tags as $t) {
-                    if (isset($t['href']) && $t['href'] === $mActorUrl) {
-                        $tagExists = true;
-                        break;
+            // 1.5 Procesar hashtags para federación
+            if (preg_match_all('/(?<=^|[\s,;:.!?()\[\]{}])#(?!\d+\b)([\p{L}\p{N}_]+)/u', $content, $hashMatches)) {
+                $uniqueHashtags = array_unique($hashMatches[1]);
+                foreach ($uniqueHashtags as $tName) {
+                    $tagExists = false;
+                    foreach ($tags as $t) {
+                        if (isset($t['type']) && $t['type'] === 'Hashtag' && isset($t['name']) && strcasecmp($t['name'], '#' . $tName) === 0) {
+                            $tagExists = true;
+                            break;
+                        }
+                    }
+                    if (!$tagExists) {
+                        $tags[] = [
+                            'type' => 'Hashtag',
+                            'href' => "$proto://$domain/tags/$tName",
+                            'name' => "#$tName"
+                        ];
                     }
                 }
-                if (!$tagExists) {
-                    $tags[] = [
-                        'type' => 'Mention',
-                        'href' => $mActorUrl,
-                        'name' => $mentionName
-                    ];
-                }
             }
-        }
 
-        // 1.5 Procesar hashtags para federación
-        if (preg_match_all('/(?<=^|[\s,;:.!?()\[\]{}])#(?!\d+\b)([\p{L}\p{N}_]+)/u', $content, $hashMatches)) {
-            $uniqueHashtags = array_unique($hashMatches[1]);
-            foreach ($uniqueHashtags as $tName) {
-                $tagExists = false;
-                foreach ($tags as $t) {
-                    if (isset($t['type']) && $t['type'] === 'Hashtag' && isset($t['name']) && strcasecmp($t['name'], '#' . $tName) === 0) {
-                        $tagExists = true;
-                        break;
+            // 2. Procesar respuesta a post padre
+            $parentActorUrl = null;
+            $parentInboxUrl = null;
+            $inReplyToUri = null;
+            if ($inReplyToId) {
+                $stmtParent = $db->prepare("
+                    SELECT s.uri, a.username, a.domain, a.inbox_url FROM statuses s
+                    JOIN accounts a ON s.account_id = a.id
+                    WHERE s.id = ? LIMIT 1
+                ");
+                $stmtParent->execute([$inReplyToId]);
+                $parent = $stmtParent->fetch();
+                if ($parent) {
+                    $inReplyToUri = $parent['uri'];
+                    $parentActorUrl = $parent['domain']
+                        ? "https://{$parent['domain']}/users/{$parent['username']}"
+                        : "$proto://$domain/users/{$parent['username']}";
+                    if (!empty($parent['inbox_url'])) {
+                        $parentInboxUrl = $parent['inbox_url'];
+                    }
+
+                    $tagExists = false;
+                    foreach ($tags as $t) {
+                        if (isset($t['href']) && $t['href'] === $parentActorUrl) {
+                            $tagExists = true;
+                            break;
+                        }
+                    }
+                    if (!$tagExists) {
+                        $parentMentionName = $parent['domain']
+                            ? "@{$parent['username']}@{$parent['domain']}"
+                            : "@{$parent['username']}";
+                        $tags[] = [
+                            'type' => 'Mention',
+                            'href' => $parentActorUrl,
+                            'name' => $parentMentionName
+                        ];
                     }
                 }
-                if (!$tagExists) {
-                    $tags[] = [
-                        'type' => 'Hashtag',
-                        'href' => "$proto://$domain/tags/$tName",
-                        'name' => "#$tName"
-                    ];
+            }
+
+            // 3. Determinar destinatarios (to/cc) según visibilidad
+            $to = [];
+            $cc = [];
+
+            if ($visibility === 'public') {
+                $to[] = 'https://www.w3.org/ns/activitystreams#Public';
+                $cc[] = "$actorUrl/followers";
+                foreach ($mentionedActors as $ma) {
+                    if (!in_array($ma, $cc)) $cc[] = $ma;
+                }
+                if ($parentActorUrl && !in_array($parentActorUrl, $cc)) {
+                    $cc[] = $parentActorUrl;
+                }
+            } elseif ($visibility === 'unlisted') {
+                $to[] = "$actorUrl/followers";
+                $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
+                foreach ($mentionedActors as $ma) {
+                    if (!in_array($ma, $cc)) $cc[] = $ma;
+                }
+                if ($parentActorUrl && !in_array($parentActorUrl, $cc)) {
+                    $cc[] = $parentActorUrl;
+                }
+            } elseif ($visibility === 'private') {
+                $to[] = "$actorUrl/followers";
+                foreach ($mentionedActors as $ma) {
+                    if (!in_array($ma, $to)) $to[] = $ma;
+                }
+                if ($parentActorUrl && !in_array($parentActorUrl, $to)) {
+                    $to[] = $parentActorUrl;
+                }
+            } else { // direct
+                foreach ($mentionedActors as $ma) {
+                    if (!in_array($ma, $to)) $to[] = $ma;
+                }
+                if ($parentActorUrl && !in_array($parentActorUrl, $to)) {
+                    $to[] = $parentActorUrl;
+                }
+                if (empty($to)) {
+                    $to[] = $actorUrl;
                 }
             }
-        }
 
-        // 2. Procesar respuesta a post padre
-        $parentActorUrl = null;
-        $parentInboxUrl = null;
-        $inReplyToUri = null;
-        if ($inReplyToId) {
-            $stmtParent = $db->prepare("
-                SELECT s.uri, a.username, a.domain, a.inbox_url FROM statuses s
-                JOIN accounts a ON s.account_id = a.id
-                WHERE s.id = ? LIMIT 1
-            ");
-            $stmtParent->execute([$inReplyToId]);
-            $parent = $stmtParent->fetch();
-            if ($parent) {
-                $inReplyToUri = $parent['uri'];
-                $parentActorUrl = $parent['domain']
-                    ? "https://{$parent['domain']}/users/{$parent['username']}"
-                    : "$proto://$domain/users/{$parent['username']}";
-                if (!empty($parent['inbox_url'])) {
-                    $parentInboxUrl = $parent['inbox_url'];
+            // 4. Determinar bandejas de entrada (inboxes) destino
+            $targetInboxes = [];
+            if ($visibility !== 'direct') {
+                $followersStmt = $db->prepare("
+                    SELECT a.inbox_url FROM follows f
+                    JOIN accounts a ON f.account_id = a.id
+                    WHERE f.target_account_id = ? AND f.status = 'accepted' AND a.domain IS NOT NULL
+                ");
+                $followersStmt->execute([$account['id']]);
+                $targetInboxes = $followersStmt->fetchAll(PDO::FETCH_COLUMN);
+            }
+            foreach ($mentionedInboxes as $mib) {
+                if (!empty($mib) && !in_array($mib, $targetInboxes)) {
+                    $targetInboxes[] = $mib;
+                }
+            }
+            if ($parentInboxUrl && !empty($parentInboxUrl) && !in_array($parentInboxUrl, $targetInboxes)) {
+                $targetInboxes[] = $parentInboxUrl;
+            }
+
+            // 5. Construir y encolar actividades
+            if (!empty($targetInboxes)) {
+                $htmlContent = self::formatLocalContentToHtml($content, $domain, $db, $proto);
+                
+                $quoteUrlVal = null;
+                if ($reblogOfId) {
+                    $stmtQuoteUri = $db->prepare("SELECT uri FROM statuses WHERE id = ? LIMIT 1");
+                    $stmtQuoteUri->execute([$reblogOfId]);
+                    $quoteUrlVal = $stmtQuoteUri->fetchColumn() ?: null;
                 }
 
-                $tagExists = false;
-                foreach ($tags as $t) {
-                    if (isset($t['href']) && $t['href'] === $parentActorUrl) {
-                        $tagExists = true;
-                        break;
+                $noteObject = [
+                    'id' => $uri,
+                    'type' => 'Note',
+                    'published' => date('c'),
+                    'attributedTo' => $actorUrl,
+                    'content' => $htmlContent,
+                    'to' => $to,
+                    'cc' => $cc
+                ];
+
+                if ($quoteUrlVal) {
+                    $noteObject['quoteUrl'] = $quoteUrlVal;
+                }
+
+                if (!empty($tags)) {
+                    $noteObject['tag'] = $tags;
+                }
+
+                if ($inReplyToUri) {
+                    $noteObject['inReplyTo'] = $inReplyToUri;
+                }
+
+                if (!empty($mediaAttachments)) {
+                    $attachmentsList = [];
+                    foreach ($mediaAttachments as $att) {
+                        $attachmentsList[] = [
+                            'type' => 'Document',
+                            'mediaType' => 'image/' . pathinfo($att['url'], PATHINFO_EXTENSION),
+                            'url' => $att['url'],
+                            'name' => !empty($att['description']) ? $att['description'] : null
+                        ];
+                    }
+                    $noteObject['attachment'] = $attachmentsList;
+                }
+
+                if ($pollData && isset($options) && count($options) >= 2) {
+                    $oneOfList = [];
+                    foreach ($options as $opt) {
+                        $oneOfList[] = [
+                            'type' => 'Note',
+                            'name' => $opt,
+                            'replies' => [
+                                'type' => 'Collection',
+                                'totalItems' => 0
+                            ]
+                        ];
+                    }
+                    $noteObject['oneOf'] = $oneOfList;
+                    $noteObject['endTime'] = date('c', time() + $expiresIn);
+                }
+
+                $createActivity = [
+                    '@context' => 'https://www.w3.org/ns/activitystreams',
+                    'id' => $uri . '/activity',
+                    'type' => 'Create',
+                    'actor' => $actorUrl,
+                    'published' => date('c'),
+                    'to' => $to,
+                    'cc' => $cc,
+                    'object' => $noteObject
+                ];
+
+                foreach ($targetInboxes as $inboxUrl) {
+                    if (!empty($inboxUrl)) {
+                        \KutSocial\Queue::enqueue('Create', $createActivity, $inboxUrl);
                     }
                 }
-                if (!$tagExists) {
-                    $parentMentionName = $parent['domain']
-                        ? "@{$parent['username']}@{$parent['domain']}"
-                        : "@{$parent['username']}";
-                    $tags[] = [
-                        'type' => 'Mention',
-                        'href' => $parentActorUrl,
-                        'name' => $parentMentionName
-                    ];
-                }
+                \KutSocial\Queue::triggerAsync($domain);
             }
-        }
-
-        // 3. Determinar destinatarios (to/cc) según visibilidad
-        $to = [];
-        $cc = [];
-
-        if ($visibility === 'public') {
-            $to[] = 'https://www.w3.org/ns/activitystreams#Public';
-            $cc[] = "$actorUrl/followers";
-            foreach ($mentionedActors as $ma) {
-                if (!in_array($ma, $cc)) $cc[] = $ma;
-            }
-            if ($parentActorUrl && !in_array($parentActorUrl, $cc)) {
-                $cc[] = $parentActorUrl;
-            }
-        } elseif ($visibility === 'unlisted') {
-            $to[] = "$actorUrl/followers";
-            $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
-            foreach ($mentionedActors as $ma) {
-                if (!in_array($ma, $cc)) $cc[] = $ma;
-            }
-            if ($parentActorUrl && !in_array($parentActorUrl, $cc)) {
-                $cc[] = $parentActorUrl;
-            }
-        } elseif ($visibility === 'private') {
-            $to[] = "$actorUrl/followers";
-            foreach ($mentionedActors as $ma) {
-                if (!in_array($ma, $to)) $to[] = $ma;
-            }
-            if ($parentActorUrl && !in_array($parentActorUrl, $to)) {
-                $to[] = $parentActorUrl;
-            }
-        } else { // direct
-            foreach ($mentionedActors as $ma) {
-                if (!in_array($ma, $to)) $to[] = $ma;
-            }
-            if ($parentActorUrl && !in_array($parentActorUrl, $to)) {
-                $to[] = $parentActorUrl;
-            }
-            if (empty($to)) {
-                $to[] = $actorUrl;
-            }
-        }
-
-        // 4. Determinar bandejas de entrada (inboxes) destino
-        $targetInboxes = [];
-        if ($visibility !== 'direct') {
-            $followersStmt = $db->prepare("
-                SELECT a.inbox_url FROM follows f
-                JOIN accounts a ON f.account_id = a.id
-                WHERE f.target_account_id = ? AND f.status = 'accepted' AND a.domain IS NOT NULL
-            ");
-            $followersStmt->execute([$account['id']]);
-            $targetInboxes = $followersStmt->fetchAll(PDO::FETCH_COLUMN);
-        }
-        foreach ($mentionedInboxes as $mib) {
-            if (!empty($mib) && !in_array($mib, $targetInboxes)) {
-                $targetInboxes[] = $mib;
-            }
-        }
-        if ($parentInboxUrl && !empty($parentInboxUrl) && !in_array($parentInboxUrl, $targetInboxes)) {
-            $targetInboxes[] = $parentInboxUrl;
-        }
-
-        // 5. Construir y encolar actividades
-        if (!empty($targetInboxes)) {
-            $htmlContent = self::formatLocalContentToHtml($content, $domain, $db, $proto);
-            
-            $quoteUrlVal = null;
-            if ($reblogOfId) {
-                $stmtQuoteUri = $db->prepare("SELECT uri FROM statuses WHERE id = ? LIMIT 1");
-                $stmtQuoteUri->execute([$reblogOfId]);
-                $quoteUrlVal = $stmtQuoteUri->fetchColumn() ?: null;
-            }
-
-            $noteObject = [
-                'id' => $uri,
-                'type' => 'Note',
-                'published' => date('c'),
-                'attributedTo' => $actorUrl,
-                'content' => $htmlContent,
-                'to' => $to,
-                'cc' => $cc
-            ];
-
-            if ($quoteUrlVal) {
-                $noteObject['quoteUrl'] = $quoteUrlVal;
-            }
-
-            if (!empty($tags)) {
-                $noteObject['tag'] = $tags;
-            }
-
-            if ($inReplyToUri) {
-                $noteObject['inReplyTo'] = $inReplyToUri;
-            }
-
-            if (!empty($mediaAttachments)) {
-                $attachmentsList = [];
-                foreach ($mediaAttachments as $att) {
-                    $attachmentsList[] = [
-                        'type' => 'Document',
-                        'mediaType' => 'image/' . pathinfo($att['url'], PATHINFO_EXTENSION),
-                        'url' => $att['url'],
-                        'name' => !empty($att['description']) ? $att['description'] : null
-                    ];
-                }
-                $noteObject['attachment'] = $attachmentsList;
-            }
-
-            if ($pollData && isset($options) && count($options) >= 2) {
-                $oneOfList = [];
-                foreach ($options as $opt) {
-                    $oneOfList[] = [
-                        'type' => 'Note',
-                        'name' => $opt,
-                        'replies' => [
-                            'type' => 'Collection',
-                            'totalItems' => 0
-                        ]
-                    ];
-                }
-                $noteObject['oneOf'] = $oneOfList;
-                $noteObject['endTime'] = date('c', time() + $expiresIn);
-            }
-
-            $createActivity = [
-                '@context' => 'https://www.w3.org/ns/activitystreams',
-                'id' => $uri . '/activity',
-                'type' => 'Create',
-                'actor' => $actorUrl,
-                'published' => date('c'),
-                'to' => $to,
-                'cc' => $cc,
-                'object' => $noteObject
-            ];
-
-            foreach ($targetInboxes as $inboxUrl) {
-                if (!empty($inboxUrl)) {
-                    \KutSocial\Queue::enqueue('Create', $createActivity, $inboxUrl);
-                }
-            }
-            \KutSocial\Queue::triggerAsync($domain);
+        } catch (\Throwable $e) {
+            error_log("KutSocial federation queue error: " . $e->getMessage());
         }
 
         Router::json(self::formatStatus($row, (int)$account['id']));
