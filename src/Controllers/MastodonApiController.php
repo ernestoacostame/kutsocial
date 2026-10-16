@@ -3290,9 +3290,9 @@ HTML;
             }
         }
 
-        // Inserción atómica del status mediante BEGIN IMMEDIATE y reintentos automáticos
+        // Inserción atómica del status mediante transacciones de PDO y reintentos automáticos
         $newId = Database::executeWithRetry(function() use ($db, $account, $uri, $content, $visibility, $inReplyToId, $sensitive, $spoilerText, $mediaAttachments, $language, $reblogOfId, $idempotencyKey) {
-            Database::beginTransactionImmediate($db);
+            $db->beginTransaction();
             try {
                 $stmt = $db->prepare("
                     INSERT INTO statuses (account_id, uri, content, visibility, in_reply_to_id, sensitive, spoiler_text, media_attachments, language, reblog_of_id, idempotency_key, created_at)

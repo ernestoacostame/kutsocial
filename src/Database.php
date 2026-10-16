@@ -61,15 +61,6 @@ class Database {
     }
 
     /**
-     * Inicia una transacción inmediata de escritura en SQLite.
-     * En SQLite WAL, BEGIN IMMEDIATE previene deadlocks y errores 'database is locked'
-     * reservando el bloqueo de escritura antes de ejecutar consultas.
-     */
-    public static function beginTransactionImmediate(PDO $pdo): bool {
-        return $pdo->exec("BEGIN IMMEDIATE") !== false;
-    }
-
-    /**
      * Ejecuta una operación con reintentos automáticos si ocurre SQLITE_BUSY / database is locked.
      */
     public static function executeWithRetry(callable $callback, int $maxRetries = 5, int $initialDelayMs = 50): mixed {
@@ -119,7 +110,6 @@ class Database {
 
             foreach ($migrations as $version => $queries) {
                 if (!in_array($version, $applied)) {
-                    self::beginTransactionImmediate($db);
                     try {
                         foreach ($queries as $query) {
                             try {
@@ -134,11 +124,7 @@ class Database {
                         }
                         $ins = $db->prepare("INSERT INTO schema_migrations (version) VALUES (?)");
                         $ins->execute([$version]);
-                        $db->commit();
                     } catch (Exception $e) {
-                        if ($db->inTransaction()) {
-                            $db->rollBack();
-                        }
                         throw new Exception("Error aplicando migración versión $version: " . $e->getMessage());
                     }
                 }
@@ -148,15 +134,22 @@ class Database {
             try {
                 $cols = $db->query("PRAGMA table_info(statuses)")->fetchAll(\PDO::FETCH_ASSOC);
                 $hasReblogOfId = false;
+                $hasIdempotencyKey = false;
                 foreach ($cols as $col) {
                     if (strcasecmp($col['name'], 'reblog_of_id') === 0) {
                         $hasReblogOfId = true;
-                        break;
+                    }
+                    if (strcasecmp($col['name'], 'idempotency_key') === 0) {
+                        $hasIdempotencyKey = true;
                     }
                 }
                 if (!$hasReblogOfId) {
                     $db->exec("ALTER TABLE statuses ADD COLUMN reblog_of_id INTEGER");
                     $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_id ON statuses(reblog_of_id)");
+                }
+                if (!$hasIdempotencyKey) {
+                    $db->exec("ALTER TABLE statuses ADD COLUMN idempotency_key TEXT NULL");
+                    $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_idempotency_key ON statuses(account_id, idempotency_key)");
                 }
 
                 // Asegurar columna also_known_as
