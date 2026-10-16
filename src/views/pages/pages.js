@@ -272,13 +272,20 @@ function initPublicView() {
     
     // Ocultar elementos exclusivos de usuarios registrados en el sidebar
     const linksToHide = [
-        'nav-public', 'nav-home', 'nav-local', 'nav-notifications', 'nav-bookmarks', 'nav-direct',
-        'nav-lists', 'nav-collections', 'nav-hashtags', 'nav-profile', 
+        'nav-home', 'nav-catchup', 'nav-notifications', 'nav-bookmarks', 'nav-direct',
+        'nav-lists', 'nav-collections', 'nav-hashtags', 'nav-profile', 'nav-settings',
         'nav-admin-settings'
     ];
     linksToHide.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
+    });
+
+    // Asegurar que Timeline Local y Federación Pública estén visibles para visitantes
+    const linksToShow = ['nav-local', 'nav-public'];
+    linksToShow.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'block';
     });
     
     // Mostrar link "Propietario"
@@ -287,7 +294,9 @@ function initPublicView() {
         itemOwner.style.display = 'block';
         const ownerLink = document.getElementById('nav-owner-profile');
         if (ownerLink && window.KUTSOCIAL_OWNER) {
-            ownerLink.innerHTML = `<span>👤</span> Perfil de @${window.KUTSOCIAL_OWNER.username}`;
+            const ownerHandle = window.KUTSOCIAL_OWNER.username || ('id-' + window.KUTSOCIAL_OWNER.id);
+            ownerLink.href = `${window.KUTSOCIAL_BASE_PATH || ''}/@${ownerHandle}`;
+            ownerLink.innerHTML = `<span>👤</span> Perfil de @${window.KUTSOCIAL_OWNER.username || ownerHandle}`;
         }
     }
     
@@ -299,11 +308,13 @@ function initPublicView() {
         `;
     }
     
-    // Ocultar composer
-    const composer = document.querySelector('.composer-card');
-    if (composer) {
-        composer.style.display = 'none';
-    }
+    // Ocultar composer en feed y modales (sin ocultar tarjetas de perfil)
+    document.querySelectorAll('#tab-feed > .composer-card, #modal-composer').forEach(el => {
+        el.style.display = 'none';
+    });
+
+    // Cargar estadísticas del servidor en el sidebar derecho
+    loadInstanceStats();
     
     // Cargar perfil del dueño o enrutar por path
     if (!handlePathRouting() && window.KUTSOCIAL_OWNER) {
@@ -409,8 +420,10 @@ async function updateNotificationBadge() {
 async function resolveAndOpenProfile(username) {
     const expectedPath = window.location.pathname;
     try {
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         const res = await fetch(`/api/v1/search?q=${encodeURIComponent('@' + username)}&resolve=true`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: headers
         });
         if (res.ok) {
             const data = await res.json();
@@ -632,8 +645,10 @@ async function loadTimeline(loadMore = false) {
     }
 
     try {
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         const res = await fetch(fetchUrl, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: headers
         });
         let rawData = await res.json();
         let toots = Array.isArray(rawData) ? rawData : [];
@@ -877,8 +892,10 @@ function createThreadTootElement(toot, isMain = false) {
             
             setTimeout(async () => {
                 try {
+                    const qHeaders = { 'Accept': 'application/json' };
+                    if (token) qHeaders['Authorization'] = `Bearer ${token}`;
                     const res = await fetch(`/api/v1/statuses/resolve?url=${encodeURIComponent(quoteUrl)}`, {
-                        headers: { 'Authorization': `Bearer ${token}` }
+                        headers: qHeaders
                     });
                     if (res.ok) {
                         const resolvedToot = await res.json();
@@ -1194,6 +1211,10 @@ function createThreadTootElement(toot, isMain = false) {
 }
 
 function handleReplyButtonClick(btn) {
+    if (!token) {
+        showLoginModal();
+        return;
+    }
     const card = btn.closest('.toot-card');
     if (card && card._toot) {
         const toot = card._toot;
@@ -1215,6 +1236,10 @@ function handleReblogButtonClick(tootId, btn, event) {
     if (event) {
         event.stopPropagation();
         event.preventDefault();
+    }
+    if (!token) {
+        showLoginModal();
+        return;
     }
 
     if (activeReblogMenu) {
@@ -3228,7 +3253,10 @@ async function viewProfile(accountId, fromHashChange = false) {
     if (!accountId) return;
     if (!document.getElementById('tab-profile-view')) {
         const base = window.KUTSOCIAL_BASE_PATH || '';
-        window.location.href = base + '/@id-' + accountId;
+        const targetHandle = (window.KUTSOCIAL_OWNER && String(window.KUTSOCIAL_OWNER.id) === String(accountId) && window.KUTSOCIAL_OWNER.username)
+            ? window.KUTSOCIAL_OWNER.username
+            : ('id-' + accountId);
+        window.location.href = base + '/@' + targetHandle;
         return;
     }
     if (fromHashChange && activeProfileViewId === accountId && document.getElementById('tab-profile-view').style.display === 'block') {
@@ -3311,8 +3339,10 @@ async function viewProfile(accountId, fromHashChange = false) {
     document.getElementById('profile-feed').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Cargando toots...</div>';
 
     try {
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         const res = await fetch(`/api/v1/accounts/${accountId}`, {
-            headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+            headers: headers
         });
         if (!res.ok) throw new Error("Error cargando perfil");
         const account = await res.json();
@@ -3750,8 +3780,9 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
     });
     menu.appendChild(optProfile);
 
-    // Separador para moderación / relaciones
-    const separator = document.createElement('div');
+    if (token) {
+        // Separador para moderación / relaciones
+        const separator = document.createElement('div');
     separator.style = 'height: 1px; background: #2f3037; margin: 4px 0;';
     menu.appendChild(separator);
 
@@ -3864,6 +3895,7 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
             relLoading.remove();
         }
         console.error(err);
+    }
     }
 
     setTimeout(() => {
@@ -4020,8 +4052,10 @@ async function viewTootThread(statusId, fromHashChange = false) {
     descendantsContainer.innerHTML = '';
 
     try {
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         const res = await fetch(`/api/v1/statuses/${statusId}/context`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            headers: headers
         });
         if (!res.ok) throw new Error("Error cargando hilo");
         const context = await res.json();
@@ -4067,6 +4101,10 @@ function goBackToFeed() {
 // INTERACCIONES CON TOOTS (FAV, MARCADORES, CW, EDIT, BORRAR)
 // ---------------------------
 async function toggleFavourite(statusId, btn) {
+    if (!token) {
+        showLoginModal();
+        return;
+    }
     const isFav = btn.classList.contains('active-fav');
     const action = isFav ? 'unfavourite' : 'favourite';
     try {
@@ -4101,6 +4139,10 @@ async function toggleFavourite(statusId, btn) {
 }
 
 async function toggleBookmark(statusId, btn) {
+    if (!token) {
+        showLoginModal();
+        return;
+    }
     const isBookmarked = btn.classList.contains('active-bookmark');
     const action = isBookmarked ? 'unbookmark' : 'bookmark';
     try {
@@ -4506,6 +4548,10 @@ function addPollOptionField() {
 }
 
 async function voteInPoll(pollId, choiceIndex, btn) {
+    if (!token) {
+        showLoginModal();
+        return;
+    }
     try {
         const response = await fetch(`/api/v1/polls/${pollId}/votes`, {
             method: 'POST',

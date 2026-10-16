@@ -1,11 +1,11 @@
-<div id="tab-profile-view" data-account-id="<?= htmlspecialchars((string)($activeProfileViewId ?? ($localUser['id'] ?? ''))) ?>" style="display: none;">
+<div id="tab-profile-view" data-account-id="<?= htmlspecialchars((string)($activeProfileViewId ?? ($localUser['id'] ?? ''))) ?>" style="<?= ($section === 'profile-view') ? 'display: block;' : 'display: none;' ?>">
     <!-- Back Header -->
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px; cursor: pointer; color: var(--text-muted); font-weight: 500;" onclick="goBackToFeed()">
         <span style="font-size: 18px;">←</span> <span>Atrás</span>
     </div>
 
     <!-- Tarjeta de Perfil -->
-    <div class="composer-card" style="padding: 0; overflow: hidden; position: relative;">
+    <div class="profile-card composer-card" style="padding: 0; overflow: hidden; position: relative;">
         <!-- Banner -->
         <div id="profile-view-header-bg" class="profile-header-banner" style="background-image: url('/assets/default-header.png');">
             <!-- Avatar overlapping -->

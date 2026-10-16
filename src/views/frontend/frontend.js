@@ -272,13 +272,20 @@ function initPublicView() {
     
     // Ocultar elementos exclusivos de usuarios registrados en el sidebar
     const linksToHide = [
-        'nav-public', 'nav-home', 'nav-local', 'nav-notifications', 'nav-bookmarks', 'nav-direct',
-        'nav-lists', 'nav-collections', 'nav-hashtags', 'nav-profile', 
+        'nav-home', 'nav-catchup', 'nav-notifications', 'nav-bookmarks', 'nav-direct',
+        'nav-lists', 'nav-collections', 'nav-hashtags', 'nav-profile', 'nav-settings',
         'nav-admin-settings'
     ];
     linksToHide.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
+    });
+
+    // Asegurar que Timeline Local y Federación Pública estén visibles para visitantes
+    const linksToShow = ['nav-local', 'nav-public'];
+    linksToShow.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'block';
     });
     
     // Mostrar link "Propietario"
@@ -287,7 +294,9 @@ function initPublicView() {
         itemOwner.style.display = 'block';
         const ownerLink = document.getElementById('nav-owner-profile');
         if (ownerLink && window.KUTSOCIAL_OWNER) {
-            ownerLink.innerHTML = `<span>👤</span> Perfil de @${window.KUTSOCIAL_OWNER.username}`;
+            const ownerHandle = window.KUTSOCIAL_OWNER.username || ('id-' + window.KUTSOCIAL_OWNER.id);
+            ownerLink.href = `${window.KUTSOCIAL_BASE_PATH || ''}/@${ownerHandle}`;
+            ownerLink.innerHTML = `<span>👤</span> Perfil de @${window.KUTSOCIAL_OWNER.username || ownerHandle}`;
         }
     }
     
@@ -299,11 +308,13 @@ function initPublicView() {
         `;
     }
     
-    // Ocultar composer en feed
-    const composer = document.querySelector('#tab-feed .composer-card');
-    if (composer) {
-        composer.style.display = 'none';
-    }
+    // Ocultar composer en feed y modales (sin ocultar tarjetas de perfil)
+    document.querySelectorAll('#tab-feed > .composer-card, #modal-composer').forEach(el => {
+        el.style.display = 'none';
+    });
+
+    // Cargar estadísticas del servidor en el sidebar derecho
+    loadInstanceStats();
     
     // Cargar perfil del dueño o enrutar por path
     if (!handlePathRouting() && window.KUTSOCIAL_OWNER) {
