@@ -1903,8 +1903,8 @@ HTML;
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         
-        $avatarUrl = $account['avatar'] ?: "$proto://$domain/assets/default-avatar.png";
-        $headerUrl = $account['header'] ?: "$proto://$domain/assets/default-header.png";
+        $avatarUrl = !empty($account['avatar']) ? $account['avatar'] : "$proto://$domain/assets/default-avatar.png";
+        $headerUrl = !empty($account['header']) ? $account['header'] : "$proto://$domain/assets/default-header.png";
 
         // Asegurar que las rutas locales absolutas tengan el prefijo del dominio si no son ya URLs
         if (!filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
@@ -3759,7 +3759,7 @@ HTML;
         exit;
     }
 
-    private static function formatLocalContentToHtml(string $content, string $domain, \PDO $db, string $proto): string {
+    public static function formatLocalContentToHtml(string $content, string $domain, \PDO $db, string $proto): string {
         // 1. Extraer etiquetas <a> temporales del contenido en crudo (antes de escapar)
         $placeholders = [];
         $result = '';
@@ -4325,8 +4325,8 @@ HTML;
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
   
-        $avatarUrl = $row['avatar'] ?: "$proto://$domain/assets/default-avatar.png";
-        $headerUrl = $row['header'] ?: "$proto://$domain/assets/default-header.png";
+        $avatarUrl = !empty($row['avatar']) ? $row['avatar'] : "$proto://$domain/assets/default-avatar.png";
+        $headerUrl = !empty($row['header']) ? $row['header'] : "$proto://$domain/assets/default-header.png";
   
         if (!filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
             $avatarUrl = $proto . '://' . $domain . $avatarUrl;
@@ -7437,6 +7437,16 @@ HTML;
             echo "URL inválida o ausente.";
             return;
         }
+
+        // Si es archivo multimedia pesado (video o audio), redirigir directamente al CDN/remoto para evitar saturar memoria en PHP-FPM
+        $cleanUrlPath = strtolower(parse_url($url, PHP_URL_PATH) ?? '');
+        $mediaExt = pathinfo($cleanUrlPath, PATHINFO_EXTENSION);
+        if (in_array($mediaExt, ['mp4', 'webm', 'mov', 'm4v', 'ogv', 'mp3', 'ogg', 'wav', 'flac', 'm4a', 'aac'])) {
+            header("Location: $url", true, 302);
+            exit;
+        }
+
+        @ini_set('memory_limit', '256M');
 
         $cacheDir = dirname(Database::getDbPath()) . '/cache';
         if (!is_dir($cacheDir)) {

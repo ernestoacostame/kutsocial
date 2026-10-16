@@ -17,6 +17,10 @@ function proxyUrl(url) {
     if (url.startsWith('/') || url.startsWith(window.location.origin) || !url.startsWith('http')) {
         return url;
     }
+    const cleanUrl = url.toLowerCase().split('?')[0];
+    if (cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.webm') || cleanUrl.endsWith('.mov') || cleanUrl.endsWith('.m4v') || cleanUrl.endsWith('.mp3') || cleanUrl.endsWith('.wav') || cleanUrl.endsWith('.ogg')) {
+        return url;
+    }
     return `/api/proxy?url=${encodeURIComponent(url)}`;
 }
 function sanitizeHTML(html) {
