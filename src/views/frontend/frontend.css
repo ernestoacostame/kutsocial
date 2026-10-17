@@ -745,6 +745,65 @@ button:hover {
     color: var(--error);
 }
 
+/* Menús Contextuales / Desplegables (Reblog y Acciones) */
+.reblog-context-menu,
+.toot-context-menu {
+    position: fixed;
+    background: rgba(26, 29, 38, 0.96) !important;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    border-radius: 12px !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.3) !important;
+    z-index: 99999 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 6px !important;
+    gap: 4px !important;
+    min-width: 175px !important;
+    animation: fadeInScale 0.15s ease-out;
+}
+
+.reblog-context-menu button,
+.toot-context-menu button {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 9px 14px !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 8px !important;
+    box-shadow: none !important;
+    color: var(--text-color, #f3f4f6) !important;
+    font-size: 13.5px !important;
+    font-weight: 500 !important;
+    font-family: inherit !important;
+    text-align: left !important;
+    cursor: pointer !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    transition: background 0.15s ease, color 0.15s ease !important;
+    transform: none !important;
+}
+
+.reblog-context-menu button:hover,
+.toot-context-menu button:hover {
+    background: rgba(255, 255, 255, 0.08) !important;
+    color: #ffffff !important;
+    box-shadow: none !important;
+    transform: none !important;
+}
+
+.reblog-context-menu button .material-icons,
+.reblog-context-menu button .material-icons-outlined,
+.toot-context-menu button .material-icons,
+.toot-context-menu button .material-icons-outlined {
+    font-size: 18px !important;
+    color: var(--primary, #818cf8);
+    flex-shrink: 0;
+    margin: 0 !important;
+}
+
 /* Composer Avanzado */
 .composer-toolbar {
     display: flex;
@@ -1194,9 +1253,9 @@ button:hover {
 
 /* Rediseño de Vista de Listas y Colecciones */
 .lists-view-container {
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 24px !important;
     width: 100%;
     margin-bottom: 30px;
 }
@@ -1209,6 +1268,7 @@ button:hover {
     border-radius: 16px;
     padding: 18px 24px;
     backdrop-filter: blur(10px);
+    margin-bottom: 24px;
 }
 .lists-layout-grid {
     display: grid;
@@ -1241,7 +1301,7 @@ button:hover {
     border: 1px solid var(--border-color);
     border-radius: 16px;
     padding: 16px 22px;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
     backdrop-filter: blur(10px);
     gap: 15px;
 }

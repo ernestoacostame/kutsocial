@@ -221,3 +221,22 @@ Se protegieron las funciones loadUsersList en profile-view.php para resolver aut
   * Redirección directa y ampliación de memoria en Proxy de Medios: `proxyMedia()` ahora detecta si la URL solicitada corresponde a archivos multimedia de video o audio (`.mp4`, `.webm`, `.mov`, `.mp3`, `.ogg`, etc.) y responde con una redirección HTTP 302 directa al CDN de origen, evitando que el servidor descargue decenas de megabytes en la memoria de PHP-FPM. Además, se eleva preventivamente el límite de memoria a `256M` para imágenes grandes.
   * Exclusión en cliente web (`proxyUrl`): Las funciones `proxyUrl()` en `pages.js` y `frontend.js` ahora discriminan extensiones de audio y video para cargarlas de forma nativa en el reproductor del navegador sin pasar por `/api/proxy`.
   * Saneamiento de accesos a arrays: Se reemplazaron las lecturas directas `$row['header']` y `$row['avatar']` por comprobaciones seguras con `!empty()`.
+
+20. Rediseño del menú contextual de Re-toot / Opciones y corrección de márgenes y espaciado en Listas y Colecciones
+
+- Diagnóstico del menú de Re-toot ("choca con los bordes"):
+  * La clase `.reblog-context-menu` (y `.toot-context-menu`) carecía de estilos dedicados en los archivos CSS y generaba estilos en línea con `padding: 6px 0;`. Esto dejaba el relleno lateral en cero y provocaba que los botones de acción (`button`), afectados por la regla global con border-radius, chocaran directamente contra los bordes exteriores del contenedor emergente.
+  * Los botones en línea tenían asignado ancho del 100% y carecían de márgenes perimetrales, lo que causaba un aspecto apretado y poco ergonómico.
+
+- Diagnóstico de elementos pegados en Listas y Colecciones:
+  * Cuando se activaba la vista de listas o colecciones, `showTab()` en JavaScript y la directiva `#tab-<?= $section ?>` en PHP forzaban `display: block;` sobre `.lists-view-container`. Como la propiedad CSS `gap: 22px` solo opera en contenedores Flexbox/Grid, el espaciado quedaba anulado y la barra superior (`.lists-header-bar`), el panel lateral (`.lists-sidebar-panel`) y la tarjeta de detalle (`.list-detail-header-card`) quedaban pegados con margen cero.
+  * En renderizado inicial por servidor (SSR), el primer elemento del sidebar no recibía la clase `active`, desincronizando la apariencia con el contenido activo.
+
+- Medidas de solución implementadas:
+  * Rediseño y contención del menú contextual (`.reblog-context-menu`, `.toot-context-menu`): Se crearon reglas dedicadas en `pages.css` y `frontend.css` con `padding: 6px !important`, `border-radius: 12px`, fondo semitranslúcido con desenfoque de fondo (`backdrop-filter: blur(16px)`), sombra suave en capas y un espaciado interior (`gap: 4px`). Los botones ahora cuentan con `border-radius: 8px`, `padding: 9px 14px`, `margin: 0 !important`, tipografía de 13.5px y estado hover sutil integrado que nunca choca con los límites de la ventana emergente.
+  * Restauración de espaciado vertical y flexbox en Listas y Colecciones:
+    - Se garantizó `display: flex !important; flex-direction: column !important; gap: 24px !important;` en `.lists-view-container`.
+    - Se incorporó `margin-bottom: 24px;` tanto en `.lists-header-bar` como en `.list-detail-header-card` para asegurar una separación nítida e invariable independientemente del modo de renderizado (SSR o cliente SPA).
+    - Se ajustó `showTab()` y el bloque `<style>` de `layout.php` para renderizar `lists` y `collections` como `display: flex`.
+    - Se calibraron los botones de acción (Importar, Nueva Lista, Nueva Colección y botón eliminar) con un relleno más espacioso y cómodo (`padding: 8px 16px; font-size: 13.5px; gap: 7px;`).
+    - Se asignó la clase `active` por defecto al primer elemento de listas y colecciones durante el renderizado SSR para mantener coherencia visual inmediata.

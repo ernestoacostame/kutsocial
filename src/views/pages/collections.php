@@ -3,8 +3,8 @@
         <h2 style="font-size: 18px; margin: 0; display: flex; align-items: center; gap: 10px; font-weight: 700;">
             <span class="material-icons-outlined" style="color: var(--primary); font-size: 24px;">folder</span> Mis Colecciones Públicas
         </h2>
-        <button type="button" onclick="showCreateCollectionModal()" class="btn-publish" style="width: auto; padding: 7px 14px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; margin: 0; box-shadow: none; border-radius: 10px;">
-            <span class="material-icons-outlined" style="font-size: 16px;">add</span> Nueva Colección
+        <button type="button" onclick="showCreateCollectionModal()" class="btn-publish" style="width: auto; padding: 8px 16px; font-size: 13.5px; display: inline-flex; align-items: center; gap: 7px; margin: 0; box-shadow: none; border-radius: 10px;">
+            <span class="material-icons-outlined" style="font-size: 18px;">add</span> Nueva Colección
         </button>
     </div>
 
@@ -13,14 +13,16 @@
             <?php if (empty($userCollections)): ?>
                 <div style="font-size: 13px; color: var(--text-muted); padding: 25px 10px; text-align: center;">No tienes colecciones.</div>
             <?php else: ?>
+                <?php $isFirstCol = true; ?>
                 <?php foreach ($userCollections as $col): ?>
-                    <button type="button" class="list-nav-btn" data-collection-id="<?= $col['id'] ?>" onclick="selectCollection(<?= $col['id'] ?>)">
+                    <button type="button" class="list-nav-btn <?= $isFirstCol ? 'active' : '' ?>" data-collection-id="<?= $col['id'] ?>" onclick="selectCollection(<?= $col['id'] ?>)">
                         <span style="display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
                             <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary); flex-shrink: 0;">folder</span>
                             <span style="overflow: hidden; text-overflow: ellipsis;"><?= htmlspecialchars($col['title']) ?></span>
                         </span>
                         <span class="material-icons-outlined" style="font-size: 16px; opacity: 0.4; flex-shrink: 0;">chevron_right</span>
                     </button>
+                    <?php $isFirstCol = false; ?>
                 <?php endforeach; ?>
             <?php endif; ?>
         </aside>
@@ -40,7 +42,7 @@
                         </div>
                         <p id="selected-collection-desc" style="font-size: 13px; color: var(--text-muted); margin: 0; line-height: 1.4;"></p>
                     </div>
-                    <button type="button" id="btn-delete-collection" class="btn-delete-item" title="Eliminar Colección" onclick="deleteSelectedCollection()" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; margin: 0; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; color: var(--error); cursor: pointer; flex-shrink: 0;">
+                    <button type="button" id="btn-delete-collection" class="btn-delete-item" title="Eliminar Colección" onclick="deleteSelectedCollection()" style="width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; margin: 0; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; color: var(--error); cursor: pointer; flex-shrink: 0;">
                         <span class="material-icons-outlined" style="font-size: 18px;">delete</span>
                     </button>
                 </div>

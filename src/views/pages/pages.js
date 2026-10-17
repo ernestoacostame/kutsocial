@@ -1258,30 +1258,16 @@ function handleReblogButtonClick(tootId, btn, event) {
     const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
     menu.className = 'reblog-context-menu';
-    menu.style = `
-        position: fixed;
-        top: ${rect.bottom + 6}px;
-        left: ${rect.left}px;
-        background: #1e1f22;
-        border: 1px solid #2f3037;
-        border-radius: 8px;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        padding: 6px 0;
-        min-width: 140px;
-    `;
+    menu.style.top = `${rect.bottom + 6}px`;
+    menu.style.left = `${rect.left}px`;
 
     const optReblog = document.createElement('button');
+    optReblog.type = 'button';
     if (toot.reblogged) {
-        optReblog.innerHTML = '<span class="material-icons" style="font-size:16px; margin-right:8px; color: #10b981;">repeat</span> Deshacer Re-toot';
+        optReblog.innerHTML = '<span class="material-icons" style="color: #10b981;">repeat</span> Deshacer Re-toot';
     } else {
-        optReblog.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--text-color);">repeat</span> Re-tootear';
+        optReblog.innerHTML = '<span class="material-icons-outlined">repeat</span> Re-tootear';
     }
-    optReblog.style = 'background:none; border:none; color:#fff; padding: 8px 16px; text-align:left; font-size:13px; cursor:pointer; display:flex; align-items:center; width:100%;';
-    optReblog.onmouseover = () => optReblog.style.background = 'rgba(255,255,255,0.06)';
-    optReblog.onmouseout = () => optReblog.style.background = 'none';
     optReblog.onclick = (e) => {
         e.stopPropagation();
         menu.remove();
@@ -1290,10 +1276,8 @@ function handleReblogButtonClick(tootId, btn, event) {
     };
 
     const optQuote = document.createElement('button');
-    optQuote.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--text-color);">format_quote</span> Citar publicación';
-    optQuote.style = 'background:none; border:none; color:#fff; padding: 8px 16px; text-align:left; font-size:13px; cursor:pointer; display:flex; align-items:center; width:100%;';
-    optQuote.onmouseover = () => optQuote.style.background = 'rgba(255,255,255,0.06)';
-    optQuote.onmouseout = () => optQuote.style.background = 'none';
+    optQuote.type = 'button';
+    optQuote.innerHTML = '<span class="material-icons-outlined">format_quote</span> Citar publicación';
     optQuote.onclick = (e) => {
         e.stopPropagation();
         menu.remove();
@@ -1909,7 +1893,7 @@ function showTab(tabName, fromHashChange = false) {
     });
 
     if (tabElement) {
-        tabElement.style.display = 'block';
+        tabElement.style.display = (tabName === 'lists' || tabName === 'collections') ? 'flex' : 'block';
     }
 
     updateRightSidebarVisibility(tabName, currentTimeline);
@@ -3726,20 +3710,8 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
     const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
     menu.className = 'toot-context-menu';
-    menu.style = `
-        position: fixed;
-        top: ${rect.bottom + 6}px;
-        left: ${Math.min(rect.left, window.innerWidth - 220)}px;
-        background: #1e1f22;
-        border: 1px solid #2f3037;
-        border-radius: 8px;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
-        z-index: 9999;
-        display: flex;
-        flex-direction: column;
-        padding: 6px 0;
-        min-width: 200px;
-    `;
+    menu.style.top = `${rect.bottom + 6}px`;
+    menu.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
 
     menu.innerHTML = '';
 
@@ -3915,9 +3887,7 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
 }
 
 function setupMenuBtn(btn, onClick) {
-    btn.style = 'background:none; border:none; color:#fff; padding: 8px 16px; text-align:left; font-size:13px; cursor:pointer; display:flex; align-items:center; width:100%; gap: 6px;';
-    btn.onmouseover = () => btn.style.background = 'rgba(255,255,255,0.06)';
-    btn.onmouseout = () => btn.style.background = 'none';
+    btn.type = 'button';
     btn.onclick = onClick;
 }
 
