@@ -1056,7 +1056,7 @@ function createThreadTootElement(toot, isMain = false) {
         cardHTML = `
             <div class="toot-link-card" onclick="event.stopPropagation(); window.open('${card.url}', '_blank')" style="display: flex; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin-top: 12px; cursor: pointer; background: rgba(255,255,255,0.01); transition: all 0.2s; max-height: 140px; text-align: left; width: 100%;">
                 ${card.image ? `
-                    <div style="width: 120px; min-width: 120px; background-image: url('${card.image}'); background-size: cover; background-position: center; border-right: 1px solid var(--border-color);"></div>
+                    <div style="width: 120px; min-width: 120px; background-image: url('${proxyUrl(card.image)}'); background-size: cover; background-position: center; border-right: 1px solid var(--border-color);"></div>
                 ` : ''}
                 <div style="padding: 12px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; flex: 1;">
                     <div>
@@ -1402,18 +1402,46 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
         mediaHTML = `<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">`;
         quotedToot.media_attachments.forEach(media => {
             const type = (media.type || '').toLowerCase();
-            const url = type === 'audio' ? '' : proxyUrl(media.url);
+            const rawUrl = media.url || '';
+            const cleanUrl = rawUrl.toLowerCase().split('?')[0];
+            // Ignorar enlaces web que hayan sido erróneamente guardados como adjuntos
+            if (cleanUrl.endsWith('.html') || cleanUrl.endsWith('.htm') || cleanUrl.endsWith('.php') || type === 'link' || type === 'unknown') {
+                return;
+            }
+            const url = type === 'audio' ? '' : proxyUrl(rawUrl);
             if (url) {
-                const isGif = url.toLowerCase().split('?')[0].endsWith('.gif');
-                const isVideo = type === 'video' || type === 'gifv' || ((url.toLowerCase().split('?')[0].endsWith('.mp4') || url.toLowerCase().split('?')[0].endsWith('.webm') || url.toLowerCase().split('?')[0].endsWith('.mov') || url.toLowerCase().split('?')[0].endsWith('.m4v') || url.toLowerCase().split('?')[0].endsWith('.ogv')) && !isGif);
+                const isGif = cleanUrl.endsWith('.gif');
+                const isVideo = type === 'video' || type === 'gifv' || ((cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.webm') || cleanUrl.endsWith('.mov') || cleanUrl.endsWith('.m4v') || cleanUrl.endsWith('.ogv')) && !isGif);
                 if (isVideo) {
-                    mediaHTML += `<video src="${media.url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; background:#000;" muted playsinline loop onmouseover="this.play()" onmouseout="this.pause()" onclick="event.stopPropagation(); window.open('${media.url}', '_blank')"></video>`;
+                    mediaHTML += `<video src="${rawUrl}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; background:#000;" onerror="this.style.display='none'" muted playsinline loop onmouseover="this.play()" onmouseout="this.pause()" onclick="event.stopPropagation(); window.open('${rawUrl}', '_blank')"></video>`;
                 } else {
-                    mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onclick="event.stopPropagation(); openImageViewerModal(this.src)">`;
+                    mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onerror="this.style.display='none'" onclick="event.stopPropagation(); openImageViewerModal(this.src)">`;
                 }
             }
         });
         mediaHTML += `</div>`;
+    }
+
+    // Previsualización de tarjeta de enlace (Card) para la cita
+    let quoteCardHTML = '';
+    if (quotedToot.card) {
+        const card = quotedToot.card;
+        const parsedDomain = (u) => { try { return new URL(u).hostname; } catch(e) { return ''; } };
+        const cardImg = card.image ? proxyUrl(card.image) : '';
+        quoteCardHTML = `
+            <div class="toot-link-card quote-link-card" onclick="event.stopPropagation(); window.open('${card.url}', '_blank')" style="display: flex; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin-top: 8px; cursor: pointer; background: rgba(255,255,255,0.02); transition: all 0.2s; max-height: 80px; text-align: left; width: 100%;">
+                ${cardImg ? `
+                    <div style="width: 80px; min-width: 80px; background-image: url('${cardImg}'); background-size: cover; background-position: center; border-right: 1px solid var(--border-color);"></div>
+                ` : ''}
+                <div style="padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; flex: 1;">
+                    <div style="font-weight: 600; font-size: 12.5px; color: var(--text-color); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(card.title || '')}</div>
+                    ${card.description ? `<div style="font-size: 11px; color: var(--text-muted); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(card.description)}</div>` : ''}
+                    <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 10.5px; color: var(--text-muted);">
+                        <span>🔗 ${escapeHTML(card.provider_name || parsedDomain(card.url))}</span>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     container.style.cursor = 'pointer';
@@ -1443,6 +1471,7 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
         </div>
         <div style="font-size:12.5px; line-height:1.4; color:var(--text-color);">${cleanContent}</div>
         ${mediaHTML}
+        ${quoteCardHTML}
     `;
 }
 

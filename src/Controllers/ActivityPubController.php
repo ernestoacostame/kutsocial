@@ -558,7 +558,7 @@ XML;
                 foreach ($rawAttachments as $att) {
                     if (!is_array($att)) continue;
                     $attType = $att['type'] ?? '';
-                    if ($attType === 'Document' || $attType === 'Image' || $attType === 'Video' || $attType === 'Audio' || $attType === 'Link') {
+                    if ($attType === 'Document' || $attType === 'Image' || $attType === 'Video' || $attType === 'Audio') {
                         $url = '';
                         if (isset($att['url'])) {
                             if (is_string($att['url'])) {
@@ -597,6 +597,9 @@ XML;
                         }
                         if ($attType === 'Audio') {
                             $mediaApiType = 'audio';
+                        }
+                        if ($mediaApiType === 'unknown') {
+                            continue;
                         }
 
                         // Para videos o audio, intentar obtener preview_url
@@ -1683,7 +1686,7 @@ XML;
             if (is_array($attachmentList)) {
                 foreach ($attachmentList as $att) {
                     $attType = $att['type'] ?? '';
-                    if ($attType === 'Document' || $attType === 'Image' || $attType === 'PropertyValue') {
+                    if ($attType === 'Document' || $attType === 'Image' || $attType === 'Video' || $attType === 'Audio') {
                         $url = '';
                         if (isset($att['url'])) {
                             if (is_string($att['url'])) {
@@ -1703,16 +1706,38 @@ XML;
                                     }
                                 }
                             }
+                        } elseif (isset($att['href']) && is_string($att['href'])) {
+                            $url = $att['href'];
                         }
+
                         if (empty($url)) {
                             continue;
                         }
+
+                        $mimeType = $att['mediaType'] ?? $att['mimeType'] ?? '';
+                        if (!empty($mimeType)) {
+                            $mediaApiType = \KutSocial\Controllers\MastodonApiController::detectMediaType($mimeType);
+                        } else {
+                            $mediaApiType = \KutSocial\Controllers\MastodonApiController::detectMediaTypeFromUrl($url);
+                        }
+                        if ($attType === 'Audio') {
+                            $mediaApiType = 'audio';
+                        }
+                        if ($mediaApiType === 'unknown') {
+                            continue;
+                        }
+
+                        $previewUrl = $url;
+                        if ($mediaApiType === 'video' || $mediaApiType === 'audio') {
+                            $previewUrl = $att['icon']['url'] ?? $att['preview_url'] ?? $url;
+                        }
+
                         $description = $att['name'] ?? $att['summary'] ?? $att['description'] ?? '';
                         $attachments[] = [
                             'id' => bin2hex(random_bytes(6)),
-                            'type' => 'image',
+                            'type' => $mediaApiType,
                             'url' => $url,
-                            'preview_url' => $url,
+                            'preview_url' => $previewUrl,
                             'remote_url' => $url,
                             'description' => $description
                         ];
@@ -1776,7 +1801,10 @@ XML;
             $reblogOfId
         ]);
 
-        return (int)$db->lastInsertId();
+        $newStatusId = (int)$db->lastInsertId();
+        \KutSocial\NotificationHelper::fetchAndSaveLinkCard($newStatusId, $content);
+
+        return $newStatusId;
     }
 
     /**

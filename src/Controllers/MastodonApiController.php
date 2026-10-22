@@ -4156,10 +4156,13 @@ HTML;
         if (str_starts_with($mediaType, 'audio/')) {
             return 'audio';
         }
-        if ($mediaType === 'image/gif') {
+        if (str_starts_with($mediaType, 'image/')) {
             return 'image';
         }
-        return 'image';
+        if (in_array($mediaType, ['text/html', 'text/plain', 'application/json', 'application/activity+json', 'application/ld+json', 'application/pdf'])) {
+            return 'unknown';
+        }
+        return 'unknown';
     }
 
     /**
@@ -4169,16 +4172,20 @@ HTML;
         $ext = strtolower(pathinfo(parse_url($url, PHP_URL_PATH) ?: '', PATHINFO_EXTENSION));
         $videoExts = ['mp4', 'webm', 'mov', 'ogv', 'avi', 'mkv', 'm4v'];
         $audioExts = ['mp3', 'ogg', 'wav', 'flac', 'aac', 'm4a', 'opus', 'wma'];
+        $imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'bmp', 'ico', 'tiff'];
         if (in_array($ext, $videoExts)) {
             return 'video';
         }
         if (in_array($ext, $audioExts)) {
             return 'audio';
         }
-        if ($ext === 'gif') {
+        if (in_array($ext, $imageExts)) {
             return 'image';
         }
-        return 'image';
+        if (in_array($ext, ['html', 'htm', 'php', 'asp', 'aspx', 'jsp', 'txt', 'pdf', 'json', 'xml'])) {
+            return 'unknown';
+        }
+        return 'unknown';
     }
 
     /**
@@ -5190,6 +5197,51 @@ HTML;
             'ancestors' => array_values($ancestors),
             'descendants' => array_values($descendants)
         ]);
+    }
+
+    /**
+     * Endpoint GET /api/v1/statuses/:id/card
+     * Retorna la PreviewCard asociada a una publicación.
+     */
+    public static function getStatusCard(array $params): void {
+        $db = Database::connect();
+        $idParam = $params['id'] ?? '';
+        $id = 0;
+        if (is_numeric($idParam)) {
+            $id = (int)$idParam;
+        } else {
+            $stmtFind = $db->prepare("SELECT id FROM statuses WHERE uri = ? OR uri LIKE ? LIMIT 1");
+            $stmtFind->execute([$idParam, "%$idParam%"]);
+            $id = (int)($stmtFind->fetchColumn() ?: 0);
+        }
+
+        if ($id <= 0) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        $stmt = $db->prepare("SELECT card, content FROM statuses WHERE id = ? LIMIT 1");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        $card = !empty($row['card']) ? json_decode($row['card'], true) : null;
+        if (!$card && !empty($row['content'])) {
+            \KutSocial\NotificationHelper::fetchAndSaveLinkCard($id, $row['content']);
+            $stmtCard = $db->prepare("SELECT card FROM statuses WHERE id = ? LIMIT 1");
+            $stmtCard->execute([$id]);
+            $cardStr = $stmtCard->fetchColumn();
+            $card = !empty($cardStr) ? json_decode($cardStr, true) : null;
+        }
+
+        if ($card) {
+            Router::json($card);
+        } else {
+            Router::json(new \stdClass());
+        }
     }
 
     public static function updateStatus(array $params): void {

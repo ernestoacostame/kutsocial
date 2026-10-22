@@ -370,6 +370,10 @@ button:hover {
     gap: 18px;
 }
 
+#profile-feed {
+    padding: 16px;
+}
+
 .toot-card {
     background: var(--card-bg);
     border: 1px solid var(--border-color);

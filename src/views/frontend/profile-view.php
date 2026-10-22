@@ -91,6 +91,6 @@
             <button id="profile-subtab-favourites" class="subtab-btn" onclick="switchProfileSubtab('favourites')" style="display: none;">Favoritos</button>
         </div>
 
-        <div id="profile-feed" class="feed-container" style="padding: 15px 0;"></div>
+        <div id="profile-feed" class="feed-container" style="padding: 16px;"></div>
     </div>
 </div>

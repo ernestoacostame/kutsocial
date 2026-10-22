@@ -620,6 +620,7 @@ $router->get('/api/v1/statuses/resolve', [MastodonApiController::class, 'resolve
 $router->get('/api/v1/statuses/:id', [MastodonApiController::class, 'getSingleStatus']);
 $router->get('/api/v1/statuses/:id/source', [MastodonApiController::class, 'getStatusSource']);
 $router->get('/api/v1/statuses/:id/context', [MastodonApiController::class, 'getStatusContext']);
+$router->get('/api/v1/statuses/:id/card', [MastodonApiController::class, 'getStatusCard']);
 $router->put('/api/v1/statuses/:id', [MastodonApiController::class, 'updateStatus']);
 $router->delete('/api/v1/statuses/:id', [MastodonApiController::class, 'deleteStatus']);
 $router->post('/api/v1/statuses/:id/favourite', [MastodonApiController::class, 'favouriteStatus']);
