@@ -169,9 +169,10 @@ $renderFrontend = function() {
         }
     }
 
-    // La columna derecha solo se muestra en Inicio, Timeline local, Catchup, Federación pública, Notificaciones y Mensajes privados
+    // La columna derecha se muestra en Inicio, Timeline local, Catchup, Federación pública, Notificaciones, Mensajes privados e Hilo de conversación
     $showRightSidebar = ($section === 'catchup') 
         || ($section === 'notifications') 
+        || ($section === 'thread-view')
         || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup', 'direct']));
 
     $path = __DIR__ . '/src/views/frontend.html';
@@ -403,9 +404,10 @@ $renderPagesFrontend = function() {
         $pageTitle = '@' . $usernameWithAt . ' - KutSocial';
     }
 
-    // La columna derecha se muestra en Inicio, Timeline local, Catchup, Federación pública, Notificaciones y Mensajes privados
+    // La columna derecha se muestra en Inicio, Timeline local, Catchup, Federación pública, Notificaciones, Mensajes privados e Hilo de conversación
     $showRightSidebar = ($section === 'catchup') 
         || ($section === 'notifications') 
+        || ($section === 'thread-view')
         || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup', 'direct']));
 
     $basePath = (str_starts_with($uri, '/p/') || $uri === '/p') ? '/p' : '';

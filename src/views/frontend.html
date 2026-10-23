@@ -55,14 +55,8 @@
                     <span>KutSocial</span>
                 </div>
                 
-                <!-- Buscador de Usuarios / Contenido -->
-                <div class="sidebar-search">
-                    <div class="search-input-wrapper">
-                        <span class="material-icons-outlined search-icon">search</span>
-                        <input type="text" class="sidebar-search-input" placeholder="Buscar en el Fediverso..." 
-                               onkeydown="if(event.key === 'Enter') performSearch(this.value)">
-                    </div>
-                </div>
+                <!-- Espacio reservado para mantener la posición del menú -->
+                <div class="sidebar-search-spacer" style="height: 60px;" aria-hidden="true"></div>
 
                 <ul class="nav-menu">
                     <li class="nav-item">
@@ -167,6 +161,15 @@
 
         <!-- Columna Derecha (Instancia) -->
         <aside class="right-sidebar" <?= empty($showRightSidebar) ? 'style="display: none;"' : '' ?>>
+            <!-- Buscador de Usuarios / Contenido -->
+            <div class="sidebar-search right-panel-search">
+                <div class="search-input-wrapper">
+                    <span class="material-icons-outlined search-icon">search</span>
+                    <input type="text" class="sidebar-search-input" placeholder="Buscar en el Fediverso..." 
+                           onkeydown="if(event.key === 'Enter') performSearch(this.value)">
+                </div>
+            </div>
+
             <!-- Actualizaciones del Servidor -->
             <div class="widget-card">
                 <div class="update-indicator">

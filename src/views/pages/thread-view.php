@@ -4,14 +4,14 @@
         <span style="font-size: 18px;">←</span> <span>Volver a la línea de tiempo</span>
     </div>
 
-    <div class="composer-card" style="padding: 10px 0;">
+    <div class="composer-card" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
         <!-- Antecesores -->
-        <div id="thread-ancestors"></div>
+        <div id="thread-ancestors" style="display: flex; flex-direction: column; gap: 14px;"></div>
 
         <!-- Status Principal (Destacado) -->
-        <div id="thread-main" style="border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); background: rgba(99, 102, 241, 0.03); margin: 10px 0;"></div>
+        <div id="thread-main" style="display: flex; flex-direction: column;"></div>
 
         <!-- Respuestas (Descendientes) -->
-        <div id="thread-descendants"></div>
+        <div id="thread-descendants" style="display: flex; flex-direction: column; gap: 14px;"></div>
     </div>
 </div>

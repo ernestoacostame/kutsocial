@@ -157,8 +157,17 @@ button:hover {
     padding-left: 10px;
 }
 
+.sidebar-search-spacer {
+    height: 60px;
+    width: 100%;
+}
+
 .sidebar-search {
     padding: 0 10px 20px 10px;
+}
+
+.right-sidebar .sidebar-search {
+    padding: 0;
 }
 
 .search-input-wrapper {

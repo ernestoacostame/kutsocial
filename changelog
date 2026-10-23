@@ -240,3 +240,16 @@ Se protegieron las funciones loadUsersList en profile-view.php para resolver aut
     - Se ajustó `showTab()` y el bloque `<style>` de `layout.php` para renderizar `lists` y `collections` como `display: flex`.
     - Se calibraron los botones de acción (Importar, Nueva Lista, Nueva Colección y botón eliminar) con un relleno más espacioso y cómodo (`padding: 8px 16px; font-size: 13.5px; gap: 7px;`).
     - Se asignó la clase `active` por defecto al primer elemento de listas y colecciones durante el renderizado SSR para mantener coherencia visual inmediata.
+
+21. Reubicación del buscador al panel derecho, espaciado del menú lateral y corrección de tarjetas pegadas en hilos
+
+- Reubicación del buscador en el panel derecho y preservación del menú lateral:
+  * El buscador en el Fediverso (`.sidebar-search`) se trasladó al panel lateral derecho (`.right-sidebar`), situándose en la parte superior directamente sobre el módulo de "Actualizaciones del Servidor / Servidor Activo".
+  * Se definió la clase CSS `.sidebar-search-spacer` en `pages.css` y `frontend.css` (con altura fija de 60px y ancho completo) insertada en el sidebar izquierdo en la posición exacta que ocupaba el buscador anterior. Esto evita que los enlaces de navegación del menú suban o queden pegados al logo de KutSocial.
+  * Se ajustaron las reglas CSS de `.right-sidebar .sidebar-search` para remover el padding exterior anterior (`padding: 0`), integrándose a la perfección con el espaciado vertical de la columna derecha (`gap: 20px`).
+
+- Corrección de tarjetas pegadas al borde en hilos de toots (`thread-view`):
+  * Diagnóstico: En `thread-view.php` (tanto en `pages/` como en `frontend/`), el contenedor `.composer-card` tenía un estilo en línea `style="padding: 10px 0;"` que anulaba el relleno horizontal a cero. Esto provocaba que todas las publicaciones del hilo (`#thread-ancestors`, `#thread-main`, `#thread-descendants`) quedaran completamente pegadas a los bordes exteriores izquierdo y derecho de la tarjeta. Adicionalmente, `#thread-main` forzaba bordes en línea y fondo redundante que chocaban con los estilos nativos de `.toot-card.toot-main`.
+  * Relleno y espaciado consistente: Se actualizó el contenedor `.composer-card` a `padding: 20px; display: flex; flex-direction: column; gap: 14px;`, y se estructuraron los antecesores y respuestas con `gap: 14px`. Se eliminaron los bordes manuales invasivos de `#thread-main` para respetar el diseño de la tarjeta destacada.
+  * Homogeneización en perfiles: En `profile-view.php`, se sincronizó el relleno de `#profile-feed` a `padding: 20px` para asegurar una respiración visual simétrica y uniforme con el resto de contenedores.
+  * Visibilidad del panel derecho en hilos: Se incluyó `thread-view` en `$showRightSidebar` (`index.php`) y en `updateRightSidebarVisibility` (`pages.js` y `frontend.js`) para que al abrir la conversación de una publicación se mantenga visible la columna derecha con el buscador y estadísticas, conservando el feed central en su ancho óptimo (640px) y evitando que se estire hasta 920px.

@@ -1809,11 +1809,12 @@ function updateRightSidebarVisibility(tabName, timeline = currentTimeline) {
     const appContainer = document.getElementById('app-container');
     if (!rightSidebar) return;
 
-    // Mostrar en Inicio, Timeline local, Ponerse al Día, Federación pública, Notificaciones y Mensajes privados
+    // Mostrar en Inicio, Timeline local, Ponerse al Día, Federación pública, Notificaciones, Mensajes privados e Hilo de conversación
     const isAllowed = (tabName === 'feed' && ['home', 'local', 'public', 'direct'].includes(timeline)) 
         || tabName === 'catchup' 
         || (timeline === 'catchup') 
-        || tabName === 'notifications';
+        || tabName === 'notifications'
+        || tabName === 'thread-view';
 
     if (isAllowed) {
         rightSidebar.style.display = '';
