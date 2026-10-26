@@ -50,8 +50,17 @@ function formatRelativeTime(dateInput) {
         return `hace ${diffMins} min`;
     } else if (diffHours < 24) {
         return `hace ${diffHours} h`;
-    } else {
+    } else if (diffDays === 1) {
+        return 'ayer';
+    } else if (diffDays < 7) {
         return `hace ${diffDays} días`;
+    } else {
+        const isSameYear = date.getFullYear() === now.getFullYear();
+        return date.toLocaleDateString('es-ES', {
+            day: 'numeric',
+            month: 'short',
+            year: isSameYear ? undefined : 'numeric'
+        });
     }
 }
 
@@ -1336,8 +1345,8 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
     const container = document.getElementById(placeholderId);
     if (!container) return;
 
-    const absoluteDate = new Date(quotedToot.created_at).toLocaleDateString('es-ES', {
-        hour: '2-digit', minute: '2-digit'
+    const absoluteDate = new Date(quotedToot.created_at).toLocaleString('es-ES', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
     });
     const relativeTime = formatRelativeTime(quotedToot.created_at);
     

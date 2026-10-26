@@ -4603,7 +4603,7 @@ HTML;
 
         return [
             'id' => (string)$row['status_id'],
-            'created_at' => date('c', strtotime($row['status_created_at'])),
+            'created_at' => gmdate('Y-m-d\TH:i:s\Z', strtotime($row['status_created_at'] . (str_contains($row['status_created_at'], 'Z') || str_contains($row['status_created_at'], '+') ? '' : ' UTC'))),
             'in_reply_to_id' => !empty($row['in_reply_to_id']) ? (string)$row['in_reply_to_id'] : null,
             'in_reply_to_account_id' => $inReplyToAccountId,
             'sensitive' => !empty($row['sensitive']),

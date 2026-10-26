@@ -542,7 +542,7 @@ XML;
             $content = '<strong>' . htmlspecialchars($object['name'], ENT_QUOTES, 'UTF-8') . '</strong><br>' . $content;
         }
 
-        $createdAt = $object['published'] ?? date('c');
+        $createdAt = $object['published'] ?? $object['publishedAt'] ?? $object['datePublished'] ?? $object['pubDate'] ?? $object['startTime'] ?? ($activity['published'] ?? null) ?? date('c');
 
         // Determinar visibilidad usando el helper determineVisibility
         $visibility = self::determineVisibility($object);
@@ -715,7 +715,7 @@ XML;
             $uri,
             $content,
             $visibility,
-            date('Y-m-d H:i:s', strtotime($createdAt)),
+            gmdate('Y-m-d H:i:s', strtotime($createdAt)),
             $mediaJson,
             $inReplyToId,
             $emojisJson
@@ -1673,11 +1673,16 @@ XML;
         $stmtCheck->execute([$uri]);
         $existingId = $stmtCheck->fetchColumn();
         if ($existingId) {
+            $rawDate = $object['published'] ?? $object['publishedAt'] ?? $object['datePublished'] ?? $object['pubDate'] ?? null;
+            if (!empty($rawDate) && ($ts = strtotime($rawDate)) !== false) {
+                $stmtUpdateDate = $db->prepare("UPDATE statuses SET created_at = ? WHERE id = ?");
+                $stmtUpdateDate->execute([gmdate('Y-m-d H:i:s', $ts), (int)$existingId]);
+            }
             return (int)$existingId;
         }
 
         $content = $object['content'] ?? '';
-        $createdAt = $object['published'] ?? date('c');
+        $createdAt = $object['published'] ?? $object['publishedAt'] ?? $object['datePublished'] ?? $object['pubDate'] ?? $object['startTime'] ?? date('c');
         $visibility = self::determineVisibility($object);
 
         $attachments = [];
@@ -1795,7 +1800,7 @@ XML;
             $uri,
             $content,
             $visibility,
-            date('Y-m-d H:i:s', strtotime($createdAt)),
+            gmdate('Y-m-d H:i:s', strtotime($createdAt)),
             $mediaJson,
             $inReplyToId,
             $reblogOfId
