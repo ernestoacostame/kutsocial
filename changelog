@@ -253,3 +253,21 @@ Se protegieron las funciones loadUsersList en profile-view.php para resolver aut
   * Relleno y espaciado consistente: Se actualizó el contenedor `.composer-card` a `padding: 20px; display: flex; flex-direction: column; gap: 14px;`, y se estructuraron los antecesores y respuestas con `gap: 14px`. Se eliminaron los bordes manuales invasivos de `#thread-main` para respetar el diseño de la tarjeta destacada.
   * Homogeneización en perfiles: En `profile-view.php`, se sincronizó el relleno de `#profile-feed` a `padding: 20px` para asegurar una respiración visual simétrica y uniforme con el resto de contenedores.
   * Visibilidad del panel derecho en hilos: Se incluyó `thread-view` en `$showRightSidebar` (`index.php`) y en `updateRightSidebarVisibility` (`pages.js` y `frontend.js`) para que al abrir la conversación de una publicación se mantenga visible la columna derecha con el buscador y estadísticas, conservando el feed central en su ancho óptimo (640px) y evitando que se estire hasta 920px.
+
+22. Rediseño espacioso y corrección de la cabecera en toots citados (Quote Toots)
+
+- Diagnóstico del colapso visual en publicaciones citadas:
+  * Compresión horizontal y ruptura forzada de texto: En `renderEmbeddedQuote()`, la cabecera de la cita agrupaba el avatar, el nombre del autor, el identificador federado (`@usuario@instancia`) y el tiempo en una única fila horizontal con estilos en línea y sin propiedades de desbordamiento ni `white-space: nowrap`.
+  * Como consecuencia en cuentas federadas con nombres compuestos o dominios extensos (ej. `@comopiensodigo@www.tupodcast.com` y display name "Como pienso, digo"):
+    - El nombre se partía de manera antiestética en múltiples renglones por falta de espacio horizontal.
+    - El tiempo relativo a la derecha (`margin-left: auto`) era comprimido contra el margen derecho, partiéndose verticalmente en dos líneas ("hace \n segundos").
+    - El avatar (20px) quedaba desproporcionado y desalineado verticalmente respecto a los textos quebrados.
+    - La caja contenedora utilizaba manejadores `onmouseover`/`onmouseout` en JavaScript que sobreescribían el fondo mediante estilos en línea en lugar de delegar las transiciones al motor de CSS.
+
+- Medidas de solución implementadas:
+  * Jerarquía en dos niveles para metadatos del autor:
+    - Se estructuró un bloque de metadatos (`.quote-toot-meta`) junto al avatar.
+    - Fila superior (`.quote-toot-top-row`): Ubica el **Nombre** del autor en negrita (`.quote-toot-author-name`, 13.5px) y la **Fecha/Tiempo** (`.quote-toot-time`, 11.5px) alineada a la derecha con `white-space: nowrap` y `flex-shrink: 0`, garantizando que el tiempo permanezca siempre íntegro en una sola línea.
+    - Fila inferior: Aloja el **@usuario** completo (`.quote-toot-author-handle`, 12px) en color suave (`var(--text-muted)`), permitiendo lecturas completas de cuentas federadas sin empujar ni apretar al resto de elementos.
+  * Realce y proporción del avatar: Se aumentó a **28px** con `border-radius: 50%`, `object-fit: cover` y `flex-shrink: 0`, logrando una simetría vertical precisa con las dos líneas de información del autor.
+  * Clases CSS modulares y transiciones nativas: Se crearon reglas dedicadas en `frontend.css` y `pages.css` (`.quote-toot-embed-container`, `.quote-toot-header`, `.quote-toot-avatar`, `.quote-toot-meta`, `.quote-toot-top-row`, `.quote-toot-author-name`, `.quote-toot-time`, `.quote-toot-author-handle`, `.quote-toot-content`), implementando estado hover nativo con suavizado (`background: rgba(255,255,255,0.04)`, `border-color: rgba(255,255,255,0.12)`) y eliminando el código JavaScript redundante en `frontend.js` y `pages.js`.

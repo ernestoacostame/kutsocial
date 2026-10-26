@@ -843,7 +843,7 @@ function createThreadTootElement(toot, isMain = false) {
     
     if (quotedToot) {
         const quotePlaceholderId = `quote-placeholder-${toot.id}-${Math.floor(Math.random() * 100000)}`;
-        quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container" style="margin-top:12px; border: 1px solid var(--border-color); border-radius:12px; padding:12px; background: rgba(255,255,255,0.02); transition: background 0.2s;"></div>`;
+        quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container"></div>`;
         
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = sanitizedContent;
@@ -892,7 +892,7 @@ function createThreadTootElement(toot, isMain = false) {
             sanitizedContent = tempDiv.innerHTML;
 
             const quotePlaceholderId = `quote-placeholder-${toot.id}-${Math.floor(Math.random() * 100000)}`;
-            quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container" style="margin-top:12px; border: 1px solid var(--border-color); border-radius:12px; padding:12px; background: rgba(255,255,255,0.02); transition: background 0.2s;">Cargando publicación citada...</div>`;
+            quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container" style="color:var(--text-muted); font-size:12px;">Cargando publicación citada...</div>`;
             
             setTimeout(async () => {
                 try {
@@ -1449,8 +1449,6 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
         e.stopPropagation();
         viewTootThread(quotedToot.id);
     };
-    container.onmouseover = () => container.style.background = 'rgba(255,255,255,0.04)';
-    container.onmouseout = () => container.style.background = 'rgba(255,255,255,0.02)';
 
     let cleanContent = sanitizeHTML(quotedToot.content);
     if (quotedToot.emojis) {
@@ -1463,13 +1461,17 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
     }
 
     container.innerHTML = `
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
-            <img src="${proxyUrl(quotedToot.account.avatar)}" style="width:20px; height:20px; border-radius:50%;" alt="Avatar">
-            <span style="font-weight:600; font-size:12.5px; color:var(--text-color);">${quoteAuthorHTML}</span>
-            <span style="font-size:11.5px; color:var(--text-muted);">@${quotedToot.account.acct}</span>
-            <span style="font-size:11.5px; color:var(--text-muted); margin-left:auto;" title="${absoluteDate}">${relativeTime}</span>
+        <div class="quote-toot-header">
+            <img src="${proxyUrl(quotedToot.account.avatar)}" class="quote-toot-avatar" alt="Avatar">
+            <div class="quote-toot-meta">
+                <div class="quote-toot-top-row">
+                    <span class="quote-toot-author-name">${quoteAuthorHTML}</span>
+                    <span class="quote-toot-time" title="${absoluteDate}">${relativeTime}</span>
+                </div>
+                <div class="quote-toot-author-handle">@${quotedToot.account.acct}</div>
+            </div>
         </div>
-        <div style="font-size:12.5px; line-height:1.4; color:var(--text-color);">${cleanContent}</div>
+        <div class="quote-toot-content">${cleanContent}</div>
         ${mediaHTML}
         ${quoteCardHTML}
     `;

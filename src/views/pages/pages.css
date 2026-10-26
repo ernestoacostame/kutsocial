@@ -466,6 +466,91 @@ button:hover {
     margin-bottom: 0;
 }
 
+/* Toot citado (Quote Toot Embed) */
+.quote-toot-embed-container {
+    margin-top: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 12px 14px;
+    background: rgba(255, 255, 255, 0.02);
+    transition: background 0.2s, border-color 0.2s;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.quote-toot-embed-container:hover {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+.quote-toot-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    min-width: 0;
+}
+
+.quote-toot-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.quote-toot-meta {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    flex: 1;
+    gap: 2px;
+}
+
+.quote-toot-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.quote-toot-author-name {
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--text-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.quote-toot-time {
+    font-size: 11.5px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
+.quote-toot-author-handle {
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+
+.quote-toot-content {
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text-color);
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
 /* Vista de Perfil (Estilo Mastodon) */
 .profile-header-banner {
     height: 180px;
