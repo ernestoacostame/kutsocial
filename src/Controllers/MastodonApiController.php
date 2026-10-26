@@ -4328,6 +4328,19 @@ HTML;
         return $emojis;
     }
 
+    public static function formatUtcIso(?string $dateStr): string {
+        if (empty($dateStr)) {
+            return gmdate('Y-m-d\TH:i:s\Z');
+        }
+        $trimmed = trim($dateStr);
+        if (str_contains($trimmed, 'Z') || preg_match('/[+-]\d{2}:?\d{2}$/', $trimmed)) {
+            $ts = strtotime($trimmed);
+        } else {
+            $ts = strtotime($trimmed . ' UTC');
+        }
+        return gmdate('Y-m-d\TH:i:s\Z', $ts !== false ? $ts : time());
+    }
+
     public static function formatStatus(array $row, ?int $currentAccountId = null): array {
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -4603,7 +4616,7 @@ HTML;
 
         return [
             'id' => (string)$row['status_id'],
-            'created_at' => gmdate('Y-m-d\TH:i:s\Z', strtotime($row['status_created_at'] . (str_contains($row['status_created_at'], 'Z') || str_contains($row['status_created_at'], '+') ? '' : ' UTC'))),
+            'created_at' => self::formatUtcIso($row['status_created_at'] ?? $row['created_at'] ?? null),
             'in_reply_to_id' => !empty($row['in_reply_to_id']) ? (string)$row['in_reply_to_id'] : null,
             'in_reply_to_account_id' => $inReplyToAccountId,
             'sensitive' => !empty($row['sensitive']),

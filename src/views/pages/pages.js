@@ -34,9 +34,23 @@ function sanitizeHTML(html) {
     return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 }
 
+function parseDate(dateInput) {
+    if (!dateInput) return null;
+    if (dateInput instanceof Date) return dateInput;
+    let s = String(dateInput).trim();
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) {
+        s = s.replace(' ', 'T') + 'Z';
+    } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) {
+        s = s + 'Z';
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
 function formatRelativeTime(dateInput) {
-    const date = new Date(dateInput);
-    if (isNaN(date.getTime())) return '';
+    const date = parseDate(dateInput);
+    if (!date) return '';
     const now = new Date();
     const diffMs = now - date;
     const diffSecs = Math.floor(diffMs / 1000);
@@ -44,16 +58,18 @@ function formatRelativeTime(dateInput) {
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffSecs < 60) {
+    if (diffSecs < 60 && diffSecs >= -30) {
         return 'hace segundos';
-    } else if (diffMins < 60) {
+    } else if (diffMins < 60 && diffMins > 0) {
         return `hace ${diffMins} min`;
-    } else if (diffHours < 24) {
+    } else if (diffHours < 24 && diffHours > 0) {
         return `hace ${diffHours} h`;
     } else if (diffDays === 1) {
         return 'ayer';
-    } else if (diffDays < 7) {
+    } else if (diffDays > 1 && diffDays < 7) {
         return `hace ${diffDays} días`;
+    } else if (diffSecs < -30) {
+        return 'hace segundos';
     } else {
         const isSameYear = date.getFullYear() === now.getFullYear();
         return date.toLocaleDateString('es-ES', {
@@ -827,9 +843,10 @@ function createThreadTootElement(toot, isMain = false) {
         card.classList.add('toot-main');
     }
 
-    const absoluteDateStr = new Date(toot.created_at).toLocaleDateString('es-ES', {
-        hour: '2-digit', minute: '2-digit'
-    });
+    const parsedDate = parseDate(toot.created_at);
+    const absoluteDateStr = parsedDate ? parsedDate.toLocaleString('es-ES', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }) : '';
     const relativeDateStr = formatRelativeTime(toot.created_at);
 
     const isMyToot = currentProfileData && String(toot.account.id) === String(currentProfileData.id);
@@ -1401,9 +1418,10 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
     const container = document.getElementById(placeholderId);
     if (!container) return;
 
-    const absoluteDate = new Date(quotedToot.created_at).toLocaleString('es-ES', {
+    const parsedQuoteDate = parseDate(quotedToot.created_at);
+    const absoluteDate = parsedQuoteDate ? parsedQuoteDate.toLocaleString('es-ES', {
         day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    }) : '';
     const relativeTime = formatRelativeTime(quotedToot.created_at);
     
     let mediaHTML = '';
