@@ -36,12 +36,12 @@ function sanitizeHTML(html) {
 
 function parseDate(dateInput) {
     if (!dateInput) return null;
-    if (dateInput instanceof Date) return dateInput;
+    if (dateInput instanceof Date) return isNaN(dateInput.getTime()) ? null : dateInput;
     let s = String(dateInput).trim();
     if (!s) return null;
-    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) {
+    if (/^\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(s)) {
         s = s.replace(' ', 'T') + 'Z';
-    } else if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(s)) {
+    } else if (/^\d{4}-\d{2}-\d{2}/.test(s) && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(s)) {
         s = s + 'Z';
     }
     const d = new Date(s);
@@ -53,23 +53,31 @@ function formatRelativeTime(dateInput) {
     if (!date) return '';
     const now = new Date();
     const diffMs = now - date;
-    const diffSecs = Math.floor(diffMs / 1000);
+    let diffSecs = Math.floor(diffMs / 1000);
+
+    // Si la fecha parece en el futuro por desincronización de reloj o zona horaria
+    if (diffSecs < 0) {
+        if (diffSecs >= -60) {
+            return 'hace segundos';
+        }
+        // Si hay desfase de huso horario (ej: UTC vs local o reloj desfasado), calculamos la diferencia absoluta
+        diffSecs = Math.abs(diffSecs);
+    }
+
     const diffMins = Math.floor(diffSecs / 60);
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffSecs < 60 && diffSecs >= -30) {
+    if (diffSecs < 60) {
         return 'hace segundos';
-    } else if (diffMins < 60 && diffMins > 0) {
+    } else if (diffMins < 60) {
         return `hace ${diffMins} min`;
-    } else if (diffHours < 24 && diffHours > 0) {
+    } else if (diffHours < 24) {
         return `hace ${diffHours} h`;
     } else if (diffDays === 1) {
         return 'ayer';
     } else if (diffDays > 1 && diffDays < 7) {
         return `hace ${diffDays} días`;
-    } else if (diffSecs < -30) {
-        return 'hace segundos';
     } else {
         const isSameYear = date.getFullYear() === now.getFullYear();
         return date.toLocaleDateString('es-ES', {

@@ -527,10 +527,28 @@ XML;
         }
 
         // Verificar si la publicación ya existe en nuestra base de datos local
+        $rawDate = $object['published'] ?? $object['publishedAt'] ?? $object['datePublished'] ?? $object['pubDate'] ?? $object['startTime'] ?? ($activity['published'] ?? null);
+        if (empty($rawDate) && !empty($object['attachment'])) {
+            $attList = (is_array($object['attachment']) && !isset($object['attachment'][0])) ? [$object['attachment']] : $object['attachment'];
+            if (is_array($attList)) {
+                foreach ($attList as $att) {
+                    if (is_array($att) && (!empty($att['published']) || !empty($att['datePublished']) || !empty($att['pubDate']))) {
+                        $rawDate = $att['published'] ?? $att['datePublished'] ?? $att['pubDate'];
+                        break;
+                    }
+                }
+            }
+        }
+
         $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
         $stmtCheck->execute([$uri]);
-        if ($stmtCheck->fetchColumn()) {
-            self::log("handleCreate: Publicación '$uri' ya existe en DB local. Ignorando.");
+        $existingStatusId = $stmtCheck->fetchColumn();
+        if ($existingStatusId) {
+            if (!empty($rawDate) && ($ts = strtotime($rawDate)) !== false) {
+                $stmtUpdateDate = $db->prepare("UPDATE statuses SET created_at = ? WHERE id = ?");
+                $stmtUpdateDate->execute([gmdate('Y-m-d H:i:s', $ts), (int)$existingStatusId]);
+            }
+            self::log("handleCreate: Publicación '$uri' ya existe en DB local. Sincronizada fecha original si aplica.");
             return;
         }
 
@@ -542,7 +560,7 @@ XML;
             $content = '<strong>' . htmlspecialchars($object['name'], ENT_QUOTES, 'UTF-8') . '</strong><br>' . $content;
         }
 
-        $createdAt = $object['published'] ?? $object['publishedAt'] ?? $object['datePublished'] ?? $object['pubDate'] ?? $object['startTime'] ?? ($activity['published'] ?? null) ?? date('c');
+        $createdAt = $rawDate ?? date('c');
 
         // Determinar visibilidad usando el helper determineVisibility
         $visibility = self::determineVisibility($object);
@@ -1606,27 +1624,30 @@ XML;
         \KutSocial\NotificationHelper::notifyReblog((int)$origStatusId, (int)$remoteAccount['id']);
     }
 
-    public static function fetchAndRegisterRemoteStatus(string $url): ?int {
+    public static function fetchAndRegisterRemoteStatus(string $url, bool $forceRefresh = false): ?int {
         $db = Database::connect();
         $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
         $stmtCheck->execute([$url]);
         $existingId = $stmtCheck->fetchColumn();
-        if ($existingId) {
+        if ($existingId && !$forceRefresh) {
             return (int)$existingId;
         }
 
         try {
             $resp = self::executeSignedGet($url);
             if (!$resp) {
-                return null;
+                return $existingId ? (int)$existingId : null;
             }
 
             $json = json_decode($resp, true);
-            if (!$json) return null;
+            if (!$json) return $existingId ? (int)$existingId : null;
 
             if (isset($json['type']) && ($json['type'] === 'Create' || $json['type'] === 'Announce') && isset($json['object'])) {
                 $object = $json['object'];
                 $actorUrl = $json['actor'] ?? ($object['attributedTo'] ?? '');
+                if (is_array($object) && empty($object['published']) && !empty($json['published'])) {
+                    $object['published'] = $json['published'];
+                }
             } else {
                 $object = $json;
                 $actorUrl = $json['attributedTo'] ?? '';
@@ -1641,14 +1662,14 @@ XML;
                     $actorUrl = $actorUrl[0] ?? '';
                 }
                 if (empty($actorUrl)) {
-                    return null;
+                    return $existingId ? (int)$existingId : null;
                 }
                 return self::saveRemoteStatus($object, $actorUrl);
             }
         } catch (\Throwable $e) {
             self::log("fetchAndRegisterRemoteStatus Error: " . $e->getMessage());
         }
-        return null;
+        return $existingId ? (int)$existingId : null;
     }
 
     public static function saveRemoteStatus(array $object, string $actorUrl): ?int {
@@ -1669,11 +1690,23 @@ XML;
             return null;
         }
 
+        $rawDate = $object['published'] ?? $object['publishedAt'] ?? $object['datePublished'] ?? $object['pubDate'] ?? $object['startTime'] ?? null;
+        if (empty($rawDate) && !empty($object['attachment'])) {
+            $attList = (is_array($object['attachment']) && !isset($object['attachment'][0])) ? [$object['attachment']] : $object['attachment'];
+            if (is_array($attList)) {
+                foreach ($attList as $att) {
+                    if (is_array($att) && (!empty($att['published']) || !empty($att['datePublished']) || !empty($att['pubDate']))) {
+                        $rawDate = $att['published'] ?? $att['datePublished'] ?? $att['pubDate'];
+                        break;
+                    }
+                }
+            }
+        }
+
         $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
         $stmtCheck->execute([$uri]);
         $existingId = $stmtCheck->fetchColumn();
         if ($existingId) {
-            $rawDate = $object['published'] ?? $object['publishedAt'] ?? $object['datePublished'] ?? $object['pubDate'] ?? null;
             if (!empty($rawDate) && ($ts = strtotime($rawDate)) !== false) {
                 $stmtUpdateDate = $db->prepare("UPDATE statuses SET created_at = ? WHERE id = ?");
                 $stmtUpdateDate->execute([gmdate('Y-m-d H:i:s', $ts), (int)$existingId]);
@@ -1682,7 +1715,7 @@ XML;
         }
 
         $content = $object['content'] ?? '';
-        $createdAt = $object['published'] ?? $object['publishedAt'] ?? $object['datePublished'] ?? $object['pubDate'] ?? $object['startTime'] ?? date('c');
+        $createdAt = $rawDate ?? date('c');
         $visibility = self::determineVisibility($object);
 
         $attachments = [];

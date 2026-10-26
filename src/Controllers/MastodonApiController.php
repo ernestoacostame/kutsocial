@@ -7695,7 +7695,7 @@ HTML;
         }
 
         $db = Database::connect();
-        $statusId = \KutSocial\Controllers\ActivityPubController::fetchAndRegisterRemoteStatus($url);
+        $statusId = \KutSocial\Controllers\ActivityPubController::fetchAndRegisterRemoteStatus($url, true);
         if (!$statusId) {
             Router::json(['error' => 'No se pudo resolver la publicación remota.'], 404);
             return;
