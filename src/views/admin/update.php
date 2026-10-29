@@ -3,7 +3,7 @@
 
 <div class="update-card" style="margin-bottom: 25px;">
     <h4 style="margin: 0 0 10px 0;">Buscar Actualizaciones</h4>
-    <p style="font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 15px;">Consulta el repositorio de GitHub para verificar si hay una nueva versión disponible.</p>
+    <p style="font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 15px;">Consulta el repositorio oficial para verificar si hay una nueva versión disponible.</p>
     
     <button class="btn-submit" id="btn-check" type="button" onclick="kpUpdateCheck()">Buscar Actualizaciones</button>
     
@@ -97,7 +97,7 @@
         status.style.display = 'block';
         status.style.color = 'var(--text-muted)';
         status.style.borderColor = 'var(--border-color)';
-        status.innerHTML = 'Consultando últimas versiones en GitHub...';
+        status.innerHTML = 'Consultando últimas versiones disponibles...';
         available.style.display = 'none';
 
         fetch('/admin/update/action', {

@@ -6,9 +6,9 @@
         <p class="help-text">Elige la longitud máxima de caracteres permitida para los toots locales. Mínimo 500 y máximo 9999.</p>
     </div>
     <div class="form-group" style="margin-top: 20px;">
-        <label for="update_github_token">Token de GitHub (PAT)</label>
-        <input type="password" name="update_github_token" id="update_github_token" value="<?= htmlspecialchars($githubToken) ?>">
-        <p class="help-text">Token de Acceso Personal (PAT) de GitHub para poder buscar y descargar de forma segura actualizaciones de KutSocial.</p>
+        <label for="update_github_token">Token de GitHub (PAT · Opcional para desarrollo)</label>
+        <input type="password" name="update_github_token" id="update_github_token" value="<?= htmlspecialchars($githubToken) ?>" placeholder="github_pat_... (dejar en blanco para usar KutStudio Cloud)">
+        <p class="help-text">Por defecto, KutSocial se actualiza de forma automática a través de los servidores de KutStudio sin requerir tokens. Solo necesitas un Token de GitHub si eres desarrollador y deseas descargar directamente desde tu repositorio privado.</p>
     </div>
     <div class="form-group" style="margin-top: 20px;">
         <label for="giphy_api_key">API Key de GIPHY</label>

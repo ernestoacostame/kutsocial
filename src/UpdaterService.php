@@ -7,6 +7,7 @@ use PDO;
 use Throwable;
 
 class UpdaterService {
+    private string $updateServer = 'https://kutstudio.com/updates/';
     private string $repo = 'ernestoacostame/kutsocial';
     private string $subdir = 'kutsocial';
 
@@ -51,24 +52,94 @@ class UpdaterService {
     }
 
     /**
-     * Consulta la API de GitHub para verificar si hay una nueva versión disponible.
+     * Consulta la versión disponible (KutStudio Update Server o GitHub directo si hay token)
      */
     public function checkVersion(): array {
         $token = $this->getGithubToken();
-        if (!$token) {
-            return ['error' => 'No se ha configurado el Token de GitHub. Ve a Ajustes Generales para añadirlo.'];
+        $localVersion = \KutSocial\Database::getVersion();
+
+        // 1. Modo Desarrollo / Directo: Si el usuario configuró un token de GitHub explícito
+        if (!empty($token)) {
+            $url = 'https://api.github.com/repos/' . $this->repo . '/releases/latest';
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_HTTPHEADER => [
+                    "Authorization: Bearer $token",
+                    'Accept: application/vnd.github+json',
+                    'X-GitHub-Api-Version: 2022-11-28',
+                ],
+                CURLOPT_USERAGENT => 'KutSocial-Updater/' . $localVersion,
+                CURLOPT_TIMEOUT => 15,
+                CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
+                CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
+            ]);
+            $resp = curl_exec($ch);
+            $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $err = curl_error($ch);
+            curl_close($ch);
+
+            if ($http === 401 || $http === 403) {
+                return ['error' => 'Token de GitHub de desarrollo inválido o sin permisos (HTTP ' . $http . ').'];
+            }
+            if ($http !== 200 || !$resp) {
+                return ['error' => "Error al conectar directamente con GitHub (HTTP $http). $err"];
+            }
+
+            $release = json_decode($resp, true);
+            if (!$release || empty($release['tag_name'])) {
+                return ['error' => 'No se encontraron releases en el repositorio de GitHub.'];
+            }
+
+            $remoteVersion = ltrim($release['tag_name'], 'vV');
+
+            if (version_compare($remoteVersion, $localVersion, '<=')) {
+                $result = ['up_to_date' => true, 'version' => $localVersion];
+                $this->saveCache($result);
+                return $result;
+            }
+
+            $zipUrl = '';
+            $zipIsAsset = false;
+            if (!empty($release['assets'])) {
+                foreach ($release['assets'] as $asset) {
+                    if (preg_match('/^kutsocial.*\.zip$/i', $asset['name']) || preg_match('/\.zip$/i', $asset['name'])) {
+                        $zipUrl = $asset['url'];
+                        $zipIsAsset = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!$zipUrl) {
+                $zipUrl = $release['zipball_url'] ?? '';
+            }
+
+            $result = [
+                'available' => true,
+                'channel' => 'github_direct',
+                'current_version' => $localVersion,
+                'new_version' => $remoteVersion,
+                'tag' => $release['tag_name'],
+                'name' => $release['name'] ?? $release['tag_name'],
+                'changelog' => $release['body'] ?? 'Sin descripción de cambios.',
+                'published_at' => $release['published_at'] ?? '',
+                'zip_url' => $zipUrl,
+                'zip_is_asset' => $zipIsAsset,
+                'html_url' => $release['html_url'] ?? '',
+            ];
+
+            $this->saveCache($result);
+            return $result;
         }
 
-        $url = 'https://api.github.com/repos/' . $this->repo . '/releases/latest';
+        // 2. Modo Estándar Transparente: Servidor Central de Actualizaciones KutStudio
+        $url = rtrim($this->updateServer, '/') . '/?app=kutsocial&action=check&version=' . rawurlencode($localVersion);
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_HTTPHEADER => [
-                "Authorization: Bearer $token",
-                'Accept: application/vnd.github+json',
-                'X-GitHub-Api-Version: 2022-11-28',
-            ],
-            CURLOPT_USERAGENT => 'KutSocial-Updater/' . \KutSocial\Database::getVersion(),
+            CURLOPT_USERAGENT => 'KutSocial-Updater/' . $localVersion,
+            CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_TIMEOUT => 15,
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
             CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
@@ -78,78 +149,33 @@ class UpdaterService {
         $err = curl_error($ch);
         curl_close($ch);
 
-        if ($http === 401 || $http === 403) {
-            return ['error' => 'Token de GitHub inválido o sin permisos (HTTP ' . $http . ').'];
-        }
         if ($http !== 200 || !$resp) {
-            return ['error' => "Error al conectar con GitHub (HTTP $http). $err"];
+            return ['error' => 'No se pudo conectar con el servidor de actualizaciones KutStudio. ' . ($err ?: "HTTP $http")];
         }
 
-        $release = json_decode($resp, true);
-        if (!$release || empty($release['tag_name'])) {
-            return ['error' => 'No se encontraron releases en el repositorio.'];
+        $data = json_decode($resp, true);
+        if (!$data) {
+            return ['error' => 'Respuesta inválida del servidor de actualizaciones.'];
+        }
+        if (!empty($data['error'])) {
+            return ['error' => $data['error']];
         }
 
-        $remoteVersion = ltrim($release['tag_name'], 'vV');
-        $localVersion = \KutSocial\Database::getVersion();
-
-        if (version_compare($remoteVersion, $localVersion, '<=')) {
+        if (!empty($data['up_to_date'])) {
             $result = ['up_to_date' => true, 'version' => $localVersion];
             $this->saveCache($result);
             return $result;
         }
 
-        // Buscar un ZIP específico de kutsocial en los assets del release
-        $zipUrl = '';
-        $zipIsAsset = false;
-        if (!empty($release['assets'])) {
-            foreach ($release['assets'] as $asset) {
-                if (preg_match('/^kutsocial.*\.zip$/i', $asset['name'])) {
-                    $zipUrl = $asset['url'];
-                    $zipIsAsset = true;
-                    break;
-                }
-            }
-            if (!$zipUrl) {
-                foreach ($release['assets'] as $asset) {
-                    if (preg_match('/\.zip$/i', $asset['name'])) {
-                        $zipUrl = $asset['url'];
-                        $zipIsAsset = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (!$zipUrl) {
-            $zipUrl = $release['zipball_url'] ?? '';
-        }
-
-        $result = [
-            'available' => true,
-            'current_version' => $localVersion,
-            'new_version' => $remoteVersion,
-            'tag' => $release['tag_name'],
-            'name' => $release['name'] ?? $release['tag_name'],
-            'changelog' => $release['body'] ?? 'Sin descripción de cambios.',
-            'published_at' => $release['published_at'] ?? '',
-            'zip_url' => $zipUrl,
-            'zip_is_asset' => $zipIsAsset,
-            'html_url' => $release['html_url'] ?? '',
-        ];
-
-        $this->saveCache($result);
-        return $result;
+        $data['channel'] = 'kutstudio';
+        $this->saveCache($data);
+        return $data;
     }
 
     /**
      * Descarga el archivo ZIP de la release.
      */
     public function download(string $zipUrl): array {
-        $token = $this->getGithubToken();
-        if (!$token) {
-            return ['error' => 'Token de GitHub no configurado.'];
-        }
         if (!$zipUrl) {
             return ['error' => 'URL de descarga ZIP no provista.'];
         }
@@ -159,21 +185,35 @@ class UpdaterService {
 
         $fp = fopen($destPath, 'w');
         if (!$fp) {
-            return ['error' => 'No se puede escribir en la carpeta de actualizaciones.'];
+            return ['error' => 'No se puede escribir en el directorio de descargas: ' . $destDir];
+        }
+
+        $headers = [
+            'User-Agent: KutSocial-Updater/' . \KutSocial\Database::getVersion()
+        ];
+
+        // Si la descarga es directamente desde api.github.com, requerir y adjuntar el token
+        $isGitHubApi = (strpos($zipUrl, 'api.github.com') !== false);
+        if ($isGitHubApi) {
+            $token = $this->getGithubToken();
+            if (!$token) {
+                fclose($fp);
+                @unlink($destPath);
+                return ['error' => 'Token de GitHub no configurado para descarga directa desde la API de GitHub.'];
+            }
+            $headers[] = "Authorization: Bearer $token";
+            $headers[] = 'Accept: application/octet-stream';
+            $headers[] = 'X-GitHub-Api-Version: 2022-11-28';
         }
 
         $ch = curl_init($zipUrl);
         curl_setopt_array($ch, [
             CURLOPT_FILE => $fp,
-            CURLOPT_HTTPHEADER => [
-                "Authorization: Bearer $token",
-                'Accept: application/octet-stream',
-                'X-GitHub-Api-Version: 2022-11-28',
-            ],
+            CURLOPT_HTTPHEADER => $headers,
             CURLOPT_USERAGENT => 'KutSocial-Updater/' . \KutSocial\Database::getVersion(),
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 5,
-            CURLOPT_TIMEOUT => 120,
+            CURLOPT_TIMEOUT => 300,
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
             CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
         ]);
