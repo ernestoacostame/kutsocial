@@ -7895,16 +7895,15 @@ HTML;
             return;
         }
 
-        $targetId = (int)$params['id'];
-        $db = Database::connect();
-
-        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-        $stmtTarget->execute([$targetId]);
-        $targetAccount = $stmtTarget->fetch();
+        $idParam = $params['id'] ?? '';
+        $targetAccount = self::findAccountByIdOrHandle($idParam);
         if (!$targetAccount) {
             Router::json(['error' => 'Cuenta no encontrada'], 404);
             return;
         }
+
+        $targetId = (int)$targetAccount['id'];
+        $db = Database::connect();
 
         $tUsername = strtolower($targetAccount['username']);
         $tDomain = $targetAccount['domain'] ? strtolower($targetAccount['domain']) : '';
@@ -7923,16 +7922,15 @@ HTML;
             return;
         }
 
-        $targetId = (int)$params['id'];
-        $db = Database::connect();
-
-        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-        $stmtTarget->execute([$targetId]);
-        $targetAccount = $stmtTarget->fetch();
+        $idParam = $params['id'] ?? '';
+        $targetAccount = self::findAccountByIdOrHandle($idParam);
         if (!$targetAccount) {
             Router::json(['error' => 'Cuenta no encontrada'], 404);
             return;
         }
+
+        $targetId = (int)$targetAccount['id'];
+        $db = Database::connect();
 
         $tUsername = strtolower($targetAccount['username']);
         $tDomain = $targetAccount['domain'] ? strtolower($targetAccount['domain']) : '';
@@ -7951,16 +7949,15 @@ HTML;
             return;
         }
 
-        $targetId = (int)$params['id'];
-        $db = Database::connect();
-
-        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-        $stmtTarget->execute([$targetId]);
-        $targetAccount = $stmtTarget->fetch();
+        $idParam = $params['id'] ?? '';
+        $targetAccount = self::findAccountByIdOrHandle($idParam);
         if (!$targetAccount) {
             Router::json(['error' => 'Cuenta no encontrada'], 404);
             return;
         }
+
+        $targetId = (int)$targetAccount['id'];
+        $db = Database::connect();
 
         $tUsername = strtolower($targetAccount['username']);
         $tDomain = $targetAccount['domain'] ? strtolower($targetAccount['domain']) : '';
@@ -8002,16 +7999,15 @@ HTML;
             return;
         }
 
-        $targetId = (int)$params['id'];
-        $db = Database::connect();
-
-        $stmtTarget = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-        $stmtTarget->execute([$targetId]);
-        $targetAccount = $stmtTarget->fetch();
+        $idParam = $params['id'] ?? '';
+        $targetAccount = self::findAccountByIdOrHandle($idParam);
         if (!$targetAccount) {
             Router::json(['error' => 'Cuenta no encontrada'], 404);
             return;
         }
+
+        $targetId = (int)$targetAccount['id'];
+        $db = Database::connect();
 
         $tUsername = strtolower($targetAccount['username']);
         $tDomain = $targetAccount['domain'] ? strtolower($targetAccount['domain']) : '';
@@ -8152,6 +8148,147 @@ HTML;
         $stmt->execute([$domain]);
 
         Router::json((object)[]);
+    }
+
+    /**
+     * Endpoint POST /api/v1/reports
+     * Permite a los usuarios reportar una cuenta o publicación por spam, acoso, etc.
+     */
+    public static function createReport(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!is_array($input)) {
+            $input = $_POST;
+        }
+
+        $targetAccountId = $input['account_id'] ?? '';
+        if (empty($targetAccountId)) {
+            Router::json(['error' => 'account_id es requerido'], 422);
+            return;
+        }
+
+        $targetAccount = self::findAccountByIdOrHandle((string)$targetAccountId);
+        if (!$targetAccount) {
+            Router::json(['error' => 'Cuenta no encontrada'], 404);
+            return;
+        }
+
+        $rawStatusIds = $input['status_ids'] ?? [];
+        $statusIds = [];
+        if (is_array($rawStatusIds)) {
+            $statusIds = $rawStatusIds;
+        } elseif (is_string($rawStatusIds) && $rawStatusIds !== '') {
+            $statusIds = str_contains($rawStatusIds, ',') ? explode(',', $rawStatusIds) : [$rawStatusIds];
+        }
+
+        $comment = trim((string)($input['comment'] ?? ''));
+        if ($comment === '') {
+            $comment = 'Reportado por el usuario';
+        }
+
+        $category = trim((string)($input['category'] ?? 'spam'));
+        $forward = !empty($input['forward']) && ($input['forward'] === true || $input['forward'] === 'true' || $input['forward'] === 1 || $input['forward'] === '1');
+
+        $db = Database::connect();
+        $stmt = $db->prepare("INSERT INTO reports (account_id, target_account_id, status_ids, comment, forward, category, action_taken, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))");
+        $stmt->execute([
+            $account['id'],
+            $targetAccount['id'],
+            !empty($statusIds) ? json_encode(array_values($statusIds)) : null,
+            $comment,
+            $forward ? 1 : 0,
+            $category
+        ]);
+        $reportId = (string)$db->lastInsertId();
+
+        // Si se solicitó reenvío y la cuenta es remota, enviar actividad Flag ActivityPub
+        $tDomain = !empty($targetAccount['domain']) ? strtolower($targetAccount['domain']) : '';
+        if ($forward && $tDomain && !empty($targetAccount['inbox_url'])) {
+            $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+            $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $localActorUrl = "$proto://$domain/users/{$account['username']}";
+            $targetActorUrl = $targetAccount['url'] ?: "$proto://{$tDomain}/users/{$targetAccount['username']}";
+
+            $objects = [$targetActorUrl];
+            foreach ($statusIds as $sId) {
+                $stmtSt = $db->prepare("SELECT uri FROM statuses WHERE id = ? LIMIT 1");
+                $stmtSt->execute([(int)$sId]);
+                $stUri = $stmtSt->fetchColumn();
+                if ($stUri) {
+                    $objects[] = $stUri;
+                }
+            }
+
+            $flagActivity = [
+                '@context' => 'https://www.w3.org/ns/activitystreams',
+                'id' => "$proto://$domain/reports/" . bin2hex(random_bytes(8)),
+                'type' => 'Flag',
+                'actor' => $localActorUrl,
+                'object' => $objects,
+                'content' => $comment
+            ];
+
+            \KutSocial\Queue::enqueue('Flag', $flagActivity, $targetAccount['inbox_url']);
+            \KutSocial\Queue::triggerAsync($domain);
+        }
+
+        Router::json([
+            'id' => $reportId,
+            'action_taken' => false,
+            'action_taken_at' => null,
+            'category' => $category,
+            'comment' => $comment,
+            'forwarded' => $forward,
+            'created_at' => date('c'),
+            'status_ids' => array_map('strval', $statusIds),
+            'rule_ids' => [],
+            'target_account' => self::formatAccount($targetAccount)
+        ]);
+    }
+
+    /**
+     * Endpoint GET /api/v1/reports
+     */
+    public static function getReports(): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT r.*, ta.*, ta.id as target_account_id FROM reports r LEFT JOIN accounts ta ON ta.id = r.target_account_id WHERE r.account_id = ? ORDER BY r.id DESC LIMIT 50");
+        $stmt->execute([$account['id']]);
+        $rows = $stmt->fetchAll();
+
+        $reports = [];
+        foreach ($rows as $row) {
+            $statusIds = [];
+            if (!empty($row['status_ids'])) {
+                $decoded = json_decode($row['status_ids'], true);
+                if (is_array($decoded)) $statusIds = $decoded;
+            }
+            $targetAcc = self::formatAccount($row);
+            $reports[] = [
+                'id' => (string)$row['id'],
+                'action_taken' => (bool)$row['action_taken'],
+                'action_taken_at' => $row['action_taken_at'],
+                'category' => $row['category'] ?? 'other',
+                'comment' => $row['comment'],
+                'forwarded' => (bool)$row['forward'],
+                'created_at' => date('c', strtotime($row['created_at'])),
+                'status_ids' => array_map('strval', $statusIds),
+                'rule_ids' => [],
+                'target_account' => $targetAcc
+            ];
+        }
+
+        Router::json($reports);
     }
 }
 

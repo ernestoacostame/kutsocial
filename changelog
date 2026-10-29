@@ -1,3 +1,21 @@
+# Versión 2.0.51: Corrección de Menú de Moderación (...) y Sistema Completo de Reportes
+
+1. Corrección del menú de opciones (...) en toots:
+  * El menú contextual de moderación `toggleTootOptionsMenu` no se mostraba al hacer clic en los tres puntos (...) porque el elemento `div.toot-context-menu` se construía en memoria pero faltaba adjuntarlo al DOM (`document.body.appendChild(menu)`) y asignar la referencia `activeTootOptionsMenu`.
+  * Se corrigió la lógica de posicionamiento inteligente frente a los límites inferiores de la pantalla y el cierre ante clics externos.
+  * Se garantizó que las opciones de Silenciar y Bloquear aparezcan incluso si la llamada a relaciones de cuenta (`relationships`) tarda o devuelve un estado inicial vacío.
+  * Al bloquear a un usuario desde la vista de hilo o timeline, la publicación se desvanece de inmediato y se recarga el contexto actualizado.
+
+2. Sistema Completo de Reportes (Reportar usuarios y publicaciones):
+  * **Frontend (Modal de Reporte):** Se añadió la opción "Reportar a @usuario" en el menú contextual de cada toot. Abre un modal (`modal-report-toot`) con selector de motivo (Spam, Infracción de normas, Legal, Otro), previsualización del contenido reportado, campo de comentarios y casilla opcional para reenviar el reporte al servidor de origen si el usuario es remoto.
+  * Al enviar el reporte con éxito, se ofrece bloquear al infractor en el mismo acto para mayor comodidad.
+  * **API Mastodon:** Se implementaron los endpoints oficiales `POST /api/v1/reports` y `GET /api/v1/reports` compatibles con clientes de Mastodon (Mona, Ivory, Tokodon, etc.).
+  * **Federación ActivityPub:** Cuando se reporta una cuenta remota con reenvío activado, KutSocial genera y encola una actividad ActivityPub `Flag` hacia el inbox de la instancia remota vía `Queue::enqueue`.
+  * **Panel de Administración (/admin/dashboard/moderation):** Se incorporó una sección dedicada "Reportes de Usuarios" donde los administradores pueden revisar reportes pendientes, leer los motivos, marcar reportes como resueltos o bloquear directamente la cuenta denunciada.
+  * **Base de datos:** Migración 20 con tabla `reports` e índices correspondientes.
+
+---
+
 Se han solucionado los dos problemas reportados:
 
 1. Botón "Editar Perfil" y visualización de opciones

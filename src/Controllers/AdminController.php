@@ -190,8 +190,20 @@ class AdminController {
         // 2. Obtener lista de Relays
         $relays = $db->query("SELECT * FROM relays ORDER BY id DESC")->fetchAll();
 
-        // 3. Obtener lista de Bloqueos (Moderación)
+        // 3. Obtener lista de Bloqueos (Moderación) y Reportes
         $blocks = $db->query("SELECT * FROM moderation_blocks ORDER BY type ASC, target ASC")->fetchAll();
+        $reports = [];
+        try {
+            $reports = $db->query("
+                SELECT r.*, 
+                       a.username as reporter_username, a.domain as reporter_domain,
+                       ta.username as target_username, ta.domain as target_domain
+                FROM reports r
+                LEFT JOIN accounts a ON a.id = r.account_id
+                LEFT JOIN accounts ta ON ta.id = r.target_account_id
+                ORDER BY r.id DESC
+            ")->fetchAll();
+        } catch (\Exception $e) {}
 
         // 4. Obtener lista de usuarios locales
         $localUsers = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' ORDER BY username ASC")->fetchAll();
@@ -422,6 +434,40 @@ class AdminController {
             $stmt = $db->prepare("DELETE FROM moderation_blocks WHERE id = ?");
             $stmt->execute([$id]);
             $_SESSION['admin_success_msg'] = "Filtro de bloqueo removido correctamente.";
+        }
+        header("Location: /admin/dashboard/moderation");
+        exit;
+    }
+
+    /**
+     * Resolve a user report.
+     */
+    public static function resolveReport(): void {
+        self::checkAuth();
+        $db = Database::connect();
+
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id > 0) {
+            $stmt = $db->prepare("UPDATE reports SET action_taken = 1, action_taken_at = datetime('now') WHERE id = ?");
+            $stmt->execute([$id]);
+            $_SESSION['admin_success_msg'] = "Reporte marcado como resuelto.";
+        }
+        header("Location: /admin/dashboard/moderation");
+        exit;
+    }
+
+    /**
+     * Delete a user report.
+     */
+    public static function deleteReport(): void {
+        self::checkAuth();
+        $db = Database::connect();
+
+        $id = (int)($_POST['id'] ?? 0);
+        if ($id > 0) {
+            $stmt = $db->prepare("DELETE FROM reports WHERE id = ?");
+            $stmt->execute([$id]);
+            $_SESSION['admin_success_msg'] = "Reporte eliminado.";
         }
         header("Location: /admin/dashboard/moderation");
         exit;

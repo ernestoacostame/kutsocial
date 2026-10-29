@@ -493,6 +493,22 @@ class Database {
             19 => [
                 "ALTER TABLE statuses ADD COLUMN idempotency_key TEXT NULL",
                 "CREATE INDEX IF NOT EXISTS idx_statuses_idempotency_key ON statuses(account_id, idempotency_key)"
+            ],
+            20 => [
+                "CREATE TABLE IF NOT EXISTS reports (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    target_account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                    status_ids TEXT NULL,
+                    comment TEXT NOT NULL,
+                    forward INTEGER NOT NULL DEFAULT 0,
+                    category TEXT NOT NULL DEFAULT 'other',
+                    action_taken INTEGER NOT NULL DEFAULT 0,
+                    action_taken_at TEXT NULL,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                )",
+                "CREATE INDEX IF NOT EXISTS idx_reports_account_id ON reports(account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_reports_target_account_id ON reports(target_account_id)"
             ]
         ];
     }

@@ -529,6 +529,8 @@ $router->get('/api/v1/blocks', [MastodonApiController::class, 'getBlockedAccount
 $router->get('/api/v1/domain_blocks', [MastodonApiController::class, 'getDomainBlocks']);
 $router->post('/api/v1/domain_blocks', [MastodonApiController::class, 'blockDomain']);
 $router->delete('/api/v1/domain_blocks', [MastodonApiController::class, 'unblockDomain']);
+$router->get('/api/v1/reports', [MastodonApiController::class, 'getReports']);
+$router->post('/api/v1/reports', [MastodonApiController::class, 'createReport']);
 
 // Solicitudes de seguimiento (Follow Requests)
 $router->get('/api/v1/follow_requests', [MastodonApiController::class, 'getFollowRequests']);
@@ -737,6 +739,8 @@ $router->post('/admin/security/2fa/verify', [AdminController::class, 'verify2FA'
 $router->post('/admin/security/2fa/disable', [AdminController::class, 'disable2FA']);
 $router->post('/admin/moderation/block', [AdminController::class, 'addBlock']);
 $router->post('/admin/moderation/unblock', [AdminController::class, 'removeBlock']);
+$router->post('/admin/moderation/report/resolve', [AdminController::class, 'resolveReport']);
+$router->post('/admin/moderation/report/delete', [AdminController::class, 'deleteReport']);
 $router->post('/admin/relays', [AdminController::class, 'addRelay']);
 $router->post('/admin/relays/delete', [AdminController::class, 'removeRelay']);
 

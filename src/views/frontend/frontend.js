@@ -3678,6 +3678,8 @@ function reloadCurrentTimeline() {
         loadTimeline(false);
     } else if (window.KUTSOCIAL_ACTIVE_SECTION === 'profile-view' && activeProfileViewId) {
         loadProfileStatuses(activeProfileViewId);
+    } else if (window.KUTSOCIAL_ACTIVE_SECTION === 'thread-view' && typeof activeThreadTootId !== 'undefined' && activeThreadTootId) {
+        viewTootThread(activeThreadTootId);
     }
 }
 
@@ -3688,30 +3690,56 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
     }
 
     if (activeTootOptionsMenu) {
+        const wasCurrent = activeTootOptionsMenu._sourceBtn === btn;
         activeTootOptionsMenu.remove();
         activeTootOptionsMenu = null;
-        return;
+        if (wasCurrent) return;
     }
 
     const card = btn.closest('.toot-card');
-    if (!card || !card._toot) return;
-    const toot = card._toot;
+    let toot = card ? card._toot : null;
+    if (!toot && typeof activeThreadToots !== 'undefined' && activeThreadToots) {
+        if (activeThreadToots.status && String(activeThreadToots.status.id) === String(tootId)) {
+            toot = activeThreadToots.status;
+        } else if (activeThreadToots.ancestors) {
+            toot = activeThreadToots.ancestors.find(t => String(t.id) === String(tootId));
+        }
+        if (!toot && activeThreadToots.descendants) {
+            toot = activeThreadToots.descendants.find(t => String(t.id) === String(tootId));
+        }
+    }
+    if (!toot || !toot.account) return;
     const account = toot.account;
 
     // Create the menu container
     const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
     menu.className = 'toot-context-menu';
-    menu.style.top = `${rect.bottom + 6}px`;
-    menu.style.left = `${Math.min(rect.left, window.innerWidth - 220)}px`;
+    menu._sourceBtn = btn;
 
-    menu.innerHTML = '';
+    const menuWidth = 240;
+    let left = rect.left;
+    if (left + menuWidth > window.innerWidth - 12) {
+        left = window.innerWidth - menuWidth - 12;
+    }
+    if (left < 12) left = 12;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${rect.bottom + 6}px`;
+
+    // Prevent clicks inside the menu container from triggering outside close
+    menu.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+
+    // Make visible in DOM immediately!
+    activeTootOptionsMenu = menu;
+    document.body.appendChild(menu);
 
     // Opción: Abrir página original
     const postUrl = toot.url || toot.uri;
     if (postUrl) {
         const optOpen = document.createElement('button');
-        optOpen.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">open_in_new</span> Abrir página original';
+        optOpen.innerHTML = '<span class="material-icons-outlined">open_in_new</span> <span>Abrir página original</span>';
         setupMenuBtn(optOpen, () => {
             menu.remove();
             activeTootOptionsMenu = null;
@@ -3721,7 +3749,7 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
 
         // Opción: Copiar enlace
         const optCopy = document.createElement('button');
-        optCopy.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">content_copy</span> Copiar enlace';
+        optCopy.innerHTML = '<span class="material-icons-outlined">content_copy</span> <span>Copiar enlace</span>';
         setupMenuBtn(optCopy, () => {
             menu.remove();
             activeTootOptionsMenu = null;
@@ -3740,7 +3768,7 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
 
     // Opción: Ver perfil
     const optProfile = document.createElement('button');
-    optProfile.innerHTML = '<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">person</span> Ver perfil';
+    optProfile.innerHTML = '<span class="material-icons-outlined">person</span> <span>Ver perfil</span>';
     setupMenuBtn(optProfile, () => {
         menu.remove();
         activeTootOptionsMenu = null;
@@ -3748,132 +3776,302 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
     });
     menu.appendChild(optProfile);
 
-    // Separador para moderación / relaciones
-    const separator = document.createElement('div');
-    separator.style = 'height: 1px; background: #2f3037; margin: 4px 0;';
-    menu.appendChild(separator);
+    if (token) {
+        // Separador para moderación / relaciones
+        const separator = document.createElement('div');
+        separator.style = 'height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;';
+        menu.appendChild(separator);
 
-    const relLoading = document.createElement('div');
-    relLoading.style = 'padding: 6px 16px; font-size: 12px; color: var(--text-muted);';
-    relLoading.innerText = 'Cargando opciones...';
-    menu.appendChild(relLoading);
+        const relLoading = document.createElement('div');
+        relLoading.style = 'padding: 6px 14px; font-size: 12px; color: var(--text-muted);';
+        relLoading.innerText = 'Cargando opciones...';
+        menu.appendChild(relLoading);
 
-    try {
-        const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${account.id}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (relLoading.parentNode) {
-            relLoading.remove();
-        }
-        if (!relRes.ok) throw new Error("Failed to load relationship");
-        const rels = await relRes.json();
-        const rel = rels[0];
-        if (!rel || activeTootOptionsMenu !== menu) return;
-
-        // Option: Mute
-        const optMute = document.createElement('button');
-        const isMuted = rel.muting;
-        optMute.innerHTML = `<span class="material-icons-outlined" style="font-size:16px; margin-right:8px;">${isMuted ? 'volume_up' : 'volume_off'}</span> ${isMuted ? 'Desactivar silencio' : 'Silenciar a @' + account.acct}`;
-        setupMenuBtn(optMute, async () => {
-            menu.remove();
-            activeTootOptionsMenu = null;
-            
-            const confirmMsg = isMuted ? 
-                `¿Deseas reactivar el sonido de @${account.acct}?` : 
-                `¿Deseas silenciar a @${account.acct}? No verás sus publicaciones.`;
-            if (!confirm(confirmMsg)) return;
-
-            const action = isMuted ? 'unmute' : 'mute';
-            const res = await fetch(`/api/v1/accounts/${account.id}/${action}`, {
-                method: 'POST',
+        try {
+            const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${encodeURIComponent(account.id)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
-            if (res.ok) {
-                alert(`Usuario ${isMuted ? 'desilenciado' : 'silenciado'} con éxito`);
-                reloadCurrentTimeline();
-            } else {
-                alert("Error al cambiar estado de silencio");
+            if (relLoading.parentNode) {
+                relLoading.remove();
             }
-        });
-        menu.appendChild(optMute);
+            if (activeTootOptionsMenu !== menu) return;
 
-        // Option: Block
-        const optBlock = document.createElement('button');
-        const isBlocked = rel.blocking;
-        optBlock.innerHTML = `<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--error);">block</span> <span style="color: var(--error);">${isBlocked ? 'Desbloquear a @' + account.acct : 'Bloquear a @' + account.acct}</span>`;
-        setupMenuBtn(optBlock, async () => {
-            menu.remove();
-            activeTootOptionsMenu = null;
-
-            const confirmMsg = isBlocked ? 
-                `¿Deseas desbloquear a @${account.acct}?` : 
-                `¿Deseas bloquear a @${account.acct}? Se romperá la relación de seguimiento y no verás sus publicaciones.`;
-            if (!confirm(confirmMsg)) return;
-
-            const action = isBlocked ? 'unblock' : 'block';
-            const res = await fetch(`/api/v1/accounts/${account.id}/${action}`, {
-                method: 'POST',
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                alert(`Usuario ${isBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
-                reloadCurrentTimeline();
-            } else {
-                alert("Error al cambiar estado de bloqueo");
+            let rel = { muting: false, blocking: false, domain_blocking: false };
+            if (relRes.ok) {
+                const rels = await relRes.json();
+                if (rels && rels[0]) rel = rels[0];
             }
-        });
-        menu.appendChild(optBlock);
-
-        // Option: Block Domain (if remote)
-        if (account.acct.includes('@')) {
-            const domain = account.acct.split('@')[1];
-            const optDomain = document.createElement('button');
-            const isDomainBlocked = rel.domain_blocking;
-            optDomain.innerHTML = `<span class="material-icons-outlined" style="font-size:16px; margin-right:8px; color: var(--error);">public_off</span> <span style="color: var(--error);">${isDomainBlocked ? 'Desbloquear dominio ' + domain : 'Bloquear dominio ' + domain}</span>`;
-            setupMenuBtn(optDomain, async () => {
-                menu.remove();
-                activeTootOptionsMenu = null;
-
-                const confirmMsg = isDomainBlocked ? 
-                    `¿Deseas desbloquear el dominio ${domain}?` : 
-                    `¿Deseas bloquear completamente el dominio ${domain}? No verás publicaciones de este servidor.`;
-                if (!confirm(confirmMsg)) return;
-
-                const res = await fetch(`/api/v1/domain_blocks`, {
-                    method: isDomainBlocked ? 'DELETE' : 'POST',
-                    headers: { 
-                        'Authorization': `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ domain: domain })
-                });
-                if (res.ok) {
-                    alert(`Dominio ${domain} ${isDomainBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
-                    reloadCurrentTimeline();
-                } else {
-                    alert("Error al cambiar estado de bloqueo de dominio");
-                }
-            });
-            menu.appendChild(optDomain);
+            renderTootModerationItems(menu, account, toot, rel, btn, rect);
+        } catch (err) {
+            console.error(err);
+            if (relLoading.parentNode) {
+                relLoading.remove();
+            }
+            if (activeTootOptionsMenu !== menu) return;
+            renderTootModerationItems(menu, account, toot, { muting: false, blocking: false, domain_blocking: false }, btn, rect);
         }
-
-    } catch (err) {
-        if (relLoading.parentNode) {
-            relLoading.remove();
-        }
-        console.error(err);
     }
 
+    // Adjust position if overflowing viewport bottom
+    adjustMenuPosition(menu, rect);
+
     setTimeout(() => {
-        const closeMenu = () => {
+        const closeMenu = (e) => {
             if (activeTootOptionsMenu) {
-                activeTootOptionsMenu.remove();
-                activeTootOptionsMenu = null;
+                if (!activeTootOptionsMenu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+                    activeTootOptionsMenu.remove();
+                    activeTootOptionsMenu = null;
+                    document.removeEventListener('click', closeMenu);
+                }
+            } else {
+                document.removeEventListener('click', closeMenu);
             }
-            document.removeEventListener('click', closeMenu);
         };
         document.addEventListener('click', closeMenu);
     }, 50);
+}
+
+function adjustMenuPosition(menu, rect) {
+    if (!menu) return;
+    const menuRect = menu.getBoundingClientRect();
+    if (menuRect.bottom > window.innerHeight - 10) {
+        const topAbove = rect.top - menuRect.height - 6;
+        if (topAbove >= 10) {
+            menu.style.top = `${topAbove}px`;
+        } else {
+            menu.style.top = `${Math.max(10, window.innerHeight - menuRect.height - 10)}px`;
+        }
+    }
+}
+
+function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
+    const isMuted = !!rel.muting;
+    const isBlocked = !!rel.blocking;
+    const acctHandle = account.acct || account.username || '';
+
+    // Opción Silenciar
+    const optMute = document.createElement('button');
+    optMute.innerHTML = `<span class="material-icons-outlined">${isMuted ? 'volume_up' : 'volume_off'}</span> <span>${isMuted ? 'Desactivar silencio' : 'Silenciar a @' + escapeHTML(acctHandle)}</span>`;
+    setupMenuBtn(optMute, async () => {
+        menu.remove();
+        activeTootOptionsMenu = null;
+
+        const confirmMsg = isMuted ? 
+            `¿Deseas reactivar el sonido de @${acctHandle}?` : 
+            `¿Deseas silenciar a @${acctHandle}? No verás sus publicaciones.`;
+        if (!confirm(confirmMsg)) return;
+
+        const action = isMuted ? 'unmute' : 'mute';
+        const res = await fetch(`/api/v1/accounts/${account.id}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            alert(`Usuario ${isMuted ? 'desilenciado' : 'silenciado'} con éxito`);
+            reloadCurrentTimeline();
+        } else {
+            alert("Error al cambiar estado de silencio");
+        }
+    });
+    menu.appendChild(optMute);
+
+    // Opción Bloquear
+    const optBlock = document.createElement('button');
+    optBlock.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">block</span> <span style="color: var(--error, #ef4444);">${isBlocked ? 'Desbloquear a @' + escapeHTML(acctHandle) : 'Bloquear a @' + escapeHTML(acctHandle)}</span>`;
+    setupMenuBtn(optBlock, async () => {
+        menu.remove();
+        activeTootOptionsMenu = null;
+
+        const confirmMsg = isBlocked ? 
+            `¿Deseas desbloquear a @${acctHandle}?` : 
+            `¿Deseas bloquear a @${acctHandle}? Se romperá la relación de seguimiento y no verás sus publicaciones.`;
+        if (!confirm(confirmMsg)) return;
+
+        const action = isBlocked ? 'unblock' : 'block';
+        const res = await fetch(`/api/v1/accounts/${account.id}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            alert(`Usuario ${isBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+            const card = btn ? btn.closest('.toot-card') : null;
+            if (card) {
+                card.style.opacity = '0.3';
+                setTimeout(() => card.remove(), 250);
+            }
+            reloadCurrentTimeline();
+        } else {
+            alert("Error al cambiar estado de bloqueo");
+        }
+    });
+    menu.appendChild(optBlock);
+
+    // Opción Bloquear Dominio (si es cuenta remota)
+    if (acctHandle.includes('@')) {
+        const domain = acctHandle.split('@')[1];
+        const optDomain = document.createElement('button');
+        const isDomainBlocked = !!rel.domain_blocking;
+        optDomain.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">public_off</span> <span style="color: var(--error, #ef4444);">${isDomainBlocked ? 'Desbloquear dominio ' + escapeHTML(domain) : 'Bloquear dominio ' + escapeHTML(domain)}</span>`;
+        setupMenuBtn(optDomain, async () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+
+            const confirmMsg = isDomainBlocked ? 
+                `¿Deseas desbloquear el dominio ${domain}?` : 
+                `¿Deseas bloquear completamente el dominio ${domain}? No verás publicaciones de este servidor.`;
+            if (!confirm(confirmMsg)) return;
+
+            const res = await fetch(`/api/v1/domain_blocks`, {
+                method: isDomainBlocked ? 'DELETE' : 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ domain: domain })
+            });
+            if (res.ok) {
+                alert(`Dominio ${domain} ${isDomainBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+                reloadCurrentTimeline();
+            } else {
+                alert("Error al cambiar estado de bloqueo de dominio");
+            }
+        });
+        menu.appendChild(optDomain);
+    }
+
+    // Separador para Reportar
+    const sepReport = document.createElement('div');
+    sepReport.style = 'height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;';
+    menu.appendChild(sepReport);
+
+    // Opción Reportar Usuario / Publicación
+    const optReport = document.createElement('button');
+    optReport.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">flag</span> <span style="color: var(--error, #ef4444);">Reportar a @${escapeHTML(acctHandle)}</span>`;
+    setupMenuBtn(optReport, () => {
+        menu.remove();
+        activeTootOptionsMenu = null;
+        openReportModal(account, toot);
+    });
+    menu.appendChild(optReport);
+
+    // Recalculate position
+    adjustMenuPosition(menu, rect);
+}
+
+function openReportModal(account, toot = null) {
+    const modal = document.getElementById('modal-report-toot');
+    if (!modal) return;
+
+    const accId = account ? (account.id || '') : '';
+    const acctHandle = account ? (account.acct || account.username || '') : '';
+
+    document.getElementById('report-account-id').value = accId;
+    document.getElementById('report-status-id').value = (toot && toot.id) ? toot.id : '';
+    document.getElementById('report-comment').value = '';
+    document.getElementById('report-category').value = 'spam';
+    
+    document.getElementById('report-modal-title').innerText = toot ? 'Reportar publicación' : 'Reportar cuenta';
+    document.getElementById('report-target-handle').innerText = `@${acctHandle}`;
+
+    const previewEl = document.getElementById('report-status-preview');
+    if (toot && (toot.content || toot.spoiler_text)) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = (toot.spoiler_text ? `<strong>[CW: ${toot.spoiler_text}]</strong> ` : '') + (toot.content || '');
+        const text = tmp.textContent || tmp.innerText || '';
+        previewEl.innerText = text.length > 200 ? text.substring(0, 200) + '...' : text;
+        previewEl.style.display = 'block';
+    } else {
+        previewEl.style.display = 'none';
+        previewEl.innerText = '';
+    }
+
+    const fwdContainer = document.getElementById('report-forward-container');
+    const isRemote = (acctHandle.includes('@')) || !!account.domain;
+    if (isRemote) {
+        const domain = account.domain || acctHandle.split('@')[1];
+        document.getElementById('report-remote-domain').innerText = domain;
+        document.getElementById('report-forward').checked = true;
+        fwdContainer.style.display = 'block';
+    } else {
+        fwdContainer.style.display = 'none';
+        document.getElementById('report-forward').checked = false;
+    }
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+        const commentInput = document.getElementById('report-comment');
+        if (commentInput) commentInput.focus();
+    }, 100);
+}
+
+function closeReportModal() {
+    const modal = document.getElementById('modal-report-toot');
+    if (modal) modal.style.display = 'none';
+}
+
+async function handleReportSubmit(e) {
+    e.preventDefault();
+    const accountId = document.getElementById('report-account-id').value;
+    const statusId = document.getElementById('report-status-id').value;
+    const category = document.getElementById('report-category').value;
+    const comment = document.getElementById('report-comment').value.trim();
+    const forward = document.getElementById('report-forward').checked;
+
+    if (!comment) {
+        alert('Por favor indica un motivo o comentario para el reporte.');
+        return;
+    }
+
+    const submitBtn = document.getElementById('report-submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Enviando...';
+
+    try {
+        const payload = {
+            account_id: accountId,
+            category: category,
+            comment: comment,
+            forward: forward
+        };
+        if (statusId) {
+            payload.status_ids = [statusId];
+        }
+
+        const res = await fetch('/api/v1/reports', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            closeReportModal();
+            const targetHandle = document.getElementById('report-target-handle').innerText;
+            const alsoBlock = confirm(`Reporte enviado correctamente. Los administradores revisarán este contenido.\n\n¿Deseas también bloquear a ${targetHandle} para no ver más su contenido?`);
+            if (alsoBlock && accountId) {
+                const blockRes = await fetch(`/api/v1/accounts/${accountId}/block`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (blockRes.ok) {
+                    alert(`${targetHandle} ha sido bloqueado con éxito.`);
+                    reloadCurrentTimeline();
+                }
+            }
+        } else {
+            const data = await res.json().catch(() => ({}));
+            alert('Error al enviar el reporte: ' + (data.error || 'Error del servidor'));
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Error de red al enviar el reporte');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Enviar reporte';
+    }
 }
 
 function setupMenuBtn(btn, onClick) {
