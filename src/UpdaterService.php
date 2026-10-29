@@ -7,7 +7,7 @@ use PDO;
 use Throwable;
 
 class UpdaterService {
-    private string $updateServer = 'https://kutstudio.com/updates/';
+    private string $updateServer = 'https://kutstudio.org/updates/';
     private string $repo = 'ernestoacostame/kutsocial';
     private string $subdir = 'kutsocial';
 
