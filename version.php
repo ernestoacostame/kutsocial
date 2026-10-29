@@ -1,5 +1,5 @@
 <?php
-define('KUTSOCIAL_VERSION', '2.0.51');
+define('KUTSOCIAL_VERSION', '2.0.52');
 
 // Polyfill para servidores sin la extensión mbstring
 if (!function_exists('mb_strlen')) {
