@@ -1,25 +1,34 @@
 #!/usr/bin/env bash
 # ============================================================================
-# KutSocial · Release Script
+# KutSocial · Release Script (Compatible con Submódulos y Repositorios Standalone)
 # ============================================================================
 # Uso:
-#   ./release.sh 0.5.0              → release con notas vacías
-#   ./release.sh 0.5.0 "Changelog"  → release con notas
-#   ./release.sh patch               → auto-bump patch (0.4.2 → 0.4.3)
-#   ./release.sh minor               → auto-bump minor (0.4.2 → 0.5.0)
-#   ./release.sh major               → auto-bump major (0.4.2 → 1.0.0)
+#   ./release.sh 2.0.50              → release con notas vacías
+#   ./release.sh 2.0.50 "Changelog"  → release con notas
+#   ./release.sh patch               → auto-bump patch (2.0.49 → 2.0.50)
+#   ./release.sh minor               → auto-bump minor (2.0.49 → 2.1.0)
+#   ./release.sh major               → auto-bump major (2.0.49 → 3.0.0)
 #
 # Requisitos: git, gh (GitHub CLI autenticado)
 # ============================================================================
 
 set -euo pipefail
 
-KUTSOCIAL_DIR="$(cd "$(dirname "$0")" && pwd)"
+KUTSOCIAL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$KUTSOCIAL_DIR"
+
 VERSION_FILE="$KUTSOCIAL_DIR/version.php"
+VERSION_JSON="$KUTSOCIAL_DIR/version.json"
+
+# Verificar que estamos en un repositorio Git válido
+if ! git rev-parse --is-inside-work-tree &>/dev/null; then
+  echo "❌ Error: No se detectó un repositorio git en $KUTSOCIAL_DIR."
+  exit 1
+fi
 
 # --- Leer versión actual ---
-CURRENT=$(grep -oP "KUTSOCIAL_VERSION', '\K[0-9.]+" "$VERSION_FILE")
-echo "📦 Versión actual: v$CURRENT"
+CURRENT=$(grep -oP "KUTSOCIAL_VERSION',\s*'\K[0-9.]+" "$VERSION_FILE")
+echo "📦 Versión actual de KutSocial: v$CURRENT"
 
 # --- Calcular nueva versión ---
 if [[ -z "${1:-}" ]]; then
@@ -28,7 +37,7 @@ if [[ -z "${1:-}" ]]; then
   echo "    $0 patch              → $(echo "$CURRENT" | awk -F. '{print $1"."$2"."$3+1}')"
   echo "    $0 minor              → $(echo "$CURRENT" | awk -F. '{print $1"."$2+1".0"}')"
   echo "    $0 major              → $(echo "$CURRENT" | awk -F. '{print $1+1".0.0"}')"
-  echo "    $0 1.0.1 \"Mi changelog\""
+  echo "    $0 2.0.50 \"Mi changelog\""
   exit 1
 fi
 
@@ -59,84 +68,81 @@ if [[ "$confirm" != "s" && "$confirm" != "S" ]]; then
 fi
 
 # --- 1. Actualizar version.php y version.json ---
-sed -i "s/KUTSOCIAL_VERSION', '$CURRENT'/KUTSOCIAL_VERSION', '$NEW'/" "$VERSION_FILE"
-sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW\"/" "$KUTSOCIAL_DIR/version.json"
-sed -i "s|\"zip_url\": \"[^\"]*\"|\"zip_url\": \"https://github.com/ernestoacostame/kutsocial/releases/download/v$NEW/kutsocial-v$NEW.zip\"|" "$KUTSOCIAL_DIR/version.json"
-if [[ -n "$NOTES" ]]; then
-  ESCAPED_NOTES=$(echo "$NOTES" | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
-  sed -i "s/\"changelog\": \"[^\"]*\"/\"changelog\": \"$ESCAPED_NOTES\"/" "$KUTSOCIAL_DIR/version.json"
+sed -i "s/KUTSOCIAL_VERSION',\s*'$CURRENT'/KUTSOCIAL_VERSION', '$NEW'/" "$VERSION_FILE"
+
+if [[ -f "$VERSION_JSON" ]]; then
+  sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW\"/" "$VERSION_JSON"
+  sed -i "s|\"zip_url\": \"[^\"]*\"|\"zip_url\": \"https://github.com/ernestoacostame/kutsocial/releases/download/v$NEW/kutsocial-v$NEW.zip\"|" "$VERSION_JSON"
+  if [[ -n "$NOTES" ]]; then
+    ESCAPED_NOTES=$(echo "$NOTES" | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+    sed -i "s/\"changelog\": \"[^\"]*\"/\"changelog\": \"$ESCAPED_NOTES\"/" "$VERSION_JSON"
+  fi
 fi
+
 echo "✅ Archivos de versión actualizados a $NEW"
 
-# --- 2. Crear el ZIP ---
+# --- 2. Crear el ZIP de producción limpio ---
 ZIP_NAME="kutsocial-v${NEW}.zip"
 ZIP_PATH="/tmp/$ZIP_NAME"
 
 STAGE_DIR=$(mktemp -d)
 cd "$KUTSOCIAL_DIR"
 
-# Copiar solo ficheros tracked por git (excluye data/, etc.)
+# Copiar solo archivos rastreados por git (excluye data/, configs locales, tests)
 git ls-files -z \
   | grep -zZv -e '^data/' -e '^\.htaccess$' -e '^scratch/' \
-    -e '^test/' -e '^release\.sh$' \
+    -e '^test/' -e '^tests/' -e '^release.*\.sh$' -e '^\.git' \
   | xargs -0 -I{} install -D "{}" "${STAGE_DIR}/{}"
 
-# Crear ZIP con bsdtar
+# Empaquetar con python3 (o bsdtar si está disponible)
 cd "$STAGE_DIR"
-bsdtar -cf "$ZIP_PATH" --format=zip .
+python3 -c "
+import zipfile, os
+with zipfile.ZipFile('$ZIP_PATH', 'w', zipfile.ZIP_DEFLATED) as z:
+    for root, dirs, files in os.walk('.'):
+        for file in files:
+            filepath = os.path.join(root, file)
+            arcname = os.path.relpath(filepath, '.')
+            z.write(filepath, arcname)
+"
 rm -rf "$STAGE_DIR"
+
+# IMPORTANTE: Regresar siempre al directorio del repositorio
+cd "$KUTSOCIAL_DIR"
 
 ZIP_SIZE=$(du -h "$ZIP_PATH" | cut -f1)
 echo "✅ ZIP creado: $ZIP_NAME ($ZIP_SIZE)"
 
-# --- 3. Git: commit + tag ---
-if ! git -C "$KUTSOCIAL_DIR" rev-parse --is-inside-work-tree &>/dev/null; then
-  echo "❌ No se detectó un repositorio git en $KUTSOCIAL_DIR o sus padres."
-  exit 1
-fi
+# --- 3. Git: commit + tag dentro del repositorio de KutSocial ---
+UNSTAGED=$(git status --porcelain | grep -vE '(version\.php|version\.json)' | wc -l || true)
 
-GIT_ROOT=$(git -C "$KUTSOCIAL_DIR" rev-parse --show-toplevel)
-REL_DIR=$(git -C "$KUTSOCIAL_DIR" rev-parse --show-prefix)
-
-cd "$GIT_ROOT"
-TARGET_DIR="${REL_DIR:-.}"
-
-KUTSOCIAL_UNSTAGED=$(git diff --name-only -- "$TARGET_DIR" 2>/dev/null | grep -vE "(${REL_DIR}version.php|${REL_DIR}version.json)" | wc -l || true)
-
-if [[ "$KUTSOCIAL_UNSTAGED" -gt 0 ]]; then
-  echo "📋 Hay $KUTSOCIAL_UNSTAGED archivo(s) modificados en $TARGET_DIR sin stage."
-  read -rp "¿Incluirlos en el release? (s/N) " inc
+if [[ "$UNSTAGED" -gt 0 ]]; then
+  echo "📋 Hay $UNSTAGED archivo(s) modificados sin stage."
+  read -rp "¿Incluirlos en este release? (s/N) " inc
   if [[ "$inc" == "s" || "$inc" == "S" ]]; then
-    git add "$TARGET_DIR"
+    git add -A
   fi
 fi
 
-# Siempre incluir version.php y version.json
-git add "${REL_DIR}version.php"
-git add "${REL_DIR}version.json"
+# Siempre incluir archivos de versión
+git add version.php
+[[ -f "$VERSION_JSON" ]] && git add version.json
 
-# Verificar que hay algo que commitear en el directorio destino
-if git diff --cached --quiet -- "$TARGET_DIR"; then
-  echo "⚠️  No hay cambios staged en $TARGET_DIR. Nada que publicar."
-  git checkout "${REL_DIR}version.php"
-  git checkout "${REL_DIR}version.json"
-  exit 1
-fi
-
-git commit -m "Release KutSocial v$NEW" -- "$TARGET_DIR"
+git commit -m "Release KutSocial v$NEW"
 git tag -a "v$NEW" -m "KutSocial v$NEW"
-echo "✅ Commit y tag v$NEW creados (solo cambios de $TARGET_DIR)"
+echo "✅ Commit y tag v$NEW creados"
 
-# --- 4. Push ---
-git push origin main
+# --- 4. Push al repositorio de KutSocial ---
+BRANCH=$(git branch --show-current || git rev-parse --abbrev-ref HEAD || echo "main")
+git push origin "$BRANCH"
 git push origin "v$NEW"
-echo "✅ Pushed to GitHub"
+echo "✅ Pushed a GitHub (rama: $BRANCH)"
 
 # --- 5. Crear GitHub Release con el ZIP adjunto ---
 if [[ -z "$NOTES" ]]; then
   PREV_TAG=$(git tag -l 'v*' --sort=-v:refname | grep -v "v$NEW" | head -1 || true)
   if [[ -n "$PREV_TAG" ]]; then
-    NOTES=$(git log "${PREV_TAG}..v${NEW}" --oneline --no-merges -- "$TARGET_DIR" 2>/dev/null | head -20 || true)
+    NOTES=$(git log "${PREV_TAG}..v${NEW}" --oneline --no-merges 2>/dev/null | head -20 || true)
     if [[ -z "$NOTES" ]]; then
       NOTES="Release v$NEW"
     fi
@@ -151,9 +157,8 @@ gh release create "v$NEW" "$ZIP_PATH" \
   --notes "$NOTES"
 
 echo ""
-echo "✅ Release v$NEW publicada con $ZIP_NAME adjunto"
+echo "✅ Release v$NEW publicada exitosamente en GitHub con $ZIP_NAME adjunto"
 echo "   https://github.com/ernestoacostame/kutsocial/releases/tag/v$NEW"
 
 # --- Limpiar ---
 rm -f "$ZIP_PATH"
-
