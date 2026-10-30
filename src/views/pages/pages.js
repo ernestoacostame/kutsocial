@@ -4446,14 +4446,36 @@ async function deleteToot(statusId, btn) {
 }
 
 function extractHandlesFromToot(toot) {
-    const handles = new Set();
+    const handleMap = new Map(); // usernameKey -> { handle, avatar }
     if (!toot) return [];
+
+    function addCandidate(rawHandle, avatar = '') {
+        if (!rawHandle) return;
+        const clean = rawHandle.trim().replace(/^@+/, '').replace(/[\.,;:!\?\)\]]+$/, '');
+        if (!clean) return;
+        const parts = clean.split('@');
+        const userKey = parts[0].toLowerCase();
+        const hasDomain = parts.length > 1 && parts[1].length > 0;
+
+        if (!handleMap.has(userKey)) {
+            handleMap.set(userKey, { handle: clean, avatar: avatar });
+        } else {
+            const existing = handleMap.get(userKey);
+            // Si el nuevo tiene dominio y el existente no, preferir el que tiene dominio
+            if (hasDomain && !existing.handle.includes('@')) {
+                existing.handle = clean;
+            }
+            if (avatar && !existing.avatar) {
+                existing.avatar = avatar;
+            }
+        }
+    }
 
     // 1. De toot.mentions (objeto Mastodon estándar)
     if (Array.isArray(toot.mentions)) {
         toot.mentions.forEach(m => {
             if (m && (m.acct || m.username)) {
-                handles.add((m.acct || m.username).replace(/^@+/, ''));
+                addCandidate(m.acct || m.username, m.avatar || '');
             }
         });
     }
@@ -4470,14 +4492,14 @@ function extractHandlesFromToot(toot) {
                     const url = new URL(a.href, window.location.origin);
                     const host = url.hostname;
                     if (text.includes('@')) {
-                        handles.add(text);
+                        addCandidate(text);
                     } else if (host && host !== window.location.hostname) {
-                        handles.add(`${text}@${host}`);
+                        addCandidate(`${text}@${host}`);
                     } else {
-                        handles.add(text);
+                        addCandidate(text);
                     }
                 } catch (e) {
-                    handles.add(text);
+                    addCandidate(text);
                 }
             }
         });
@@ -4486,7 +4508,7 @@ function extractHandlesFromToot(toot) {
         const textContent = div.textContent || '';
         const textMatches = textContent.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g);
         if (textMatches) {
-            textMatches.forEach(m => handles.add(m.replace(/^@+/, '')));
+            textMatches.forEach(m => addCandidate(m));
         }
     }
 
@@ -4494,11 +4516,11 @@ function extractHandlesFromToot(toot) {
     if (toot.text && typeof toot.text === 'string') {
         const textMatches = toot.text.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g);
         if (textMatches) {
-            textMatches.forEach(m => handles.add(m.replace(/^@+/, '')));
+            textMatches.forEach(m => addCandidate(m));
         }
     }
 
-    return Array.from(handles);
+    return Array.from(handleMap.values());
 }
 
 function getCurrentUserHandles() {
@@ -4534,29 +4556,52 @@ function renderReplyParticipants() {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = `reply-participant-chip ${p.selected ? 'selected' : 'unselected'}`;
-        chip.title = p.selected ? `Quitar a @${p.handle} de la respuesta` : `Incluir a @${p.handle} en la respuesta`;
+        chip.title = `@${p.handle} (Clic para ${p.selected ? 'quitar de la respuesta' : 'incluir en la respuesta'})`;
         chip.onclick = (e) => {
             e.preventDefault();
             toggleReplyParticipant(p.handle);
         };
 
+        // Avatar
+        if (p.avatar) {
+            const img = document.createElement('img');
+            img.src = typeof proxyUrl === 'function' ? proxyUrl(p.avatar) : p.avatar;
+            img.alt = p.nick;
+            img.className = 'reply-chip-avatar';
+            img.onerror = () => {
+                img.style.display = 'none';
+                if (placeholder) placeholder.style.display = 'flex';
+            };
+            chip.appendChild(img);
+        }
+
+        const placeholder = document.createElement('div');
+        placeholder.className = 'reply-chip-avatar-placeholder';
+        placeholder.textContent = (p.nick[0] || '?').toUpperCase();
+        if (p.avatar) placeholder.style.display = 'none';
+        chip.appendChild(placeholder);
+
+        // Nick (sin @dominio en la vista para mantenerlo compacto)
+        const label = document.createElement('span');
+        label.className = 'chip-handle';
+        label.textContent = `@${p.nick}`;
+        chip.appendChild(label);
+
+        // Distintivo Autor si es el autor de este post específico
+        if (p.isAuthor) {
+            const authorTag = document.createElement('span');
+            authorTag.className = 'chip-author-tag';
+            authorTag.textContent = 'Autor';
+            chip.appendChild(authorTag);
+        }
+
+        // Icono check / add
         const icon = document.createElement('span');
         icon.className = 'material-icons-outlined';
         icon.style.fontSize = '13px';
+        icon.style.opacity = '0.7';
         icon.textContent = p.selected ? 'check' : 'add';
-
-        const label = document.createElement('span');
-        label.textContent = `@${p.handle}`;
-
         chip.appendChild(icon);
-        chip.appendChild(label);
-
-        if (p.isOp) {
-            const opTag = document.createElement('span');
-            opTag.className = 'chip-op-tag';
-            opTag.textContent = 'OP';
-            chip.appendChild(opTag);
-        }
 
         container.appendChild(chip);
     });
@@ -4657,14 +4702,17 @@ function submitAddReplyParticipant() {
         return;
     }
 
-    const existing = replyParticipants.find(p => p.handle.toLowerCase() === raw.toLowerCase());
+    const userKey = raw.split('@')[0].toLowerCase();
+    const existing = replyParticipants.find(p => p.handle.split('@')[0].toLowerCase() === userKey);
     if (existing) {
         existing.selected = true;
     } else {
         replyParticipants.push({
             handle: raw,
-            displayName: raw,
-            isOp: false,
+            nick: raw.split('@')[0],
+            displayName: raw.split('@')[0],
+            avatar: '',
+            isAuthor: false,
             selected: true
         });
     }
@@ -4686,6 +4734,10 @@ function syncComposerMentionsWithParticipants() {
         const escaped = p.handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const re = new RegExp('(^|\\s)@' + escaped + '(?=\\s|$)', 'gi');
         text = text.replace(re, '$1');
+        // También intentar por nick si alguien escribió solo @nick
+        const escapedNick = p.nick.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const reNick = new RegExp('(^|\\s)@' + escapedNick + '(?=\\s|$)', 'gi');
+        text = text.replace(reNick, '$1');
     });
 
     text = text.replace(/^\s+/, '').replace(/[ \t]{2,}/g, ' ');
@@ -4695,7 +4747,11 @@ function syncComposerMentionsWithParticipants() {
     selected.forEach(p => {
         const escaped = p.handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const re = new RegExp('(^|\\s)@' + escaped + '(?=\\s|$)', 'i');
-        if (!re.test(text)) {
+        const escapedNick = p.nick.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const reNick = new RegExp('(^|\\s)@' + escapedNick + '(?=\\s|$)', 'i');
+        if (p.handle !== p.nick && !re.test(text) && reNick.test(text)) {
+            text = text.replace(reNick, '$1@' + p.handle);
+        } else if (!re.test(text)) {
             text = `@${p.handle} ` + text;
         }
     });
@@ -4738,7 +4794,7 @@ function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = nu
     const ctxText = document.getElementById('composer-context-text');
     if (ctxText) ctxText.innerText = 'Respondiendo a:';
 
-    // Construir participantes
+    // Construir participantes deduplicados
     replyParticipants = [];
     const currentUserHandles = getCurrentUserHandles();
     function isMe(h) {
@@ -4748,35 +4804,51 @@ function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = nu
         return currentUserHandles.has(lower) || currentUserHandles.has(userOnly);
     }
 
-    const opHandle = (toot && toot.account ? (toot.account.acct || toot.account.username) : (handle || '')).replace(/^@+/, '');
-    const opName = (toot && toot.account && toot.account.display_name) ? toot.account.display_name : opHandle;
+    const authorRaw = (toot && toot.account ? (toot.account.acct || toot.account.username) : (handle || '')).replace(/^@+/, '');
+    const authorUserKey = authorRaw.split('@')[0].toLowerCase();
+    const authorNick = authorRaw.split('@')[0];
+    const authorAvatar = (toot && toot.account && toot.account.avatar) ? toot.account.avatar : '';
+    const authorDisplayName = (toot && toot.account && toot.account.display_name) ? toot.account.display_name : authorNick;
 
-    if (opHandle) {
+    if (authorRaw) {
         replyParticipants.push({
-            handle: opHandle,
-            displayName: opName,
-            isOp: true,
+            handle: authorRaw,
+            nick: authorNick,
+            displayName: authorDisplayName,
+            avatar: authorAvatar,
+            isAuthor: true,
             selected: true
         });
     }
 
     if (toot) {
-        const otherHandles = extractHandlesFromToot(toot);
-        const added = new Set();
-        if (opHandle) added.add(opHandle.toLowerCase());
-
-        otherHandles.forEach(h => {
-            const clean = h.replace(/^@+/, '');
-            const lower = clean.toLowerCase();
-            if (!added.has(lower) && !isMe(clean)) {
-                added.add(lower);
-                replyParticipants.push({
-                    handle: clean,
-                    displayName: clean,
-                    isOp: false,
-                    selected: true
-                });
+        const mentionsList = extractHandlesFromToot(toot);
+        mentionsList.forEach(item => {
+            const userKey = item.handle.split('@')[0].toLowerCase();
+            // No duplicar al autor (si vino con dominio completo, actualizar al autor)
+            if (userKey === authorUserKey) {
+                const authorP = replyParticipants.find(p => p.isAuthor);
+                if (authorP && !authorP.handle.includes('@') && item.handle.includes('@')) {
+                    authorP.handle = item.handle;
+                }
+                return;
             }
+            // No incluirse a uno mismo
+            if (isMe(item.handle)) return;
+
+            // Evitar duplicados por nombre de usuario
+            if (replyParticipants.some(p => p.nick.toLowerCase() === userKey)) {
+                return;
+            }
+
+            replyParticipants.push({
+                handle: item.handle,
+                nick: item.handle.split('@')[0],
+                displayName: item.handle.split('@')[0],
+                avatar: item.avatar || '',
+                isAuthor: false,
+                selected: true
+            });
         });
     }
 
@@ -4801,7 +4873,7 @@ function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = nu
     const modalComposer = document.getElementById('modal-composer');
     if (modalComposer) {
         const modalTitle = document.getElementById('modal-composer-title');
-        if (modalTitle) modalTitle.innerText = `Responder a @${opHandle}`;
+        if (modalTitle) modalTitle.innerText = `Responder a @${authorNick}`;
         modalComposer.style.display = 'flex';
         if (textarea) {
             setTimeout(() => {

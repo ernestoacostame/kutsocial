@@ -1023,62 +1023,97 @@ button:hover {
 }
 
 .reply-participants-wrapper {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    padding-top: 2px;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding-top: 2px !important;
+    max-height: 80px;
+    overflow-y: auto;
 }
 
 .reply-participant-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 3px 9px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-family: inherit;
-    cursor: pointer;
-    user-select: none;
-    transition: all 0.15s ease;
-    border: 1px solid var(--border-color);
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--text-color);
+    display: inline-flex !important;
+    width: auto !important;
+    max-width: fit-content !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 3px 8px 3px 4px !important;
+    border-radius: 20px !important;
+    font-size: 12px !important;
+    font-family: inherit !important;
+    cursor: pointer !important;
+    user-select: none !important;
+    transition: all 0.15s ease !important;
+    border: 1px solid var(--border-color) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: var(--text-color) !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    line-height: 1 !important;
 }
 
 .reply-participant-chip:hover {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 .reply-participant-chip.selected {
-    background: rgba(99, 102, 241, 0.18);
-    border-color: var(--primary);
-    color: var(--text-color);
-    font-weight: 500;
+    background: rgba(99, 102, 241, 0.18) !important;
+    border-color: var(--primary) !important;
+    color: #ffffff !important;
 }
 
 .reply-participant-chip.selected:hover {
-    background: rgba(99, 102, 241, 0.28);
+    background: rgba(99, 102, 241, 0.28) !important;
 }
 
 .reply-participant-chip.unselected {
-    opacity: 0.5;
-    background: transparent;
-    border: 1px dashed var(--border-color);
+    opacity: 0.45 !important;
+    background: transparent !important;
+    border: 1px dashed var(--border-color) !important;
+    color: var(--text-muted) !important;
+}
+
+.reply-participant-chip.unselected .chip-handle {
     text-decoration: line-through;
-    color: var(--text-muted);
 }
 
 .reply-participant-chip.unselected:hover {
-    opacity: 0.85;
-    text-decoration: none;
+    opacity: 0.8 !important;
 }
 
-.chip-op-tag {
-    font-size: 9.5px;
+.reply-chip-avatar {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.reply-chip-avatar-placeholder {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary, #6366f1), #8b5cf6);
+    color: #ffffff;
+    font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.04em;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+.chip-author-tag {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
     padding: 1px 4px;
     border-radius: 4px;
     background: var(--primary);
@@ -1086,30 +1121,37 @@ button:hover {
     line-height: 1.2;
 }
 
-.reply-participant-chip.unselected .chip-op-tag {
+.reply-participant-chip.unselected .chip-author-tag {
     background: var(--border-color);
     color: var(--text-muted);
 }
 
 .reply-add-btn, .reply-quick-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 8px;
-    border-radius: 14px;
-    font-size: 11.5px;
-    font-family: inherit;
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-    cursor: pointer;
-    transition: all 0.15s ease;
+    display: inline-flex !important;
+    width: auto !important;
+    align-items: center !important;
+    gap: 4px !important;
+    padding: 3px 8px !important;
+    border-radius: 14px !important;
+    font-size: 11.5px !important;
+    font-family: inherit !important;
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-muted) !important;
+    cursor: pointer !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
+    transition: all 0.15s ease !important;
+    line-height: 1 !important;
 }
 
 .reply-add-btn:hover, .reply-quick-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-color);
-    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.09) !important;
+    color: var(--text-color) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    box-shadow: none !important;
+    transform: none !important;
 }
 
 .reply-input-mini {
@@ -1125,26 +1167,31 @@ button:hover {
 }
 
 .reply-add-ok-btn, .reply-add-cancel-btn {
-    border: none;
-    background: none;
-    cursor: pointer;
-    font-size: 12px;
-    padding: 2px 5px;
-    border-radius: 4px;
-    color: var(--text-muted);
+    display: inline-flex !important;
+    width: auto !important;
+    border: none !important;
+    background: none !important;
+    cursor: pointer !important;
+    font-size: 12px !important;
+    padding: 2px 5px !important;
+    border-radius: 4px !important;
+    color: var(--text-muted) !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    transform: none !important;
 }
 
 .reply-add-ok-btn {
-    color: #10b981;
+    color: #10b981 !important;
 }
 
 .reply-add-ok-btn:hover {
-    background: rgba(16, 185, 129, 0.15);
+    background: rgba(16, 185, 129, 0.15) !important;
 }
 
 .reply-add-cancel-btn:hover {
-    color: var(--error, #ef4444);
-    background: rgba(239, 68, 68, 0.15);
+    color: var(--error, #ef4444) !important;
+    background: rgba(239, 68, 68, 0.15) !important;
 }
 
 .cw-input-container {
