@@ -32,6 +32,24 @@
     </div>
 </div>
 
+<!-- Actualización Manual vía Archivo ZIP -->
+<div class="update-card" style="margin-bottom: 25px;">
+    <h4 style="margin: 0 0 10px 0;">Subir Paquete de Actualización (.zip)</h4>
+    <p style="font-size: 14px; color: var(--text-muted); line-height: 1.5; margin-bottom: 15px;">
+        Si tu servidor no tiene acceso saliente o prefieres actualizar manualmente, sube el archivo <code>.zip</code> descargado directamente desde los <a href="https://github.com/ernestoacostame/kutsocial/releases" target="_blank" rel="noopener" style="color: var(--primary);">Releases de GitHub</a>.
+    </p>
+
+    <form id="form-manual-upload" onsubmit="kpManualUpdateUpload(event)">
+        <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <input type="file" id="manual-zip-input" accept=".zip,application/zip" class="input" style="flex: 1; min-width: 240px; padding: 10px; font-size: 14px; border-radius: 8px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: white;" required>
+            <button class="btn-submit" id="btn-manual-upload" type="submit" style="padding: 10px 20px;">Subir e Instalar</button>
+        </div>
+        <small style="display: block; margin-top: 8px; color: var(--text-muted); font-size: 12px;">ℹ Se creará una copia de seguridad automática antes de aplicar los archivos del ZIP.</small>
+    </form>
+
+    <div id="manual-upload-status" style="display: none; margin-top: 15px; padding: 15px; border-radius: 8px; font-size: 14px;"></div>
+</div>
+
 <!-- Revertir actualización (Rollback) -->
 <div class="update-card" style="margin-bottom: 25px; <?= empty($rollbacks) ? 'display: none;' : '' ?>">
     <h4 style="margin: 0 0 10px 0;">Revertir Actualización (Rollback)</h4>
@@ -259,6 +277,83 @@
             status.style.background = 'rgba(239, 68, 68, 0.05)';
             status.style.border = '1px solid var(--error)';
             status.innerHTML = '❌ Error al revertir la actualización.';
+        });
+    }
+
+    function kpManualUpdateUpload(e) {
+        e.preventDefault();
+        const fileInput = document.getElementById('manual-zip-input');
+        const btn = document.getElementById('btn-manual-upload');
+        const status = document.getElementById('manual-upload-status');
+
+        if (!fileInput.files || !fileInput.files[0]) {
+            alert('Por favor selecciona un archivo .zip.');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        if (!file.name.toLowerCase().endsWith('.zip')) {
+            alert('El archivo seleccionado debe ser un .zip.');
+            return;
+        }
+
+        if (!confirm('¿Deseas aplicar la actualización manual desde "' + file.name + '"?\n\nSe creará un respaldo de seguridad previo de forma automática.')) {
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Instalando actualización...';
+        status.style.display = 'block';
+        status.style.color = 'var(--text-color)';
+        status.style.background = 'rgba(255,255,255,0.02)';
+        status.style.border = '1px solid var(--border-color)';
+        status.innerHTML = '<div style="font-weight: 600; margin-bottom: 4px;">Subiendo e instalando paquete...</div>'
+            + '<div style="font-size: 12px; color: var(--text-muted);">Desempaquetando archivos, creando copia de seguridad y migrando datos si corresponde...</div>';
+
+        const formData = new FormData();
+        formData.append('action', 'upload');
+        formData.append('zip_file', file);
+
+        fetch('/admin/update/action', {
+            method: 'POST',
+            body: formData
+        })
+        .then(async r => {
+            const text = await r.text();
+            try {
+                return JSON.parse(text);
+            } catch(err) {
+                throw new Error('Respuesta inválida del servidor (HTTP ' + r.status + '): ' + text.substring(0, 150));
+            }
+        })
+        .then(data => {
+            if (data.error) {
+                status.style.color = '#f87171';
+                status.style.background = 'rgba(239, 68, 68, 0.05)';
+                status.style.border = '1px solid var(--error)';
+                status.innerHTML = '<strong>❌ Error al actualizar:</strong><div style="margin-top: 6px; font-size: 13px;">' + data.error + '</div>';
+                btn.disabled = false;
+                btn.textContent = 'Subir e Instalar';
+                return;
+            }
+
+            status.style.color = '#34d399';
+            status.style.background = 'rgba(16, 185, 129, 0.05)';
+            status.style.border = '1px solid var(--success)';
+            status.innerHTML = '<div style="font-size: 15px; font-weight: 700;">🎉 ¡KutSocial actualizado con éxito!</div>'
+                + '<div style="margin-top: 6px; font-size: 13px; color: var(--text-color);">Actualizado de v' + data.from + ' a <strong>v' + data.to + '</strong> (' + data.files_updated + ' ficheros copiados).</div>'
+                + '<div style="margin-top: 12px;"><button class="btn-submit" onclick="window.location.reload()" style="background: var(--success); padding: 8px 16px;">Recargar panel</button></div>';
+            fileInput.value = '';
+            btn.disabled = false;
+            btn.textContent = 'Subir e Instalar';
+        })
+        .catch(err => {
+            status.style.color = '#f87171';
+            status.style.background = 'rgba(239, 68, 68, 0.05)';
+            status.style.border = '1px solid var(--error)';
+            status.innerHTML = '<strong>❌ Error de conexión:</strong><div style="margin-top: 6px; font-size: 13px;">' + err.message + '</div>';
+            btn.disabled = false;
+            btn.textContent = 'Subir e Instalar';
         });
     }
 </script>

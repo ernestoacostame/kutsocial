@@ -365,6 +365,56 @@ class UpdaterService {
     }
 
     /**
+     * Aplica una actualización desde un archivo ZIP local (manual o descargado)
+     * detectando automáticamente la nueva versión desde version.php dentro del ZIP.
+     */
+    public function applyFromZip(string $zipPath, ?string $manualVersion = null): array {
+        if (!file_exists($zipPath)) {
+            return ['error' => 'El archivo ZIP no existe.'];
+        }
+        if (!class_exists('ZipArchive')) {
+            return ['error' => 'La extensión ZipArchive de PHP no está instalada.'];
+        }
+
+        $zip = new ZipArchive();
+        $res = $zip->open($zipPath);
+        if ($res !== true) {
+            @unlink($zipPath);
+            return ['error' => 'No se pudo abrir el archivo ZIP (código: ' . $res . '). Verifica que sea un archivo ZIP válido.'];
+        }
+
+        // Buscar version.php dentro del ZIP para auto-detectar la versión
+        $detectedVersion = '';
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+            $name = $stat['name'] ?? '';
+            if (preg_match('#(?:^|/)version\.php$#i', $name)) {
+                $content = $zip->getFromIndex($i);
+                if ($content && preg_match("/KUTSOCIAL_VERSION',\s*'([^']+)'/", $content, $m)) {
+                    $detectedVersion = trim($m[1]);
+                    break;
+                }
+            }
+        }
+        $zip->close();
+
+        $versionToApply = $manualVersion ?: $detectedVersion;
+        if (!$versionToApply) {
+            // Intentar extraer del nombre del archivo (ej: kutsocial-v2.0.52.zip)
+            if (preg_match('/(?:v|kutsocial-v?)([0-9]+\.[0-9]+\.[0-9]+)/i', basename($zipPath), $vm)) {
+                $versionToApply = $vm[1];
+            }
+        }
+
+        if (!$versionToApply) {
+            @unlink($zipPath);
+            return ['error' => 'No se pudo determinar la versión de KutSocial dentro del ZIP. Asegúrate de subir un archivo de release oficial de KutSocial con version.php.'];
+        }
+
+        return $this->apply($zipPath, $versionToApply);
+    }
+
+    /**
      * Revierte a una versión anterior usando el backup seleccionado.
      */
     public function rollback(?string $specificFilename = null): array {
