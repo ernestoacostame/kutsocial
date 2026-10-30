@@ -4700,7 +4700,7 @@ HTML;
             $path = parse_url($url, PHP_URL_PATH);
             $host = parse_url($url, PHP_URL_HOST);
             
-            if ($path && preg_match('/^\/users\/([a-zA-Z0-9_-]+)$/i', $path, $pm)) {
+            if ($path && preg_match('/^\/(?:users|@|u)\/([a-zA-Z0-9_-]+)$/i', $path, $pm)) {
                 $mUsername = $pm[1];
                 $mDomain = ($host && strcasecmp($host, $domain) !== 0) ? strtolower($host) : null;
                 $key = $mUsername . ':' . ($mDomain ?: '');
@@ -4740,6 +4740,15 @@ HTML;
                 $mentions[] = [
                     'id' => (string)$acc['id'],
                     'username' => $acc['username'],
+                    'acct' => $mentionAcct,
+                    'url' => $mActorUrl
+                ];
+            } else {
+                $mentionAcct = $domainVal ? "{$username}@{$domainVal}" : $username;
+                $mActorUrl = $domainVal ? "https://{$domainVal}/@{$username}" : "$proto://$domain/@{$username}";
+                $mentions[] = [
+                    'id' => '0',
+                    'username' => $username,
                     'acct' => $mentionAcct,
                     'url' => $mActorUrl
                 ];

@@ -382,6 +382,7 @@ function showLoginModal() {
 
 let currentProfileData = null;
 let replyToId = null;
+let replyParticipants = [];
 let editTootId = null;
 let quoteTootId = null;
 let activeProfileViewId = null;
@@ -1256,7 +1257,7 @@ function handleReplyButtonClick(btn) {
     const card = btn.closest('.toot-card');
     if (card && card._toot) {
         const toot = card._toot;
-        initReplyToToot(toot.id, toot.account.acct, toot.visibility);
+        initReplyToToot(toot);
     }
 }
 
@@ -1902,6 +1903,22 @@ function updateCharCount() {
         } else {
             textarea.style.height = '90px';
             textarea.style.overflowY = 'hidden';
+        }
+
+        // Sincronizar estado visual de los chips si estamos en modo respuesta
+        if (replyParticipants && replyParticipants.length > 0) {
+            let changed = false;
+            replyParticipants.forEach(p => {
+                const escaped = p.handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const isPresent = new RegExp('(^|\\s)@' + escaped + '(?=\\s|$)', 'i').test(text);
+                if (p.selected !== isPresent) {
+                    p.selected = isPresent;
+                    changed = true;
+                }
+            });
+            if (changed) {
+                renderReplyParticipants();
+            }
         }
     }
 }
@@ -4428,20 +4445,350 @@ async function deleteToot(statusId, btn) {
     }
 }
 
-function initReplyToToot(id, handle, visibility = 'public') {
+function extractHandlesFromToot(toot) {
+    const handles = new Set();
+    if (!toot) return [];
+
+    // 1. De toot.mentions (objeto Mastodon estándar)
+    if (Array.isArray(toot.mentions)) {
+        toot.mentions.forEach(m => {
+            if (m && (m.acct || m.username)) {
+                handles.add((m.acct || m.username).replace(/^@+/, ''));
+            }
+        });
+    }
+
+    // 2. De enlaces en el contenido HTML
+    if (toot.content && typeof toot.content === 'string') {
+        const div = document.createElement('div');
+        div.innerHTML = toot.content;
+        const links = div.querySelectorAll('a.mention, a[href*="/@"], a[href*="/users/"], a[href*="/u/"]');
+        links.forEach(a => {
+            const text = a.textContent.trim().replace(/^@+/, '');
+            if (text) {
+                try {
+                    const url = new URL(a.href, window.location.origin);
+                    const host = url.hostname;
+                    if (text.includes('@')) {
+                        handles.add(text);
+                    } else if (host && host !== window.location.hostname) {
+                        handles.add(`${text}@${host}`);
+                    } else {
+                        handles.add(text);
+                    }
+                } catch (e) {
+                    handles.add(text);
+                }
+            }
+        });
+
+        // Menciones en texto plano
+        const textContent = div.textContent || '';
+        const textMatches = textContent.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g);
+        if (textMatches) {
+            textMatches.forEach(m => handles.add(m.replace(/^@+/, '')));
+        }
+    }
+
+    // 3. De toot.text si existe
+    if (toot.text && typeof toot.text === 'string') {
+        const textMatches = toot.text.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g);
+        if (textMatches) {
+            textMatches.forEach(m => handles.add(m.replace(/^@+/, '')));
+        }
+    }
+
+    return Array.from(handles);
+}
+
+function getCurrentUserHandles() {
+    const list = new Set();
+    if (window.currentProfileData) {
+        if (currentProfileData.username) list.add(currentProfileData.username.toLowerCase());
+        if (currentProfileData.acct) list.add(currentProfileData.acct.toLowerCase());
+    }
+    if (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username) {
+        list.add(window.KUTSOCIAL_OWNER.username.toLowerCase());
+    }
+    const myUserEl = document.getElementById('my-username');
+    if (myUserEl && myUserEl.innerText) {
+        list.add(myUserEl.innerText.replace(/^@+/, '').toLowerCase());
+    }
+    return list;
+}
+
+function renderReplyParticipants() {
+    const container = document.getElementById('composer-reply-participants');
+    if (!container) return;
+
+    if (!replyParticipants || replyParticipants.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'flex';
+    container.innerHTML = '';
+
+    replyParticipants.forEach(p => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = `reply-participant-chip ${p.selected ? 'selected' : 'unselected'}`;
+        chip.title = p.selected ? `Quitar a @${p.handle} de la respuesta` : `Incluir a @${p.handle} en la respuesta`;
+        chip.onclick = (e) => {
+            e.preventDefault();
+            toggleReplyParticipant(p.handle);
+        };
+
+        const icon = document.createElement('span');
+        icon.className = 'material-icons-outlined';
+        icon.style.fontSize = '13px';
+        icon.textContent = p.selected ? 'check' : 'add';
+
+        const label = document.createElement('span');
+        label.textContent = `@${p.handle}`;
+
+        chip.appendChild(icon);
+        chip.appendChild(label);
+
+        if (p.isOp) {
+            const opTag = document.createElement('span');
+            opTag.className = 'chip-op-tag';
+            opTag.textContent = 'OP';
+            chip.appendChild(opTag);
+        }
+
+        container.appendChild(chip);
+    });
+
+    // Botones rápidos si hay más de 1 participante
+    if (replyParticipants.length > 1) {
+        const allBtn = document.createElement('button');
+        allBtn.type = 'button';
+        allBtn.className = 'reply-quick-btn';
+        allBtn.textContent = 'Todos';
+        allBtn.title = 'Incluir a todos los participantes';
+        allBtn.onclick = (e) => {
+            e.preventDefault();
+            toggleAllReplyParticipants(true);
+        };
+        container.appendChild(allBtn);
+
+        const noneBtn = document.createElement('button');
+        noneBtn.type = 'button';
+        noneBtn.className = 'reply-quick-btn';
+        noneBtn.textContent = 'Ninguno';
+        noneBtn.title = 'Quitar a todos de la respuesta';
+        noneBtn.onclick = (e) => {
+            e.preventDefault();
+            toggleAllReplyParticipants(false);
+        };
+        container.appendChild(noneBtn);
+    }
+
+    // Botón para añadir usuario manual
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.id = 'btn-add-reply-participant';
+    addBtn.className = 'reply-add-btn';
+    addBtn.title = 'Mencionar a otro usuario en esta respuesta';
+    addBtn.innerHTML = '<span class="material-icons-outlined" style="font-size: 13px;">person_add</span> Añadir';
+    addBtn.onclick = (e) => {
+        e.preventDefault();
+        showAddReplyParticipantInput();
+    };
+    container.appendChild(addBtn);
+
+    const inputBox = document.createElement('div');
+    inputBox.id = 'reply-add-input-box';
+    inputBox.style.display = 'none';
+    inputBox.style.alignItems = 'center';
+    inputBox.style.gap = '4px';
+    inputBox.innerHTML = `
+        <input type="text" id="reply-add-input" placeholder="usuario[@dominio]" class="reply-input-mini" onkeydown="if(event.key==='Enter'){event.preventDefault();submitAddReplyParticipant();}else if(event.key==='Escape'){event.preventDefault();closeAddReplyParticipantInput();}">
+        <button type="button" onclick="submitAddReplyParticipant()" class="reply-add-ok-btn" title="Añadir">✓</button>
+        <button type="button" onclick="closeAddReplyParticipantInput()" class="reply-add-cancel-btn" title="Cancelar">✕</button>
+    `;
+    container.appendChild(inputBox);
+}
+
+function toggleReplyParticipant(handle) {
+    const p = replyParticipants.find(item => item.handle.toLowerCase() === handle.toLowerCase());
+    if (!p) return;
+
+    p.selected = !p.selected;
+    renderReplyParticipants();
+    syncComposerMentionsWithParticipants();
+}
+
+function toggleAllReplyParticipants(selectAll) {
+    replyParticipants.forEach(p => {
+        p.selected = selectAll;
+    });
+    renderReplyParticipants();
+    syncComposerMentionsWithParticipants();
+}
+
+function showAddReplyParticipantInput() {
+    const box = document.getElementById('reply-add-input-box');
+    const btn = document.getElementById('btn-add-reply-participant');
+    if (box) box.style.display = 'inline-flex';
+    if (btn) btn.style.display = 'none';
+    const input = document.getElementById('reply-add-input');
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+}
+
+function closeAddReplyParticipantInput() {
+    const box = document.getElementById('reply-add-input-box');
+    const btn = document.getElementById('btn-add-reply-participant');
+    if (box) box.style.display = 'none';
+    if (btn) btn.style.display = 'inline-flex';
+}
+
+function submitAddReplyParticipant() {
+    const input = document.getElementById('reply-add-input');
+    if (!input) return;
+    const raw = input.value.trim().replace(/^@+/, '');
+    if (!raw) {
+        closeAddReplyParticipantInput();
+        return;
+    }
+
+    const existing = replyParticipants.find(p => p.handle.toLowerCase() === raw.toLowerCase());
+    if (existing) {
+        existing.selected = true;
+    } else {
+        replyParticipants.push({
+            handle: raw,
+            displayName: raw,
+            isOp: false,
+            selected: true
+        });
+    }
+
+    closeAddReplyParticipantInput();
+    renderReplyParticipants();
+    syncComposerMentionsWithParticipants();
+}
+
+function syncComposerMentionsWithParticipants() {
+    const textarea = document.getElementById('composer-text');
+    if (!textarea) return;
+
+    let text = textarea.value;
+
+    // Remover menciones desmarcadas
+    const unselected = replyParticipants.filter(p => !p.selected);
+    unselected.forEach(p => {
+        const escaped = p.handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('(^|\\s)@' + escaped + '(?=\\s|$)', 'gi');
+        text = text.replace(re, '$1');
+    });
+
+    text = text.replace(/^\s+/, '').replace(/[ \t]{2,}/g, ' ');
+
+    // Asegurar que las menciones seleccionadas estén presentes al inicio
+    const selected = replyParticipants.filter(p => p.selected);
+    selected.forEach(p => {
+        const escaped = p.handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('(^|\\s)@' + escaped + '(?=\\s|$)', 'i');
+        if (!re.test(text)) {
+            text = `@${p.handle} ` + text;
+        }
+    });
+
+    textarea.value = text.replace(/^\s+/, '');
+    if (textarea.value && !textarea.value.endsWith(' ')) {
+        textarea.value += ' ';
+    }
+    updateCharCount();
+}
+
+function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = null) {
+    let toot = null;
+    let id = null;
+
+    if (typeof tootOrId === 'object' && tootOrId !== null) {
+        toot = tootOrId;
+        id = toot.id;
+        handle = (toot.account && toot.account.acct) ? toot.account.acct : handle;
+        visibility = toot.visibility || visibility || 'public';
+    } else {
+        id = tootOrId;
+        if (extraToot && typeof extraToot === 'object') {
+            toot = extraToot;
+        } else {
+            const card = document.querySelector(`[data-toot-id="${id}"]`);
+            if (card && card._toot) {
+                toot = card._toot;
+            }
+        }
+    }
+
     replyToId = id;
     editTootId = null;
+
     const ctx = document.getElementById('composer-context');
     if (ctx) ctx.style.display = 'flex';
+    const ctxIcon = document.getElementById('composer-context-icon');
+    if (ctxIcon) ctxIcon.textContent = 'reply';
     const ctxText = document.getElementById('composer-context-text');
-    if (ctxText) ctxText.innerText = `Respondiendo a @${handle}`;
-    
+    if (ctxText) ctxText.innerText = 'Respondiendo a:';
+
+    // Construir participantes
+    replyParticipants = [];
+    const currentUserHandles = getCurrentUserHandles();
+    function isMe(h) {
+        if (!h) return false;
+        const lower = h.toLowerCase().replace(/^@+/, '');
+        const userOnly = lower.split('@')[0];
+        return currentUserHandles.has(lower) || currentUserHandles.has(userOnly);
+    }
+
+    const opHandle = (toot && toot.account ? (toot.account.acct || toot.account.username) : (handle || '')).replace(/^@+/, '');
+    const opName = (toot && toot.account && toot.account.display_name) ? toot.account.display_name : opHandle;
+
+    if (opHandle) {
+        replyParticipants.push({
+            handle: opHandle,
+            displayName: opName,
+            isOp: true,
+            selected: true
+        });
+    }
+
+    if (toot) {
+        const otherHandles = extractHandlesFromToot(toot);
+        const added = new Set();
+        if (opHandle) added.add(opHandle.toLowerCase());
+
+        otherHandles.forEach(h => {
+            const clean = h.replace(/^@+/, '');
+            const lower = clean.toLowerCase();
+            if (!added.has(lower) && !isMe(clean)) {
+                added.add(lower);
+                replyParticipants.push({
+                    handle: clean,
+                    displayName: clean,
+                    isOp: false,
+                    selected: true
+                });
+            }
+        });
+    }
+
+    renderReplyParticipants();
+
     const textarea = document.getElementById('composer-text');
     if (textarea) {
-        textarea.value = `@${handle} `;
+        const initialMentions = replyParticipants.filter(p => p.selected).map(p => `@${p.handle}`).join(' ');
+        textarea.value = initialMentions ? initialMentions + ' ' : '';
         updateCharCount();
     }
-    
+
     // Heredar la visibilidad de la publicación padre
     const visSelect = document.getElementById('composer-visibility');
     if (visSelect) {
@@ -4450,11 +4797,11 @@ function initReplyToToot(id, handle, visibility = 'public') {
             updateComposerVisibilityIcon();
         }
     }
-    
+
     const modalComposer = document.getElementById('modal-composer');
     if (modalComposer) {
         const modalTitle = document.getElementById('modal-composer-title');
-        if (modalTitle) modalTitle.innerText = `Responder a @${handle}`;
+        if (modalTitle) modalTitle.innerText = `Responder a @${opHandle}`;
         modalComposer.style.display = 'flex';
         if (textarea) {
             setTimeout(() => {
@@ -4469,6 +4816,7 @@ function initReplyToToot(id, handle, visibility = 'public') {
             if (textarea) {
                 textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 textarea.focus();
+                textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
             }
         }
     }
@@ -4477,8 +4825,19 @@ function initReplyToToot(id, handle, visibility = 'public') {
 function initEditToot(id, content, sensitive, spoilerText, mediaAttachments = []) {
     editTootId = id;
     replyToId = null;
-    document.getElementById('composer-context').style.display = 'flex';
-    document.getElementById('composer-context-text').innerText = `Editando tu publicación`;
+    replyParticipants = [];
+    const participantsContainer = document.getElementById('composer-reply-participants');
+    if (participantsContainer) {
+        participantsContainer.innerHTML = '';
+        participantsContainer.style.display = 'none';
+    }
+
+    const ctx = document.getElementById('composer-context');
+    if (ctx) ctx.style.display = 'flex';
+    const ctxIcon = document.getElementById('composer-context-icon');
+    if (ctxIcon) ctxIcon.textContent = 'edit';
+    const ctxText = document.getElementById('composer-context-text');
+    if (ctxText) ctxText.innerText = 'Editando tu publicación';
 
     const textarea = document.getElementById('composer-text');
     textarea.value = content;
@@ -4580,6 +4939,12 @@ function cancelComposerContext() {
     replyToId = null;
     editTootId = null;
     quoteTootId = null;
+    replyParticipants = [];
+    const participantsContainer = document.getElementById('composer-reply-participants');
+    if (participantsContainer) {
+        participantsContainer.innerHTML = '';
+        participantsContainer.style.display = 'none';
+    }
     const ctx = document.getElementById('composer-context');
     if (ctx) ctx.style.display = 'none';
     const textarea = document.getElementById('composer-text');

@@ -1001,8 +1001,9 @@ button:hover {
     margin-bottom: 12px;
     font-size: 13.5px;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
 }
 
 .composer-context-close {
@@ -1020,6 +1021,131 @@ button:hover {
     transform: none;
     box-shadow: none;
     color: var(--text-color);
+}
+
+.reply-participants-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding-top: 2px;
+}
+
+.reply-participant-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.15s ease;
+    border: 1px solid var(--border-color);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-color);
+}
+
+.reply-participant-chip:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.reply-participant-chip.selected {
+    background: rgba(99, 102, 241, 0.18);
+    border-color: var(--primary);
+    color: var(--text-color);
+    font-weight: 500;
+}
+
+.reply-participant-chip.selected:hover {
+    background: rgba(99, 102, 241, 0.28);
+}
+
+.reply-participant-chip.unselected {
+    opacity: 0.5;
+    background: transparent;
+    border: 1px dashed var(--border-color);
+    text-decoration: line-through;
+    color: var(--text-muted);
+}
+
+.reply-participant-chip.unselected:hover {
+    opacity: 0.85;
+    text-decoration: none;
+}
+
+.chip-op-tag {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    padding: 1px 4px;
+    border-radius: 4px;
+    background: var(--primary);
+    color: #ffffff;
+    line-height: 1.2;
+}
+
+.reply-participant-chip.unselected .chip-op-tag {
+    background: var(--border-color);
+    color: var(--text-muted);
+}
+
+.reply-add-btn, .reply-quick-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 14px;
+    font-size: 11.5px;
+    font-family: inherit;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.reply-add-btn:hover, .reply-quick-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-color);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.reply-input-mini {
+    height: 24px;
+    padding: 2px 8px;
+    font-size: 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--primary);
+    color: var(--text-color);
+    outline: none;
+    width: 140px;
+}
+
+.reply-add-ok-btn, .reply-add-cancel-btn {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 5px;
+    border-radius: 4px;
+    color: var(--text-muted);
+}
+
+.reply-add-ok-btn {
+    color: #10b981;
+}
+
+.reply-add-ok-btn:hover {
+    background: rgba(16, 185, 129, 0.15);
+}
+
+.reply-add-cancel-btn:hover {
+    color: var(--error, #ef4444);
+    background: rgba(239, 68, 68, 0.15);
 }
 
 .cw-input-container {

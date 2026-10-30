@@ -1,3 +1,16 @@
+# Versión 2.0.54: Selector interactivo de participantes y menciones en respuestas
+
+1. Respuesta a todos los participantes de un toot:
+  * Al pulsar el botón de responder (`btn-reply`) en cualquier publicación que cuente con múltiples usuarios mencionados o participantes en la conversación, ahora se incluyen automáticamente todos los destinatarios (tanto el creador original del post con etiqueta `OP` como el resto de cuentas mencionadas en `toot.mentions` o dentro del contenido/enlaces), excluyendo la propia cuenta activa del usuario.
+  * **Selector interactivo de participantes (Chips / Pills):** En la barra de contexto superior del compositor (`#composer-context`), se visualizan ahora todos los usuarios con chips interactivos (`.reply-participant-chip`).
+  * **Quitar y poner participantes con un solo clic:** Cada chip se puede conmutar (activar o desactivar) individualmente, incluyendo al creador original (`OP`). Al desactivar un usuario, su mención se elimina de forma limpia y sincronizada del área de texto (`textarea`); al volver a activarlo, se reincorpora al inicio.
+  * **Sincronización bidireccional:** Si el usuario borra o escribe manualmente `@usuario` en el texto del compositor, los chips actualizan su estado activo/inactivo en tiempo real.
+  * **Acciones rápidas:** Se incluyen botones `Todos` y `Ninguno` para marcar o desmarcar rápidamente a todos los participantes en conversaciones con múltiples personas.
+  * **Añadir nuevos usuarios (+ Añadir):** Se incorporó un botón y mini campo de entrada en la misma barra para invitar o mencionar a cualquier otro usuario del Fediverso sin salir del contexto de respuesta.
+  * **Mejora en API Mastodon:** Se amplió `extractMentionsFromStatus` en `MastodonApiController.php` para resolver enlaces con rutas `/@usuario` y `/u/usuario` además de `/users/usuario`, garantizando que todas las menciones entrantes del Fediverso se reconozcan aun si la cuenta remota aún no ha sido registrada previamente en la base de datos local.
+
+---
+
 # Versión 2.0.51: Corrección de Menú de Moderación (...) y Sistema Completo de Reportes
 
 1. Corrección del menú de opciones (...) en toots:
