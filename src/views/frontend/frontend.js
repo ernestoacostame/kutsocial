@@ -4364,7 +4364,12 @@ function extractHandlesFromToot(toot) {
     function addCandidate(rawHandle, avatar = '') {
         if (!rawHandle) return;
         const clean = rawHandle.trim().replace(/^@+/, '').replace(/[\.,;:!\?\)\]]+$/, '');
+        if (!clean || clean.includes('#')) return;
         const parts = clean.split('@');
+        // Un nombre de usuario de Fediverse solo contiene caracteres válidos (sin # ni caracteres especiales)
+        if (!/^[a-zA-Z0-9_.-]+$/.test(parts[0])) return;
+        if (parts.length > 1 && !/^[a-zA-Z0-9.-]+$/.test(parts[1])) return;
+
         const userKey = parts[0].toLowerCase();
         const hasDomain = parts.length > 1 && parts[1].length > 0;
 
@@ -4397,8 +4402,13 @@ function extractHandlesFromToot(toot) {
         div.innerHTML = toot.content;
         const links = div.querySelectorAll('a.mention, a[href*="/@"], a[href*="/users/"], a[href*="/u/"]');
         links.forEach(a => {
+            // Ignorar enlaces a hashtags (Mastodon suele usar class="mention hashtag" o rel="tag")
+            if (a.classList.contains('hashtag') || a.rel === 'tag') return;
+            const href = a.getAttribute('href') || '';
+            if (href.includes('/tags/') || href.includes('/tagged/')) return;
+
             const text = a.textContent.trim().replace(/^@+/, '');
-            if (text) {
+            if (text && !text.includes('#')) {
                 try {
                     const url = new URL(a.href, window.location.origin);
                     const host = url.hostname;
@@ -4608,12 +4618,17 @@ function submitAddReplyParticipant() {
     const input = document.getElementById('reply-add-input');
     if (!input) return;
     const raw = input.value.trim().replace(/^@+/, '');
-    if (!raw) {
+    if (!raw || raw.includes('#')) {
         closeAddReplyParticipantInput();
         return;
     }
 
-    const userKey = raw.split('@')[0].toLowerCase();
+    const parts = raw.split('@');
+    if (!/^[a-zA-Z0-9_.-]+$/.test(parts[0])) {
+        closeAddReplyParticipantInput();
+        return;
+    }
+    const userKey = parts[0].toLowerCase();
     const existing = replyParticipants.find(p => p.handle.split('@')[0].toLowerCase() === userKey);
     if (existing) {
         existing.selected = true;
@@ -4721,7 +4736,7 @@ function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = nu
     const authorAvatar = (toot && toot.account && toot.account.avatar) ? toot.account.avatar : '';
     const authorDisplayName = (toot && toot.account && toot.account.display_name) ? toot.account.display_name : authorNick;
 
-    if (authorRaw) {
+    if (authorRaw && !authorRaw.includes('#')) {
         replyParticipants.push({
             handle: authorRaw,
             nick: authorNick,
@@ -4735,6 +4750,7 @@ function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = nu
     if (toot) {
         const mentionsList = extractHandlesFromToot(toot);
         mentionsList.forEach(item => {
+            if (!item.handle || item.handle.includes('#')) return;
             const userKey = item.handle.split('@')[0].toLowerCase();
             // No duplicar al autor (si vino con dominio completo, actualizar al autor)
             if (userKey === authorUserKey) {

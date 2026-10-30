@@ -1,3 +1,19 @@
+# Versión 2.0.55: Filtro de hashtags y refinamiento visual de participantes en respuestas
+
+1. Exclusión estricta de hashtags en participantes de respuesta:
+  * Mastodon suele formatear los enlaces a hashtags con clases como `class="mention hashtag"` o atributos `rel="tag"`. Esto provocaba que etiquetas como `#ViernesDeEscritorio` fueran extraídas erróneamente como cuentas (`@#ViernesDeEscritorio@dominio`).
+  * Se implementó un filtro en `extractHandlesFromToot` que descarta enlaces a tags (`.hashtag`, `rel="tag"`, rutas `/tags/`), cualquier identificador que comience o contenga `#`, y valida sintaxis de usuario Fediverse (`^[a-zA-Z0-9_.-]+$`).
+  * Validación adicional en el campo de entrada manual (+ Añadir) y en el proceso de inicialización de respuestas.
+
+2. Mejoras visuales y deduplicación de chips:
+  * Chips compactos estilo pill con avatar (`20x20px`) o inicial.
+  * Solo se muestra `@nick` en el chip para mayor limpieza visual, conservando `@usuario@dominio` en el tooltip y en el texto para federación.
+  * Deduplicación estricta entre menciones con y sin dominio, y con el autor del toot.
+  * Etiqueta actualizada a `Autor` en lugar de `OP`.
+  * Contenedor con scroll vertical (`max-height: 80px`) para evitar listas largas cuando hay muchos usuarios.
+
+---
+
 # Versión 2.0.54: Selector interactivo de participantes y menciones en respuestas
 
 1. Respuesta a todos los participantes de un toot:
