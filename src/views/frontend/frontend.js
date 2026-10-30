@@ -4446,16 +4446,21 @@ function extractHandlesFromToot(toot) {
 
 function getCurrentUserHandles() {
     const list = new Set();
-    if (window.currentProfileData) {
-        if (currentProfileData.username) list.add(currentProfileData.username.toLowerCase());
-        if (currentProfileData.acct) list.add(currentProfileData.acct.toLowerCase());
+    const myProfile = (typeof currentProfileData !== 'undefined' && currentProfileData) || (typeof window !== 'undefined' && window.currentProfileData);
+    if (myProfile) {
+        if (myProfile.username) list.add(myProfile.username.toLowerCase());
+        if (myProfile.acct) list.add(myProfile.acct.toLowerCase());
     }
-    if (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username) {
+    if (typeof window !== 'undefined' && window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username) {
         list.add(window.KUTSOCIAL_OWNER.username.toLowerCase());
     }
     const myUserEl = document.getElementById('my-username');
     if (myUserEl && myUserEl.innerText) {
-        list.add(myUserEl.innerText.replace(/^@+/, '').toLowerCase());
+        const u = myUserEl.innerText.replace(/^@+/, '').trim().toLowerCase();
+        if (u && u !== 'cargando' && u !== 'cargando...') {
+            list.add(u);
+            list.add(u.split('@')[0]);
+        }
     }
     return list;
 }
@@ -4713,13 +4718,6 @@ function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = nu
     replyToId = id;
     editTootId = null;
 
-    const ctx = document.getElementById('composer-context');
-    if (ctx) ctx.style.display = 'flex';
-    const ctxIcon = document.getElementById('composer-context-icon');
-    if (ctxIcon) ctxIcon.textContent = 'reply';
-    const ctxText = document.getElementById('composer-context-text');
-    if (ctxText) ctxText.innerText = 'Respondiendo a:';
-
     // Construir participantes deduplicados
     replyParticipants = [];
     const currentUserHandles = getCurrentUserHandles();
@@ -4736,7 +4734,11 @@ function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = nu
     const authorAvatar = (toot && toot.account && toot.account.avatar) ? toot.account.avatar : '';
     const authorDisplayName = (toot && toot.account && toot.account.display_name) ? toot.account.display_name : authorNick;
 
-    if (authorRaw && !authorRaw.includes('#')) {
+    const myProfile = (typeof currentProfileData !== 'undefined' && currentProfileData) || (typeof window !== 'undefined' && window.currentProfileData);
+    const isAuthorMe = isMe(authorRaw) || (toot && toot.account && myProfile && String(toot.account.id) === String(myProfile.id));
+
+    // Si el autor del post no es uno mismo, agregarlo como Autor
+    if (authorRaw && !authorRaw.includes('#') && !isAuthorMe) {
         replyParticipants.push({
             handle: authorRaw,
             nick: authorNick,
@@ -4751,17 +4753,18 @@ function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = nu
         const mentionsList = extractHandlesFromToot(toot);
         mentionsList.forEach(item => {
             if (!item.handle || item.handle.includes('#')) return;
+            // No incluirse a uno mismo
+            if (isMe(item.handle)) return;
+
             const userKey = item.handle.split('@')[0].toLowerCase();
             // No duplicar al autor (si vino con dominio completo, actualizar al autor)
-            if (userKey === authorUserKey) {
+            if (!isAuthorMe && userKey === authorUserKey) {
                 const authorP = replyParticipants.find(p => p.isAuthor);
                 if (authorP && !authorP.handle.includes('@') && item.handle.includes('@')) {
                     authorP.handle = item.handle;
                 }
                 return;
             }
-            // No incluirse a uno mismo
-            if (isMe(item.handle)) return;
 
             // Evitar duplicados por nombre de usuario
             if (replyParticipants.some(p => p.nick.toLowerCase() === userKey)) {
@@ -4780,6 +4783,19 @@ function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = nu
     }
 
     renderReplyParticipants();
+
+    const ctx = document.getElementById('composer-context');
+    if (ctx) ctx.style.display = 'flex';
+    const ctxIcon = document.getElementById('composer-context-icon');
+    if (ctxIcon) ctxIcon.textContent = isAuthorMe ? 'forum' : 'reply';
+    const ctxText = document.getElementById('composer-context-text');
+    if (ctxText) {
+        if (isAuthorMe) {
+            ctxText.innerText = replyParticipants.length > 0 ? 'Respondiendo en tu publicación a:' : 'Continuando tu hilo:';
+        } else {
+            ctxText.innerText = 'Respondiendo a:';
+        }
+    }
 
     const textarea = document.getElementById('composer-text');
     if (textarea) {
