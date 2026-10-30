@@ -134,7 +134,7 @@ class UpdaterService {
         }
 
         // 2. Modo Estándar Transparente: Servidor Central de Actualizaciones KutStudio
-        $url = rtrim($this->updateServer, '/') . '/?app=kutsocial&action=check&version=' . rawurlencode($localVersion);
+        $url = rtrim($this->updateServer, '/') . '/?app=kutsocial&action=check&version=' . rawurlencode($localVersion) . '&nocache=1';
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,

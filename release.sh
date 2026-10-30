@@ -156,6 +156,9 @@ gh release create "v$NEW" "$ZIP_PATH" \
   --title "KutSocial v$NEW" \
   --notes "$NOTES"
 
+# Invalida la caché en el servidor central de actualizaciones inmediatamente
+curl -s "https://kutstudio.org/updates/?app=kutsocial&action=check&nocache=1" >/dev/null 2>&1 || true
+
 echo ""
 echo "✅ Release v$NEW publicada exitosamente en GitHub con $ZIP_NAME adjunto"
 echo "   https://github.com/ernestoacostame/kutsocial/releases/tag/v$NEW"
