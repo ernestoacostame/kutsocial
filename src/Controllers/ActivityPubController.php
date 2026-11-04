@@ -302,6 +302,10 @@ XML;
                     self::log("postInbox: Procesando actividad de Move");
                     self::handleMove($account, $activity);
                     break;
+                case 'Delete':
+                    self::log("postInbox: Procesando actividad de Delete");
+                    self::handleDelete($account, $activity);
+                    break;
                 default:
                     self::log("postInbox: Actividad de tipo '$type' no soportada, se responde 202");
                     break;
@@ -312,6 +316,98 @@ XML;
         } catch (\Throwable $e) {
             self::log("postInbox ERROR FATAL: " . $e->getMessage() . " en " . $e->getFile() . ":" . $e->getLine() . "\n" . $e->getTraceAsString());
             Router::json(['error' => 'Error interno procesando bandeja de entrada: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Procesa actividades Delete de ActivityPub (borrado de notas/posts o actores remotos).
+     */
+    private static function handleDelete(array $localAccount, array $activity): void {
+        $object = $activity['object'] ?? null;
+        $targetUri = '';
+        if (is_array($object)) {
+            $targetUri = $object['id'] ?? ($object['url'] ?? '');
+        } elseif (is_string($object)) {
+            $targetUri = $object;
+        }
+
+        if (empty($targetUri)) {
+            self::log("handleDelete: Actividad Delete con objeto vacío");
+            return;
+        }
+
+        $actorUrl = $activity['actor'] ?? '';
+        if (is_array($actorUrl)) {
+            $actorUrl = $actorUrl['id'] ?? '';
+        }
+
+        self::log("handleDelete: Solicitud de borrado para '$targetUri' por actor '$actorUrl'");
+        $db = Database::connect();
+
+        // 1. Si el objeto a borrar es una cuenta/actor remota
+        if ($targetUri === $actorUrl) {
+            $remoteAccount = self::getOrRegisterRemoteActor($actorUrl);
+            if ($remoteAccount) {
+                $stmtDel = $db->prepare("DELETE FROM accounts WHERE id = ?");
+                $stmtDel->execute([$remoteAccount['id']]);
+                self::log("handleDelete: Cuenta remota ID {$remoteAccount['id']} eliminada por actividad Delete");
+            }
+            return;
+        }
+
+        // 2. Buscar publicaciones en la base de datos local por su URI o contenido
+        $cleanTarget = rtrim($targetUri, '/');
+        $stmtFind = $db->prepare("SELECT id, account_id, uri FROM statuses WHERE uri = ? OR uri = ?");
+        $stmtFind->execute([$targetUri, $cleanTarget]);
+        $matchingStatuses = $stmtFind->fetchAll();
+
+        // Si no se encuentra de forma directa, intentar búsqueda parcial en URI o contenido
+        if (empty($matchingStatuses)) {
+            $stmtFind2 = $db->prepare("SELECT id, account_id, uri FROM statuses WHERE uri LIKE ? OR content LIKE ?");
+            $stmtFind2->execute(['%' . basename($cleanTarget), '%' . $cleanTarget . '%']);
+            $matchingStatuses = $stmtFind2->fetchAll();
+        }
+
+        if (empty($matchingStatuses)) {
+            self::log("handleDelete: Publicación '$targetUri' no encontrada en DB local (quizá ya fue eliminada)");
+            return;
+        }
+
+        $remoteAccount = !empty($actorUrl) ? self::getOrRegisterRemoteActor($actorUrl) : null;
+        $actorHost = !empty($actorUrl) ? parse_url($actorUrl, PHP_URL_HOST) : null;
+
+        foreach ($matchingStatuses as $status) {
+            // 3. Verificar que el actor que envía el Delete sea el autor o pertenezca al mismo dominio
+            if ($remoteAccount && (int)$status['account_id'] !== (int)$remoteAccount['id']) {
+                $statusAcc = $db->query("SELECT domain FROM accounts WHERE id = " . (int)$status['account_id'])->fetch();
+                if (!$statusAcc || empty($actorHost) || strcasecmp((string)($statusAcc['domain'] ?? ''), (string)$actorHost) !== 0) {
+                    self::log("handleDelete: Rechazado borrado de status {$status['id']} porque el actor '$actorUrl' no es su autor");
+                    continue;
+                }
+            }
+
+            $statusId = (int)$status['id'];
+
+            // 4. Eliminar reblogs asociados a este post
+            $stmtDelReblogs = $db->prepare("DELETE FROM statuses WHERE reblog_of_id = ?");
+            $stmtDelReblogs->execute([$statusId]);
+
+            // 5. Eliminar favoritos y notificaciones asociadas
+            $stmtDelFavs = $db->prepare("DELETE FROM favourites WHERE status_id = ?");
+            $stmtDelFavs->execute([$statusId]);
+
+            $stmtDelNotifs = $db->prepare("DELETE FROM notifications WHERE status_id = ?");
+            $stmtDelNotifs->execute([$statusId]);
+
+            // 6. Eliminar el post principal
+            $stmtDelStatus = $db->prepare("DELETE FROM statuses WHERE id = ?");
+            $stmtDelStatus->execute([$statusId]);
+
+            // 7. Decrementar contador de posts de la cuenta
+            $db->prepare("UPDATE accounts SET statuses_count = MAX(0, statuses_count - 1) WHERE id = ?")
+               ->execute([$status['account_id']]);
+
+            self::log("handleDelete: Publicación ID $statusId (URI '{$status['uri']}') eliminada exitosamente del Fediverso");
         }
     }
 
