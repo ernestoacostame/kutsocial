@@ -515,6 +515,7 @@ $router->get('/api/v1/accounts/:id', [MastodonApiController::class, 'getAccountB
 $router->get('/api/v1/accounts/:id/statuses', [MastodonApiController::class, 'getAccountStatuses']);
 $router->post('/api/v1/accounts/:id/follow', [MastodonApiController::class, 'followAccount']);
 $router->post('/api/v1/accounts/:id/unfollow', [MastodonApiController::class, 'unfollowAccount']);
+$router->post('/api/v1/accounts/:id/exclusive_replies', [MastodonApiController::class, 'toggleExclusiveReplies']);
 $router->get('/api/v1/accounts/:id/followers', [MastodonApiController::class, 'getFollowers']);
 $router->get('/api/v1/accounts/:id/following', [MastodonApiController::class, 'getFollowing']);
 $router->post('/api/v1/accounts/:id/remove_from_followers', [MastodonApiController::class, 'removeFromFollowers']);

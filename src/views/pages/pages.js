@@ -3644,6 +3644,47 @@ function updateProfileModerationMenu(account) {
             domainBtn.style.display = 'none';
         }
     }
+
+    const exclusiveBtn = document.getElementById('profile-exclusive-replies-btn');
+    if (exclusiveBtn) {
+        if (currentProfileRelationship.following) {
+            exclusiveBtn.style.display = 'flex';
+            const isExclusive = !!currentProfileRelationship.only_replies_to_me;
+            const exclText = document.getElementById('profile-exclusive-replies-text');
+            const exclIcon = document.getElementById('profile-exclusive-replies-icon');
+            if (exclText) exclText.innerText = isExclusive ? 'Mostrar todas las respuestas' : 'Solo respuestas cuando me responda a mí';
+            if (exclIcon) exclIcon.innerText = isExclusive ? 'chat' : 'filter_alt';
+        } else {
+            exclusiveBtn.style.display = 'none';
+        }
+    }
+}
+
+async function handleProfileToggleExclusiveReplies() {
+    if (!currentProfileRelationship || !activeProfileViewId) return;
+    try {
+        const res = await fetch(`/api/v1/accounts/${activeProfileViewId}/exclusive_replies`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            currentProfileRelationship = data;
+            const nowExclusive = !!data.only_replies_to_me;
+            alert(nowExclusive ? 
+                'Ahora solo verás respuestas de este usuario cuando te responda a ti directamente.' : 
+                'Se volverán a mostrar todas las respuestas de este usuario.');
+            updateProfileModerationMenu(currentProfileData);
+            if (typeof reloadCurrentTimeline === 'function') {
+                reloadCurrentTimeline();
+            }
+        } else {
+            alert('Error al cambiar la preferencia de respuestas');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Error de conexión');
+    }
 }
 
 async function handleProfileMute() {
@@ -3966,6 +4007,37 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
         }
     });
     menu.appendChild(optMute);
+
+    // Opción Solo respuestas a mí (si sigues a la cuenta)
+    if (rel.following) {
+        const isExclusive = !!rel.only_replies_to_me;
+        const optExclusive = document.createElement('button');
+        optExclusive.innerHTML = `<span class="material-icons-outlined">${isExclusive ? 'chat' : 'filter_alt'}</span> <span>${isExclusive ? 'Mostrar todas las respuestas' : 'Solo respuestas cuando me responda a mí'}</span>`;
+        setupMenuBtn(optExclusive, async () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            try {
+                const res = await fetch(`/api/v1/accounts/${account.id}/exclusive_replies`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const nowExclusive = !!data.only_replies_to_me;
+                    alert(nowExclusive ? 
+                        `Ahora solo verás respuestas de @${acctHandle} cuando te responda a ti.` : 
+                        `Se volverán a mostrar todas las respuestas de @${acctHandle}.`);
+                    reloadCurrentTimeline();
+                } else {
+                    alert("Error al actualizar preferencia de respuestas");
+                }
+            } catch (e) {
+                console.error(e);
+                alert("Error de conexión");
+            }
+        });
+        menu.appendChild(optExclusive);
+    }
 
     // Opción Bloquear
     const optBlock = document.createElement('button');

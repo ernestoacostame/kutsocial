@@ -807,13 +807,20 @@ XML;
         }
 
         $inReplyToId = null;
+        $inReplyToAccountId = null;
         if ($inReplyToUri) {
-            $stmtReply = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+            $stmtReply = $db->prepare("SELECT id, account_id FROM statuses WHERE uri = ? LIMIT 1");
             $stmtReply->execute([$inReplyToUri]);
-            $inReplyToId = $stmtReply->fetchColumn() ?: null;
-            if (!$inReplyToId) {
+            $parentRow = $stmtReply->fetch();
+            if ($parentRow) {
+                $inReplyToId = $parentRow['id'];
+                $inReplyToAccountId = $parentRow['account_id'];
+            } else {
                 try {
                     $inReplyToId = self::fetchAndRegisterRemoteStatus($inReplyToUri);
+                    if ($inReplyToId) {
+                        $inReplyToAccountId = $db->query("SELECT account_id FROM statuses WHERE id = " . (int)$inReplyToId)->fetchColumn() ?: null;
+                    }
                 } catch (\Throwable $e) {
                     self::log("handleCreate: no se pudo pre-resolver inReplyTo '$inReplyToUri': " . $e->getMessage());
                 }
@@ -821,8 +828,8 @@ XML;
         }
 
         $stmtIns = $db->prepare("
-            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, emojis)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, in_reply_to_url, in_reply_to_account_id, emojis)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmtIns->execute([
             $remoteAccount['id'],
@@ -832,6 +839,8 @@ XML;
             gmdate('Y-m-d H:i:s', strtotime($createdAt)),
             $mediaJson,
             $inReplyToId,
+            $inReplyToUri,
+            $inReplyToAccountId,
             $emojisJson
         ]);
 
@@ -1908,10 +1917,15 @@ XML;
         }
 
         $inReplyToId = null;
+        $inReplyToAccountId = null;
         if ($inReplyToUri) {
-            $stmtReply = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+            $stmtReply = $db->prepare("SELECT id, account_id FROM statuses WHERE uri = ? LIMIT 1");
             $stmtReply->execute([$inReplyToUri]);
-            $inReplyToId = $stmtReply->fetchColumn() ?: null;
+            $parentRow = $stmtReply->fetch();
+            if ($parentRow) {
+                $inReplyToId = $parentRow['id'];
+                $inReplyToAccountId = $parentRow['account_id'];
+            }
         }
 
         $quoteUrl = $object['quoteUrl'] ?? $object['quoteUri'] ?? null;
@@ -1921,8 +1935,8 @@ XML;
         }
 
         $stmtIns = $db->prepare("
-            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, reblog_of_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, in_reply_to_url, in_reply_to_account_id, reblog_of_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmtIns->execute([
             $remoteAccount['id'],
@@ -1932,6 +1946,8 @@ XML;
             gmdate('Y-m-d H:i:s', strtotime($createdAt)),
             $mediaJson,
             $inReplyToId,
+            $inReplyToUri,
+            $inReplyToAccountId,
             $reblogOfId
         ]);
 

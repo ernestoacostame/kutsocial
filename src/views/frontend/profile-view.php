@@ -24,6 +24,10 @@
                 </button>
                 
                 <div id="profile-options-dropdown" class="dropdown-menu" style="display: none; position: absolute; top: 38px; right: 0; background: #1e1f22; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); z-index: 100; min-width: 220px; padding: 5px 0;">
+                    <button class="dropdown-item" onclick="handleProfileToggleExclusiveReplies()" style="width: 100%; text-align: left; background: none; border: none; color: #fff; padding: 10px 15px; font-size: 13.5px; cursor: pointer; display: none; align-items: center; gap: 8px; transition: background 0.2s; border-bottom: 1px solid rgba(255,255,255,0.05);" id="profile-exclusive-replies-btn">
+                        <span class="material-icons-outlined" style="font-size: 18px;" id="profile-exclusive-replies-icon">filter_alt</span>
+                        <span id="profile-exclusive-replies-text">Solo respuestas a mí</span>
+                    </button>
                     <button class="dropdown-item" onclick="handleProfileMute()" style="width: 100%; text-align: left; background: none; border: none; color: #fff; padding: 10px 15px; font-size: 13.5px; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: background 0.2s;">
                         <span class="material-icons-outlined" style="font-size: 18px;" id="profile-mute-icon">volume_off</span>
                         <span id="profile-mute-text">Silenciar usuario</span>

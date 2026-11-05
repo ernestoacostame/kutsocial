@@ -152,6 +152,44 @@ class Database {
                     $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_idempotency_key ON statuses(account_id, idempotency_key)");
                 }
 
+                $hasInReplyToUrl = false;
+                $hasInReplyToAccountId = false;
+                foreach ($cols as $col) {
+                    if (strcasecmp($col['name'], 'in_reply_to_url') === 0) {
+                        $hasInReplyToUrl = true;
+                    }
+                    if (strcasecmp($col['name'], 'in_reply_to_account_id') === 0) {
+                        $hasInReplyToAccountId = true;
+                    }
+                }
+                if (!$hasInReplyToUrl) {
+                    $db->exec("ALTER TABLE statuses ADD COLUMN in_reply_to_url TEXT NULL");
+                }
+                if (!$hasInReplyToAccountId) {
+                    $db->exec("ALTER TABLE statuses ADD COLUMN in_reply_to_account_id INTEGER NULL");
+                    $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_in_reply_to_account_id ON statuses(in_reply_to_account_id)");
+                    $db->exec("UPDATE statuses SET in_reply_to_account_id = (SELECT account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id) WHERE in_reply_to_id IS NOT NULL AND in_reply_to_account_id IS NULL");
+                }
+
+                // Asegurar columnas en follows
+                $followCols = $db->query("PRAGMA table_info(follows)")->fetchAll(\PDO::FETCH_ASSOC);
+                $hasOnlyRepliesToMe = false;
+                $hasShowReblogs = false;
+                foreach ($followCols as $col) {
+                    if (strcasecmp($col['name'], 'only_replies_to_me') === 0) {
+                        $hasOnlyRepliesToMe = true;
+                    }
+                    if (strcasecmp($col['name'], 'show_reblogs') === 0) {
+                        $hasShowReblogs = true;
+                    }
+                }
+                if (!$hasOnlyRepliesToMe) {
+                    $db->exec("ALTER TABLE follows ADD COLUMN only_replies_to_me INTEGER NOT NULL DEFAULT 0");
+                }
+                if (!$hasShowReblogs) {
+                    $db->exec("ALTER TABLE follows ADD COLUMN show_reblogs INTEGER NOT NULL DEFAULT 1");
+                }
+
                 // Asegurar columna also_known_as
                 $accCols = $db->query("PRAGMA table_info(accounts)")->fetchAll(\PDO::FETCH_ASSOC);
                 $hasAlsoKnownAs = false;
@@ -509,6 +547,13 @@ class Database {
                 )",
                 "CREATE INDEX IF NOT EXISTS idx_reports_account_id ON reports(account_id)",
                 "CREATE INDEX IF NOT EXISTS idx_reports_target_account_id ON reports(target_account_id)"
+            ],
+            21 => [
+                "ALTER TABLE follows ADD COLUMN only_replies_to_me INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE follows ADD COLUMN show_reblogs INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE statuses ADD COLUMN in_reply_to_url TEXT NULL",
+                "ALTER TABLE statuses ADD COLUMN in_reply_to_account_id INTEGER NULL",
+                "CREATE INDEX IF NOT EXISTS idx_statuses_in_reply_to_account_id ON statuses(in_reply_to_account_id)"
             ]
         ];
     }

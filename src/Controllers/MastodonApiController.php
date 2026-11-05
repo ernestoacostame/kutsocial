@@ -2937,6 +2937,89 @@ HTML;
     }
 
     /**
+     * Construye la condición WHERE para publicaciones en el Timeline de Inicio, Catchup y Streaming
+     * aplicando:
+     * 1. Publicaciones propias.
+     * 2. Publicaciones de cuentas seguidas con la regla de Mastodon para respuestas.
+     * 3. Filtro de exclusividad 'only_replies_to_me' por usuario seguido.
+     * 4. Mensajes directos (DMs) dirigidos al usuario.
+     * 5. Hashtags seguidos.
+     */
+    private static function buildHomeTimelineWhereCondition(array $account, array &$queryParams): string {
+        $userId = (int)$account['id'];
+        $username = $account['username'];
+        $mention1 = '%@' . $username . '%';
+        $mention2 = '%/users/' . $username . '%';
+
+        $queryParams[] = $userId; // s.account_id = ?
+        $queryParams[] = $userId; // follows.account_id = ?
+        $queryParams[] = $userId; // follows.account_id (NOT IN only_replies_to_me)
+        $queryParams[] = $userId; // in_reply_to_account_id = ?
+        $queryParams[] = $mention1; // content LIKE ?
+        $queryParams[] = $mention2; // content LIKE ?
+        $queryParams[] = $userId; // in_reply_to_account_id IN follows
+        $queryParams[] = $userId; // in_reply_to_id IN statuses WHERE account_id = ?
+        $queryParams[] = $userId; // OR account_id IN follows
+        $queryParams[] = $userId; // follows.account_id (IN only_replies_to_me)
+        $queryParams[] = $userId; // in_reply_to_account_id = ?
+        $queryParams[] = $mention1; // content LIKE ?
+        $queryParams[] = $mention2; // content LIKE ?
+        $queryParams[] = $userId; // in_reply_to_id IN statuses WHERE account_id = ?
+        $queryParams[] = $userId; // DMs: s.account_id = ?
+        $queryParams[] = $mention1; // DMs: s.content LIKE ?
+        $queryParams[] = $mention2; // DMs: s.content LIKE ?
+        $queryParams[] = $userId; // followed_hashtags: fh.account_id = ?
+
+        return "(
+            (
+                s.visibility IN ('public', 'unlisted', 'private') AND (
+                    s.account_id = ?
+                    OR (
+                        s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending'))
+                        AND (
+                            -- Cuenta normal (sin filtro exclusivo only_replies_to_me)
+                            (
+                                s.account_id NOT IN (SELECT target_account_id FROM follows WHERE account_id = ? AND only_replies_to_me = 1)
+                                AND (
+                                    -- Post raíz (no es respuesta)
+                                    (s.in_reply_to_id IS NULL AND (s.in_reply_to_account_id IS NULL OR s.in_reply_to_account_id = s.account_id) AND (s.in_reply_to_url IS NULL OR s.in_reply_to_url = ''))
+                                    OR
+                                    -- Respuesta dirigida a mí o me menciona
+                                    (s.in_reply_to_account_id = ? OR s.content LIKE ? OR s.content LIKE ?)
+                                    OR
+                                    -- Respuesta a alguien que también sigo (estándar de Mastodon)
+                                    (
+                                        s.in_reply_to_account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending'))
+                                        OR s.in_reply_to_id IN (SELECT id FROM statuses WHERE account_id = ? OR account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending')))
+                                    )
+                                )
+                            )
+                            OR
+                            -- Cuenta con filtro exclusivo activado (solo respuestas a mí o posts propios raíz)
+                            (
+                                s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND only_replies_to_me = 1)
+                                AND (
+                                    (s.in_reply_to_account_id = ? OR s.content LIKE ? OR s.content LIKE ? OR s.in_reply_to_id IN (SELECT id FROM statuses WHERE account_id = ?))
+                                    OR
+                                    (s.in_reply_to_id IS NULL AND s.in_reply_to_account_id IS NULL AND (s.in_reply_to_url IS NULL OR s.in_reply_to_url = '') AND s.content NOT LIKE '<p><span class=\"h-card\"><a href=%' AND s.content NOT LIKE '<p>@%')
+                                )
+                            )
+                        )
+                    )
+                )
+            )
+            OR
+            (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
+            OR
+            (s.visibility IN ('public', 'unlisted') AND EXISTS (
+                SELECT 1 FROM followed_hashtags fh 
+                WHERE fh.account_id = ? 
+                  AND (s.content LIKE '%#' || fh.hashtag || '%' OR s.content LIKE '%/tags/' || fh.hashtag || '%')
+            ))
+        )";
+    }
+
+    /**
      * Endpoint GET /api/v1/timelines/home
      */
     public static function getHomeTimeline(): void {
@@ -2955,26 +3038,9 @@ HTML;
         if ($limit < 1) $limit = 30;
         if ($limit > 80) $limit = 80;
 
+        $queryParams = [];
         $whereClauses = [
-            "(
-                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending'))))
-                OR
-                (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
-                OR
-                (s.visibility IN ('public', 'unlisted') AND EXISTS (
-                    SELECT 1 FROM followed_hashtags fh 
-                    WHERE fh.account_id = ? 
-                      AND (s.content LIKE '%#' || fh.hashtag || '%' OR s.content LIKE '%/tags/' || fh.hashtag || '%')
-                ))
-            )"
-        ];
-        $queryParams = [
-            $account['id'],
-            $account['id'],
-            $account['id'],
-            '%@' . $account['username'] . '%',
-            '%/users/' . $account['username'] . '%',
-            $account['id']
+            self::buildHomeTimelineWhereCondition($account, $queryParams)
         ];
 
         if ($maxId !== null) {
@@ -3018,29 +3084,12 @@ HTML;
         if ($hours < 1) $hours = 1;
         if ($hours > 72) $hours = 72;
 
+        $queryParams = [];
         $whereClauses = [
-            "(
-                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending'))))
-                OR
-                (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
-                OR
-                (s.visibility IN ('public', 'unlisted') AND EXISTS (
-                    SELECT 1 FROM followed_hashtags fh 
-                    WHERE fh.account_id = ? 
-                      AND (s.content LIKE '%#' || fh.hashtag || '%' OR s.content LIKE '%/tags/' || fh.hashtag || '%')
-                ))
-            )",
+            self::buildHomeTimelineWhereCondition($account, $queryParams),
             "s.created_at >= datetime('now', ?)"
         ];
-        $queryParams = [
-            $account['id'],
-            $account['id'],
-            $account['id'],
-            '%@' . $account['username'] . '%',
-            '%/users/' . $account['username'] . '%',
-            $account['id'],
-            "-$hours hours"
-        ];
+        $queryParams[] = "-$hours hours";
 
         $whereSql = implode(" AND ", $whereClauses);
 
@@ -3290,13 +3339,15 @@ HTML;
             }
         }
 
+        $inReplyToAccountId = $inReplyToId ? ($db->query("SELECT account_id FROM statuses WHERE id = " . (int)$inReplyToId)->fetchColumn() ?: null) : null;
+
         // Inserción atómica del status mediante transacciones de PDO y reintentos automáticos
-        $newId = Database::executeWithRetry(function() use ($db, $account, $uri, $content, $visibility, $inReplyToId, $sensitive, $spoilerText, $mediaAttachments, $language, $reblogOfId, $idempotencyKey) {
+        $newId = Database::executeWithRetry(function() use ($db, $account, $uri, $content, $visibility, $inReplyToId, $inReplyToAccountId, $sensitive, $spoilerText, $mediaAttachments, $language, $reblogOfId, $idempotencyKey) {
             $db->beginTransaction();
             try {
                 $stmt = $db->prepare("
-                    INSERT INTO statuses (account_id, uri, content, visibility, in_reply_to_id, sensitive, spoiler_text, media_attachments, language, reblog_of_id, idempotency_key, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    INSERT INTO statuses (account_id, uri, content, visibility, in_reply_to_id, in_reply_to_account_id, sensitive, spoiler_text, media_attachments, language, reblog_of_id, idempotency_key, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
                 ");
                 $stmt->execute([
                     $account['id'], 
@@ -3304,6 +3355,7 @@ HTML;
                     $content, 
                     $visibility, 
                     $inReplyToId, 
+                    $inReplyToAccountId,
                     $sensitive, 
                     $spoilerText, 
                     !empty($mediaAttachments) ? json_encode($mediaAttachments) : null, 
@@ -3685,16 +3737,7 @@ HTML;
             if (!$currUserId) {
                 exit;
             }
-            $whereClauses[] = "(
-                (s.visibility IN ('public', 'unlisted', 'private') AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending'))))
-                OR
-                (s.visibility = 'direct' AND (s.account_id = ? OR s.content LIKE ? OR s.content LIKE ?))
-            )";
-            $queryParams[] = $currUserId;
-            $queryParams[] = $currUserId;
-            $queryParams[] = $currUserId;
-            $queryParams[] = '%@' . $currUser['username'] . '%';
-            $queryParams[] = '%/users/' . $currUser['username'] . '%';
+            $whereClauses[] = self::buildHomeTimelineWhereCondition($currUser, $queryParams);
         } elseif ($stream === 'hashtag' && $tag) {
             $whereClauses[] = "s.visibility IN ('public', 'unlisted')";
             $whereClauses[] = "(s.content LIKE ? OR s.content LIKE ?)";
@@ -4807,10 +4850,16 @@ HTML;
         $isFollowedBy = ($followedByStatus === 'accepted' || !empty($followedByStatus));
         $isRequested = ($followStatus === 'pending' && $targetLocked);
 
+        $stmtF = $db->prepare("SELECT only_replies_to_me, show_reblogs FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtF->execute([$currentUserId, $targetId]);
+        $followRow = $stmtF->fetch();
+        $onlyRepliesToMe = $followRow ? !empty($followRow['only_replies_to_me']) : false;
+        $showingReblogs = $followRow && isset($followRow['show_reblogs']) ? (bool)$followRow['show_reblogs'] : true;
+
         return [
             'id' => (string)$targetId,
             'following' => $isFollowing,
-            'showing_reblogs' => true,
+            'showing_reblogs' => $showingReblogs,
             'notifying' => false,
             'languages' => null,
             'followed_by' => $isFollowedBy,
@@ -4821,7 +4870,8 @@ HTML;
             'requested' => $isRequested,
             'domain_blocking' => $domainBlocking,
             'endorsement' => false,
-            'note' => ''
+            'note' => '',
+            'only_replies_to_me' => $onlyRepliesToMe
         ];
     }
 
@@ -4913,19 +4963,43 @@ HTML;
         $isRemote = !empty($targetAccount['domain']);
         $status = ($targetAccount['locked'] ?? 0) ? 'pending' : 'accepted';
 
+        $rawInput = file_get_contents('php://input');
+        $body = json_decode($rawInput, true) ?: $_POST;
+        $paramOnlyRepliesToMe = isset($body['only_replies_to_me']) ? ($body['only_replies_to_me'] ? 1 : 0) : null;
+        $paramShowReblogs = isset($body['reblogs']) ? ($body['reblogs'] ? 1 : 0) : null;
+
         if (!$existing) {
             $stmt = $db->prepare("
-                INSERT INTO follows (account_id, target_account_id, status, created_at)
-                VALUES (?, ?, ?, datetime('now'))
+                INSERT INTO follows (account_id, target_account_id, status, only_replies_to_me, show_reblogs, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
             ");
-            $stmt->execute([$account['id'], $targetId, $status]);
+            $stmt->execute([
+                $account['id'], 
+                $targetId, 
+                $status, 
+                $paramOnlyRepliesToMe ?? 0, 
+                $paramShowReblogs ?? 1
+            ]);
 
             if (!$isRemote && $status === 'accepted') {
                 \KutSocial\NotificationHelper::notifyFollow((int)$targetId, (int)$account['id']);
             }
         } else {
-            $stmt = $db->prepare("UPDATE follows SET status = ? WHERE id = ?");
-            $stmt->execute([$status, $existing]);
+            $updateSql = "UPDATE follows SET status = ?";
+            $updateParams = [$status];
+            if ($paramOnlyRepliesToMe !== null) {
+                $updateSql .= ", only_replies_to_me = ?";
+                $updateParams[] = $paramOnlyRepliesToMe;
+            }
+            if ($paramShowReblogs !== null) {
+                $updateSql .= ", show_reblogs = ?";
+                $updateParams[] = $paramShowReblogs;
+            }
+            $updateSql .= " WHERE id = ?";
+            $updateParams[] = $existing;
+
+            $stmt = $db->prepare($updateSql);
+            $stmt->execute($updateParams);
 
             if (!$isRemote && $status === 'accepted') {
                 \KutSocial\NotificationHelper::notifyFollow((int)$targetId, (int)$account['id']);
@@ -4951,6 +5025,38 @@ HTML;
             \KutSocial\Queue::enqueue('Follow', $followActivity, $targetAccount['inbox_url']);
             \KutSocial\Queue::triggerAsync($domain);
         }
+
+        Router::json(self::getRelationshipObj($db, (int)$account['id'], $targetId));
+    }
+
+    public static function toggleExclusiveReplies(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+
+        $idParam = $params['id'] ?? '';
+        $targetAccount = self::findAccountByIdOrHandle($idParam);
+        if (!$targetAccount) {
+            Router::json(['error' => 'Cuenta no encontrada'], 404);
+            return;
+        }
+
+        $targetId = (int)$targetAccount['id'];
+        $db = Database::connect();
+
+        $stmt = $db->prepare("SELECT id, only_replies_to_me FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmt->execute([$account['id'], $targetId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            Router::json(['error' => 'No sigues a esta cuenta'], 400);
+            return;
+        }
+
+        $newVal = empty($row['only_replies_to_me']) ? 1 : 0;
+        $db->prepare("UPDATE follows SET only_replies_to_me = ? WHERE id = ?")
+           ->execute([$newVal, $row['id']]);
 
         Router::json(self::getRelationshipObj($db, (int)$account['id'], $targetId));
     }
