@@ -81,7 +81,26 @@ fi
 
 echo "✅ Archivos de versión actualizados a $NEW"
 
-# --- 2. Crear el ZIP de producción limpio ---
+# --- 2. Git: commit + tag dentro del repositorio de KutSocial ---
+UNSTAGED=$(git status --porcelain | grep -vE '(version\.php|version\.json)' | wc -l || true)
+
+if [[ "$UNSTAGED" -gt 0 ]]; then
+  echo "📋 Hay $UNSTAGED archivo(s) modificados o nuevos sin stage."
+  read -rp "¿Incluirlos en este release? (s/N) " inc
+  if [[ "$inc" == "s" || "$inc" == "S" ]]; then
+    git add -A
+  fi
+fi
+
+# Siempre incluir archivos de versión
+git add version.php
+[[ -f "$VERSION_JSON" ]] && git add version.json
+
+git commit -m "Release KutSocial v$NEW"
+git tag -a "v$NEW" -m "KutSocial v$NEW"
+echo "✅ Commit y tag v$NEW creados"
+
+# --- 3. Crear el ZIP de producción limpio (ahora con todos los archivos recién añadidos ya en git) ---
 ZIP_NAME="kutsocial-v${NEW}.zip"
 ZIP_PATH="/tmp/$ZIP_NAME"
 
@@ -112,25 +131,6 @@ cd "$KUTSOCIAL_DIR"
 
 ZIP_SIZE=$(du -h "$ZIP_PATH" | cut -f1)
 echo "✅ ZIP creado: $ZIP_NAME ($ZIP_SIZE)"
-
-# --- 3. Git: commit + tag dentro del repositorio de KutSocial ---
-UNSTAGED=$(git status --porcelain | grep -vE '(version\.php|version\.json)' | wc -l || true)
-
-if [[ "$UNSTAGED" -gt 0 ]]; then
-  echo "📋 Hay $UNSTAGED archivo(s) modificados sin stage."
-  read -rp "¿Incluirlos en este release? (s/N) " inc
-  if [[ "$inc" == "s" || "$inc" == "S" ]]; then
-    git add -A
-  fi
-fi
-
-# Siempre incluir archivos de versión
-git add version.php
-[[ -f "$VERSION_JSON" ]] && git add version.json
-
-git commit -m "Release KutSocial v$NEW"
-git tag -a "v$NEW" -m "KutSocial v$NEW"
-echo "✅ Commit y tag v$NEW creados"
 
 # --- 4. Push al repositorio de KutSocial ---
 BRANCH=$(git branch --show-current || git rev-parse --abbrev-ref HEAD || echo "main")

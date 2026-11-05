@@ -2,7 +2,7 @@
 $basePath = $basePath ?? '';
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars(\KutSocial\I18n::getLang()) ?>">
+<html lang="<?= htmlspecialchars(class_exists('\KutSocial\I18n') ? \KutSocial\I18n::getLang() : 'es') ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
