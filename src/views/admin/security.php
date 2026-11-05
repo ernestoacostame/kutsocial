@@ -16,6 +16,27 @@
     </form>
 </div>
 
+<!-- Duración de la Sesión -->
+<div style="margin-bottom: 40px; padding-bottom: 30px; border-bottom: 1px solid var(--border-color);">
+    <h4 style="margin: 0 0 10px 0;">Duración de la Sesión</h4>
+    <p class="help-text" style="margin-bottom: 20px;">Define cuánto tiempo se mantendrá activa la sesión en este navegador sin necesidad de volver a introducir usuario, contraseña o código 2FA.</p>
+    <form method="POST" action="/admin/security/session_duration">
+        <div style="display: flex; gap: 15px; align-items: flex-end; max-width: 520px; flex-wrap: wrap;">
+            <div class="form-group" style="flex: 1; min-width: 260px; margin: 0;">
+                <label for="admin_session_days" style="margin-bottom: 8px; display: block;">Tiempo para mantener sesión activa</label>
+                <select name="admin_session_days" id="admin_session_days">
+                    <option value="1" <?= $sessionDays === 1 ? 'selected' : '' ?>>1 día (24 horas)</option>
+                    <option value="7" <?= $sessionDays === 7 ? 'selected' : '' ?>>7 días (1 semana)</option>
+                    <option value="30" <?= $sessionDays === 30 ? 'selected' : '' ?>>30 días (1 mes - Recomendado)</option>
+                    <option value="90" <?= $sessionDays === 90 ? 'selected' : '' ?>>90 días (3 meses)</option>
+                    <option value="365" <?= $sessionDays === 365 ? 'selected' : '' ?>>365 días (1 año)</option>
+                </select>
+            </div>
+            <button type="submit" class="btn-submit" style="white-space: nowrap;">Guardar Duración</button>
+        </div>
+    </form>
+</div>
+
 <!-- Configuración de 2FA -->
 <div>
     <h4 style="margin: 0 0 10px 0;">Autenticación de Dos Factores (2FA)</h4>

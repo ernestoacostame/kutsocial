@@ -32,14 +32,6 @@ if (!file_exists(__DIR__ . '/config.php')) {
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/version.php';
 
-// Iniciar sesión para el cliente web y rutas administrativas
-$requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-if (!str_starts_with($requestUri, '/api/') && !str_starts_with($requestUri, '/.well-known/')) {
-    if (session_status() === PHP_SESSION_NONE) {
-        session_start();
-    }
-}
-
 use KutSocial\Router;
 use KutSocial\Database;
 use KutSocial\UpdaterService;
@@ -54,6 +46,12 @@ try {
 } catch (Exception $e) {
     http_response_code(500);
     exit("Fallo crítico de base de datos: " . $e->getMessage());
+}
+
+// Iniciar sesión segura para el cliente web y rutas administrativas
+$requestUri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+if (!str_starts_with($requestUri, '/api/') && !str_starts_with($requestUri, '/.well-known/')) {
+    AdminController::startSecureSession();
 }
 
 // 4. Configurar Enrutador
@@ -735,6 +733,7 @@ $router->get('/admin/dashboard', [AdminController::class, 'showDashboard']);
 $router->get('/admin/dashboard/:section', [AdminController::class, 'showDashboard']);
 $router->post('/admin/settings', [AdminController::class, 'handleSettings']);
 $router->post('/admin/security/password', [AdminController::class, 'handlePassword']);
+$router->post('/admin/security/session_duration', [AdminController::class, 'handleSessionDuration']);
 $router->post('/admin/security/2fa/setup', [AdminController::class, 'setup2FA']);
 $router->post('/admin/security/2fa/verify', [AdminController::class, 'verify2FA']);
 $router->post('/admin/security/2fa/disable', [AdminController::class, 'disable2FA']);

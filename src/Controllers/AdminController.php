@@ -11,23 +11,229 @@ use Exception;
 
 class AdminController {
     /**
+     * Get configured admin session duration in days.
+     */
+    public static function getSessionDurationDays(): int {
+        try {
+            $db = Database::connect();
+            $stmt = $db->prepare("SELECT value FROM options WHERE key = 'admin_session_days' LIMIT 1");
+            $stmt->execute();
+            $val = $stmt->fetchColumn();
+            if ($val !== false && is_numeric($val)) {
+                $days = (int)$val;
+                if ($days >= 1) {
+                    return $days;
+                }
+            }
+        } catch (\Throwable $e) {}
+        return 30; // 30 días por defecto
+    }
+
+    /**
+     * Start session securely with configured lifetime and sliding expiration.
+     */
+    public static function startSecureSession(): void {
+        if (session_status() === PHP_SESSION_NONE) {
+            $days = self::getSessionDurationDays();
+            $lifetime = $days * 86400;
+
+            $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
+                       (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+            @ini_set('session.gc_maxlifetime', (string)$lifetime);
+
+            if (!headers_sent()) {
+                session_set_cookie_params([
+                    'lifetime' => $lifetime,
+                    'path'     => '/',
+                    'secure'   => $isHttps,
+                    'httponly' => true,
+                    'samesite' => 'Lax'
+                ]);
+            }
+
+            @session_start();
+
+            // Sliding expiration para la cookie de sesión nativa si ya existe
+            if (session_status() === PHP_SESSION_ACTIVE && !headers_sent() && isset($_COOKIE[session_name()])) {
+                setcookie(
+                    session_name(),
+                    session_id(),
+                    [
+                        'expires'  => time() + $lifetime,
+                        'path'     => '/',
+                        'secure'   => $isHttps,
+                        'httponly' => true,
+                        'samesite' => 'Lax'
+                    ]
+                );
+            }
+        }
+    }
+
+    /**
+     * Issue a persistent remember token and cookie for the admin account.
+     */
+    public static function issueRememberToken(int $accountId): void {
+        try {
+            $db = Database::connect();
+            $selector = bin2hex(random_bytes(16));
+            $validator = bin2hex(random_bytes(32));
+            $hashedValidator = hash('sha256', $validator);
+
+            $days = self::getSessionDurationDays();
+            $lifetime = $days * 86400;
+            $expiresAt = time() + $lifetime;
+
+            // Purgar tokens expirados
+            $del = $db->prepare("DELETE FROM admin_sessions WHERE expires_at < ?");
+            $del->execute([time()]);
+
+            // Limitar a un máximo de 10 sesiones concurrentes por cuenta
+            $stmtCount = $db->prepare("SELECT id FROM admin_sessions WHERE account_id = ? ORDER BY id ASC");
+            $stmtCount->execute([$accountId]);
+            $allSessions = $stmtCount->fetchAll(\PDO::FETCH_COLUMN);
+            if (count($allSessions) >= 10) {
+                $toRemove = array_slice($allSessions, 0, count($allSessions) - 9);
+                $placeholders = implode(',', array_fill(0, count($toRemove), '?'));
+                $stmtDelOld = $db->prepare("DELETE FROM admin_sessions WHERE id IN ($placeholders)");
+                $stmtDelOld->execute($toRemove);
+            }
+
+            $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+            $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
+
+            $ins = $db->prepare("INSERT INTO admin_sessions (account_id, selector, hashed_validator, expires_at, ip, user_agent, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))");
+            $ins->execute([$accountId, $selector, $hashedValidator, $expiresAt, $ip, $ua]);
+
+            self::setRememberCookie($selector . ':' . $validator, $expiresAt);
+        } catch (\Throwable $e) {}
+    }
+
+    /**
+     * Restore admin session from persistent cookie if valid.
+     */
+    private static function restoreSessionFromCookie(): ?int {
+        $raw = $_COOKIE['kutsocial_remember'] ?? '';
+        if (!$raw) return null;
+
+        $parts = explode(':', $raw);
+        if (count($parts) !== 2) {
+            self::clearRememberCookie();
+            return null;
+        }
+
+        [$selector, $validator] = $parts;
+        if (empty($selector) || empty($validator)) {
+            self::clearRememberCookie();
+            return null;
+        }
+
+        try {
+            $db = Database::connect();
+            $stmt = $db->prepare("SELECT * FROM admin_sessions WHERE selector = ? LIMIT 1");
+            $stmt->execute([$selector]);
+            $session = $stmt->fetch();
+
+            if (!$session) {
+                self::clearRememberCookie();
+                return null;
+            }
+
+            if ((int)$session['expires_at'] < time()) {
+                $del = $db->prepare("DELETE FROM admin_sessions WHERE selector = ?");
+                $del->execute([$selector]);
+                self::clearRememberCookie();
+                return null;
+            }
+
+            $calcHash = hash('sha256', $validator);
+            if (!hash_equals($session['hashed_validator'], $calcHash)) {
+                self::clearRememberCookie();
+                return null;
+            }
+
+            if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+                @session_regenerate_id(true);
+            }
+            $_SESSION['admin_account_id'] = (int)$session['account_id'];
+
+            // Deslizar expiración (sliding expiration) según duración configurada
+            $days = self::getSessionDurationDays();
+            $lifetime = $days * 86400;
+            $newExpires = time() + $lifetime;
+
+            $upd = $db->prepare("UPDATE admin_sessions SET expires_at = ?, last_used_at = datetime('now') WHERE id = ?");
+            $upd->execute([$newExpires, $session['id']]);
+
+            self::setRememberCookie($selector . ':' . $validator, $newExpires);
+
+            return (int)$session['account_id'];
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    private static function setRememberCookie(string $value, int $expires): void {
+        if (headers_sent()) return;
+        $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
+                   (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+        setcookie('kutsocial_remember', $value, [
+            'expires'  => $expires,
+            'path'     => '/',
+            'secure'   => $isHttps,
+            'httponly' => true,
+            'samesite' => 'Lax'
+        ]);
+    }
+
+    private static function clearRememberCookie(): void {
+        if (!headers_sent()) {
+            $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
+                       (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+            setcookie('kutsocial_remember', '', [
+                'expires'  => time() - 86400,
+                'path'     => '/',
+                'secure'   => $isHttps,
+                'httponly' => true,
+                'samesite' => 'Lax'
+            ]);
+        }
+        unset($_COOKIE['kutsocial_remember']);
+    }
+
+    /**
      * Helper to verify if the admin is logged in.
      */
     private static function checkAuth(): ?array {
         $adminId = $_SESSION['admin_account_id'] ?? null;
+        $db = Database::connect();
+
+        if (!$adminId) {
+            $adminId = self::restoreSessionFromCookie();
+        }
+
         if (!$adminId) {
             header("Location: /admin/login");
             exit;
         }
-        $db = Database::connect();
+
         $stmt = $db->prepare("SELECT * FROM accounts WHERE id = ? AND domain IS NULL LIMIT 1");
         $stmt->execute([$adminId]);
         $user = $stmt->fetch();
         if (!$user) {
+            self::clearRememberCookie();
             unset($_SESSION['admin_account_id']);
             header("Location: /admin/login");
             exit;
         }
+
+        if (empty($_COOKIE['kutsocial_remember'])) {
+            self::issueRememberToken((int)$user['id']);
+        }
+
         return $user;
     }
 
@@ -35,6 +241,10 @@ class AdminController {
      * Render the admin login page.
      */
     public static function showLogin(): void {
+        if (!isset($_SESSION['admin_account_id'])) {
+            self::restoreSessionFromCookie();
+        }
+
         if (isset($_SESSION['admin_account_id'])) {
             header("Location: /admin/dashboard");
             exit;
@@ -124,7 +334,11 @@ class AdminController {
             $code = trim($_POST['otp_code'] ?? '');
             if ($user && TotpHelper::verifyCode($user['otp_secret'], $code)) {
                 unset($_SESSION['temp_admin_id']);
+                if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+                    @session_regenerate_id(true);
+                }
                 $_SESSION['admin_account_id'] = $user['id'];
+                self::issueRememberToken((int)$user['id']);
                 header("Location: /admin/dashboard");
             } else {
                 $_SESSION['login_error'] = "Código 2FA incorrecto o expirado.";
@@ -148,7 +362,11 @@ class AdminController {
                 header("Location: /admin/login");
             } else {
                 // Login directo
+                if (session_status() === PHP_SESSION_ACTIVE && !headers_sent()) {
+                    @session_regenerate_id(true);
+                }
                 $_SESSION['admin_account_id'] = $user['id'];
+                self::issueRememberToken((int)$user['id']);
                 header("Location: /admin/dashboard");
             }
         } else {
@@ -162,6 +380,18 @@ class AdminController {
      * Handle logout.
      */
     public static function handleLogout(): void {
+        $raw = $_COOKIE['kutsocial_remember'] ?? '';
+        if ($raw) {
+            $parts = explode(':', $raw);
+            if (!empty($parts[0])) {
+                try {
+                    $db = Database::connect();
+                    $stmt = $db->prepare("DELETE FROM admin_sessions WHERE selector = ?");
+                    $stmt->execute([$parts[0]]);
+                } catch (\Throwable $e) {}
+            }
+        }
+        self::clearRememberCookie();
         unset($_SESSION['admin_account_id']);
         unset($_SESSION['temp_admin_id']);
         $redirect = $_GET['redirect'] ?? '/admin/login';
@@ -227,6 +457,7 @@ class AdminController {
 
         $currentVersion = \KutSocial\Database::getVersion();
         $is2faActive = !empty($admin['otp_secret']);
+        $sessionDays = self::getSessionDurationDays();
 
         $smtpHost = htmlspecialchars($admin['smtp_host'] ?? '');
         $smtpPort = (int)($admin['smtp_port'] ?? 587);
@@ -328,6 +559,58 @@ class AdminController {
             $stmt->execute([$newHash, $admin['id']]);
             $_SESSION['admin_success_msg'] = "Contraseña de administrador actualizada con éxito.";
         }
+        header("Location: /admin/dashboard/security");
+        exit;
+    }
+
+    /**
+     * Handle Session Duration update.
+     */
+    public static function handleSessionDuration(): void {
+        self::checkAuth();
+        $db = Database::connect();
+
+        $days = (int)($_POST['admin_session_days'] ?? 30);
+        $validOptions = [1, 7, 30, 90, 365];
+        if (!in_array($days, $validOptions, true)) {
+            $days = 30;
+        }
+
+        $stmt = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('admin_session_days', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
+        $stmt->execute([(string)$days]);
+
+        $lifetime = $days * 86400;
+        $newExpires = time() + $lifetime;
+        $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ||
+                   (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+
+        if (session_status() === PHP_SESSION_ACTIVE && !headers_sent() && isset($_COOKIE[session_name()])) {
+            setcookie(
+                session_name(),
+                session_id(),
+                [
+                    'expires'  => $newExpires,
+                    'path'     => '/',
+                    'secure'   => $isHttps,
+                    'httponly' => true,
+                    'samesite' => 'Lax'
+                ]
+            );
+        }
+
+        $raw = $_COOKIE['kutsocial_remember'] ?? '';
+        if ($raw) {
+            $parts = explode(':', $raw);
+            if (!empty($parts[0])) {
+                try {
+                    $upd = $db->prepare("UPDATE admin_sessions SET expires_at = ? WHERE selector = ?");
+                    $upd->execute([$newExpires, $parts[0]]);
+                    self::setRememberCookie($raw, $newExpires);
+                } catch (\Throwable $e) {}
+            }
+        }
+
+        $_SESSION['admin_success_msg'] = "Duración de la sesión actualizada correctamente (" . $days . " días).";
         header("Location: /admin/dashboard/security");
         exit;
     }

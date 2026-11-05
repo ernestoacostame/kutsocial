@@ -224,6 +224,21 @@ class Database {
                     statuses_count = (SELECT COUNT(*) FROM statuses WHERE account_id = accounts.id)
                     WHERE domain IS NULL OR domain = ''");
 
+                // Asegurar tabla admin_sessions para sesiones persistentes configurables
+                $db->exec("CREATE TABLE IF NOT EXISTS admin_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL,
+                    selector TEXT UNIQUE NOT NULL,
+                    hashed_validator TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    ip TEXT,
+                    user_agent TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )");
+                $db->exec("CREATE INDEX IF NOT EXISTS idx_admin_sessions_selector ON admin_sessions(selector)");
+                $db->exec("CREATE INDEX IF NOT EXISTS idx_admin_sessions_account_id ON admin_sessions(account_id)");
+
                 @touch($markerFile);
             } catch (\Throwable $e) {
                 // Silenciar fallos menores en tareas de limpieza
@@ -554,6 +569,21 @@ class Database {
                 "ALTER TABLE statuses ADD COLUMN in_reply_to_url TEXT NULL",
                 "ALTER TABLE statuses ADD COLUMN in_reply_to_account_id INTEGER NULL",
                 "CREATE INDEX IF NOT EXISTS idx_statuses_in_reply_to_account_id ON statuses(in_reply_to_account_id)"
+            ],
+            22 => [
+                "CREATE TABLE IF NOT EXISTS admin_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL,
+                    selector TEXT UNIQUE NOT NULL,
+                    hashed_validator TEXT NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    ip TEXT,
+                    user_agent TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    last_used_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )",
+                "CREATE INDEX IF NOT EXISTS idx_admin_sessions_selector ON admin_sessions(selector)",
+                "CREATE INDEX IF NOT EXISTS idx_admin_sessions_account_id ON admin_sessions(account_id)"
             ]
         ];
     }
