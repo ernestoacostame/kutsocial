@@ -56,17 +56,17 @@
             <button class="btn-submit" onclick="start2FASetup()"><?= __('admin_2fa_enable_btn') ?></button>
             
             <div id="setup-2fa-section" style="display: none; margin-top: 30px; border-top: 1px solid var(--border-color); padding-top: 30px;">
-                <p style="font-size: 14.5px;">1. Escanea el siguiente código QR con tu aplicación preferida (ej: Google Authenticator, Authy):</p>
+                <p style="font-size: 14.5px;"><?= __('admin_2fa_step1') ?></p>
                 <div class="setup-qr-box">
                     <img id="setup-qr-img" src="" alt="QR Code" style="width: 180px; height: 180px; display: block; border: 0;">
                 </div>
-                <p class="help-text">Código secreto de respaldo (Base32): <strong id="setup-secret-txt" style="color: white; font-size: 14px;">-</strong></p>
+                <p class="help-text"><?= __('admin_2fa_secret_backup') ?> <strong id="setup-secret-txt" style="color: white; font-size: 14px;">-</strong></p>
                 
-                <p style="font-size: 14.5px; margin-top: 25px;">2. Introduce el código de 6 dígitos que te muestra la aplicación para confirmar:</p>
+                <p style="font-size: 14.5px; margin-top: 25px;"><?= __('admin_2fa_step2') ?></p>
                 <form method="POST" action="/admin/security/2fa/verify" style="max-width: 250px; margin: 0 auto;">
                     <input type="hidden" name="secret" id="setup-secret-val">
                     <input type="text" name="otp_code" placeholder="123456" pattern="\d{6}" maxlength="6" required style="text-align: center; font-size: 18px; letter-spacing: 5px; margin-bottom: 15px;">
-                    <button type="submit" class="btn-submit">Confirmar y Activar</button>
+                    <button type="submit" class="btn-submit"><?= __('admin_2fa_confirm_btn') ?></button>
                 </form>
             </div>
         </div>

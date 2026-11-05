@@ -522,7 +522,7 @@ class AdminController {
         $giphyApiKey = trim($_POST['giphy_api_key'] ?? '');
 
         if ($maxChars < 500 || $maxChars > 9999) {
-            $_SESSION['admin_error_msg'] = "El límite de caracteres debe estar entre 500 y 9999.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_toot_limit_invalid', 'El límite de caracteres debe estar entre 500 y 9999.');
         } else {
             $stmt = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('max_toot_chars', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
             $stmt->execute([(string)$maxChars]);
@@ -574,7 +574,7 @@ class AdminController {
                 $adminId
             ]);
 
-            $_SESSION['admin_success_msg'] = "Ajustes generales guardados correctamente.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_settings_saved', 'Ajustes generales guardados correctamente.');
         }
         header("Location: /admin/dashboard/general");
         exit;
@@ -591,14 +591,14 @@ class AdminController {
         $newPass = $_POST['new_password'] ?? '';
 
         if (!password_verify($currPass, $admin['password_hash'])) {
-            $_SESSION['admin_error_msg'] = "La contraseña actual introducida no es válida.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_password_invalid', 'La contraseña actual introducida no es válida.');
         } elseif (strlen($newPass) < 8) {
-            $_SESSION['admin_error_msg'] = "La nueva contraseña debe tener un mínimo de 8 caracteres.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_password_min_length', 'La nueva contraseña debe tener un mínimo de 8 caracteres.');
         } else {
             $newHash = password_hash($newPass, PASSWORD_BCRYPT);
             $stmt = $db->prepare("UPDATE accounts SET password_hash = ?, updated_at = datetime('now') WHERE id = ?");
             $stmt->execute([$newHash, $admin['id']]);
-            $_SESSION['admin_success_msg'] = "Contraseña de administrador actualizada con éxito.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_password_updated', 'Contraseña de administrador actualizada con éxito.');
         }
         header("Location: /admin/dashboard/security");
         exit;
@@ -651,7 +651,7 @@ class AdminController {
             }
         }
 
-        $_SESSION['admin_success_msg'] = "Duración de la sesión actualizada correctamente (" . $days . " días).";
+        $_SESSION['admin_success_msg'] = __raw('msg_admin_session_updated', 'Duración de la sesión actualizada correctamente (:days días).', ['days' => $days]);
         header("Location: /admin/dashboard/security");
         exit;
     }
@@ -684,7 +684,7 @@ class AdminController {
         $code = trim($_POST['otp_code'] ?? '');
 
         if (empty($secret) || empty($code)) {
-            $_SESSION['admin_error_msg'] = "Los datos del formulario de verificación de 2FA están incompletos.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_2fa_incomplete', 'Los datos del formulario de verificación de 2FA están incompletos.');
             header("Location: /admin/dashboard/security");
             exit;
         }
@@ -692,9 +692,9 @@ class AdminController {
         if (TotpHelper::verifyCode($secret, $code)) {
             $stmt = $db->prepare("UPDATE accounts SET otp_secret = ?, updated_at = datetime('now') WHERE id = ?");
             $stmt->execute([$secret, $admin['id']]);
-            $_SESSION['admin_success_msg'] = "¡Autenticación de Dos Factores (2FA) configurada y activada con éxito!";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_2fa_enabled', '¡Autenticación de Dos Factores (2FA) configurada y activada con éxito!');
         } else {
-            $_SESSION['admin_error_msg'] = "El código ingresado es incorrecto o expiró. Inténtalo de nuevo.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_2fa_code_invalid', 'El código ingresado es incorrecto o expiró. Inténtalo de nuevo.');
         }
         header("Location: /admin/dashboard/security");
         exit;
@@ -711,9 +711,9 @@ class AdminController {
         if (password_verify($confirmPassword, $admin['password_hash'])) {
             $stmt = $db->prepare("UPDATE accounts SET otp_secret = NULL, updated_at = datetime('now') WHERE id = ?");
             $stmt->execute([$admin['id']]);
-            $_SESSION['admin_success_msg'] = "La autenticación de dos factores (2FA) ha sido desactivada.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_2fa_disabled', 'La autenticación de dos factores (2FA) ha sido desactivada.');
         } else {
-            $_SESSION['admin_error_msg'] = "Contraseña de confirmación incorrecta. No se pudo desactivar el 2FA.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_2fa_pass_invalid', 'Contraseña de confirmación incorrecta. No se pudo desactivar el 2FA.');
         }
         header("Location: /admin/dashboard/security");
         exit;
@@ -730,7 +730,7 @@ class AdminController {
         $target = trim(strtolower($_POST['target'] ?? ''));
 
         if (empty($type) || empty($target)) {
-            $_SESSION['admin_error_msg'] = "Faltan parámetros obligatorios para el bloqueo.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_block_params_missing', 'Faltan parámetros obligatorios para el bloqueo.');
             header("Location: /admin/dashboard/moderation");
             exit;
         }
@@ -738,9 +738,9 @@ class AdminController {
         try {
             $stmt = $db->prepare("INSERT INTO moderation_blocks (type, target) VALUES (?, ?)");
             $stmt->execute([$type, $target]);
-            $_SESSION['admin_success_msg'] = "Se ha bloqueado exitosamente: " . htmlspecialchars($target);
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_blocked_success', 'Se ha bloqueado exitosamente: :target', ['target' => htmlspecialchars($target)]);
         } catch (Exception $e) {
-            $_SESSION['admin_error_msg'] = "Este bloqueo ya existe o es inválido.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_block_exists', 'Este bloqueo ya existe o es inválido.');
         }
         header("Location: /admin/dashboard/moderation");
         exit;
@@ -757,7 +757,7 @@ class AdminController {
         if ($id > 0) {
             $stmt = $db->prepare("DELETE FROM moderation_blocks WHERE id = ?");
             $stmt->execute([$id]);
-            $_SESSION['admin_success_msg'] = "Filtro de bloqueo removido correctamente.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_unblocked_success', 'Filtro de bloqueo removido correctamente.');
         }
         header("Location: /admin/dashboard/moderation");
         exit;
@@ -774,7 +774,7 @@ class AdminController {
         if ($id > 0) {
             $stmt = $db->prepare("UPDATE reports SET action_taken = 1, action_taken_at = datetime('now') WHERE id = ?");
             $stmt->execute([$id]);
-            $_SESSION['admin_success_msg'] = "Reporte marcado como resuelto.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_report_resolved', 'Reporte marcado como resuelto.');
         }
         header("Location: /admin/dashboard/moderation");
         exit;
@@ -791,7 +791,7 @@ class AdminController {
         if ($id > 0) {
             $stmt = $db->prepare("DELETE FROM reports WHERE id = ?");
             $stmt->execute([$id]);
-            $_SESSION['admin_success_msg'] = "Reporte eliminado.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_report_deleted', 'Reporte eliminado.');
         }
         header("Location: /admin/dashboard/moderation");
         exit;
@@ -806,7 +806,7 @@ class AdminController {
 
         $inboxUrl = trim($_POST['inbox_url'] ?? '');
         if (!filter_var($inboxUrl, FILTER_VALIDATE_URL)) {
-            $_SESSION['admin_error_msg'] = "La dirección URL del relay no es válida.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_relay_url_invalid', 'La dirección URL del relay no es válida.');
             header("Location: /admin/dashboard/relays");
             exit;
         }
@@ -822,9 +822,9 @@ class AdminController {
             ];
             Queue::enqueue('Follow', $payload, $inboxUrl);
 
-            $_SESSION['admin_success_msg'] = "Relay agregado. Solicitud de suscripción enviada a la cola de tareas.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_relay_added', 'Relay agregado. Solicitud de suscripción enviada a la cola de tareas.');
         } catch (Exception $e) {
-            $_SESSION['admin_error_msg'] = "Este relay ya está registrado.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_relay_exists', 'Este relay ya está registrado.');
         }
         header("Location: /admin/dashboard/relays");
         exit;
@@ -856,7 +856,7 @@ class AdminController {
 
                 $stmtDel = $db->prepare("DELETE FROM relays WHERE id = ?");
                 $stmtDel->execute([$id]);
-                $_SESSION['admin_success_msg'] = "Desconectando del relay. La solicitud de remoción ha sido encolada.";
+                $_SESSION['admin_success_msg'] = __raw('msg_admin_relay_disconnecting', 'Desconectando del relay. La solicitud de remoción ha sido encolada.');
             }
         }
         header("Location: /admin/dashboard/relays");
@@ -988,14 +988,14 @@ class AdminController {
         $role = trim($_POST['role'] ?? 'user');
 
         if (empty($username) || empty($email) || empty($password)) {
-            $_SESSION['admin_error_msg'] = "Todos los campos son requeridos para crear un usuario.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_user_fields_required', 'Todos los campos son requeridos para crear un usuario.');
             header("Location: /admin/dashboard/users");
             exit;
         }
 
         $username = strtolower($username);
         if (!preg_match('/^[a-z0-9_]{1,30}$/', $username)) {
-            $_SESSION['admin_error_msg'] = "El nombre de usuario debe ser alfanumérico y contener entre 1 y 30 caracteres.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_user_format_invalid', 'El nombre de usuario debe ser alfanumérico y contener entre 1 y 30 caracteres.');
             header("Location: /admin/dashboard/users");
             exit;
         }
@@ -1003,7 +1003,7 @@ class AdminController {
         $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
         $stmt->execute([$username]);
         if ($stmt->fetch()) {
-            $_SESSION['admin_error_msg'] = "El nombre de usuario ya está registrado localmente.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_user_exists', 'El nombre de usuario ya está registrado localmente.');
             header("Location: /admin/dashboard/users");
             exit;
         }
@@ -1016,7 +1016,7 @@ class AdminController {
         );
         $res = openssl_pkey_new($config_args);
         if (!$res) {
-            $_SESSION['admin_error_msg'] = "Error al generar las llaves criptográficas RSA para el nuevo usuario.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_user_crypto_error', 'Error al generar las llaves criptográficas RSA para el nuevo usuario.');
             header("Location: /admin/dashboard/users");
             exit;
         }
@@ -1040,9 +1040,9 @@ class AdminController {
                 $privateKey,
                 $role
             ]);
-            $_SESSION['admin_success_msg'] = "Usuario '$username' creado correctamente.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_user_created', "Usuario ':username' creado correctamente.", ['username' => $username]);
         } catch (Exception $e) {
-            $_SESSION['admin_error_msg'] = "Error al crear el usuario: " . $e->getMessage();
+            $_SESSION['admin_error_msg'] = "Error: " . $e->getMessage();
         }
 
         header("Location: /admin/dashboard/users");
@@ -1058,13 +1058,13 @@ class AdminController {
 
         $id = (int)($_POST['id'] ?? 0);
         if ($id <= 0) {
-            $_SESSION['admin_error_msg'] = "ID de usuario inválido.";
+            $_SESSION['admin_error_msg'] = "ID inválido.";
             header("Location: /admin/dashboard/users");
             exit;
         }
 
         if ($id === (int)$admin['id']) {
-            $_SESSION['admin_error_msg'] = "No puedes eliminar tu propia cuenta.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_user_self_delete', 'No puedes eliminar tu propia cuenta.');
             header("Location: /admin/dashboard/users");
             exit;
         }
@@ -1074,13 +1074,13 @@ class AdminController {
         $userToDelete = $stmtUser->fetch();
 
         if (!$userToDelete) {
-            $_SESSION['admin_error_msg'] = "Usuario no encontrado.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_user_not_found', 'Usuario no encontrado.');
             header("Location: /admin/dashboard/users");
             exit;
         }
 
         if ($userToDelete['role'] === 'owner' && $admin['role'] !== 'owner') {
-            $_SESSION['admin_error_msg'] = "No tienes permisos para eliminar al propietario de la instancia.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_user_owner_delete', 'No tienes permisos para eliminar al propietario de la instancia.');
             header("Location: /admin/dashboard/users");
             exit;
         }
@@ -1088,9 +1088,9 @@ class AdminController {
         try {
             $stmt = $db->prepare("DELETE FROM accounts WHERE id = ?");
             $stmt->execute([$id]);
-            $_SESSION['admin_success_msg'] = "El usuario '" . htmlspecialchars($userToDelete['username']) . "' ha sido eliminado.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_user_deleted', "El usuario ':username' ha sido eliminado.", ['username' => htmlspecialchars($userToDelete['username'])]);
         } catch (Exception $e) {
-            $_SESSION['admin_error_msg'] = "Error al eliminar el usuario: " . $e->getMessage();
+            $_SESSION['admin_error_msg'] = "Error: " . $e->getMessage();
         }
 
         header("Location: /admin/dashboard/users");
@@ -1108,7 +1108,7 @@ class AdminController {
         $role = trim($_POST['role'] ?? 'user');
 
         if ($id <= 0 || !in_array($role, ['user', 'admin', 'owner'])) {
-            $_SESSION['admin_error_msg'] = "Parámetros inválidos para cambiar el rol.";
+            $_SESSION['admin_error_msg'] = "Parámetros inválidos.";
             header("Location: /admin/dashboard/users");
             exit;
         }
@@ -1118,25 +1118,25 @@ class AdminController {
         $targetUser = $stmtUser->fetch();
 
         if (!$targetUser) {
-            $_SESSION['admin_error_msg'] = "Usuario no encontrado.";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_user_not_found', 'Usuario no encontrado.');
             header("Location: /admin/dashboard/users");
             exit;
         }
 
         if ($id === (int)$admin['id'] && $role !== $admin['role']) {
-            $_SESSION['admin_error_msg'] = "No puedes cambiar tu propio rol (auto-democión).";
+            $_SESSION['admin_error_msg'] = __raw('msg_admin_role_self_change', 'No puedes cambiar tu propio rol (auto-democión).');
             header("Location: /admin/dashboard/users");
             exit;
         }
 
         if ($targetUser['role'] === 'owner' && $admin['role'] !== 'owner') {
-            $_SESSION['admin_error_msg'] = "No tienes permisos para cambiar el rol del propietario.";
+            $_SESSION['admin_error_msg'] = "No tienes permisos.";
             header("Location: /admin/dashboard/users");
             exit;
         }
 
         if (($role === 'owner' || $targetUser['role'] === 'owner') && $admin['role'] !== 'owner') {
-            $_SESSION['admin_error_msg'] = "Sólo el propietario de la instancia puede asignar o modificar el rol de propietario.";
+            $_SESSION['admin_error_msg'] = "No tienes permisos.";
             header("Location: /admin/dashboard/users");
             exit;
         }
@@ -1144,9 +1144,12 @@ class AdminController {
         try {
             $stmt = $db->prepare("UPDATE accounts SET role = ?, updated_at = datetime('now') WHERE id = ?");
             $stmt->execute([$role, $id]);
-            $_SESSION['admin_success_msg'] = "Rol del usuario '" . htmlspecialchars($targetUser['username']) . "' actualizado a '$role'.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_role_updated', "Rol del usuario ':username' actualizado a ':role'.", [
+                'username' => htmlspecialchars($targetUser['username']),
+                'role' => $role
+            ]);
         } catch (Exception $e) {
-            $_SESSION['admin_error_msg'] = "Error al actualizar el rol: " . $e->getMessage();
+            $_SESSION['admin_error_msg'] = "Error: " . $e->getMessage();
         }
 
         header("Location: /admin/dashboard/users");
@@ -1336,9 +1339,9 @@ class AdminController {
         }
 
         if (empty($messages)) {
-            $_SESSION['admin_success_msg'] = "No se seleccionó ninguna tarea de mantenimiento.";
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_maint_no_tasks', 'No se seleccionó ninguna tarea de mantenimiento.');
         } else {
-            $_SESSION['admin_success_msg'] = "Mantenimiento completado con éxito:<br>• " . implode("<br>• ", $messages);
+            $_SESSION['admin_success_msg'] = __raw('msg_admin_maint_completed', 'Mantenimiento completado con éxito:') . "<br>• " . implode("<br>• ", $messages);
         }
 
         header("Location: /admin/dashboard/maintenance");
