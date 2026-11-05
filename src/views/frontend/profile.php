@@ -102,6 +102,15 @@
                     <span>Avisar cuando se vaya a publicar una imagen sin descripción (texto alternativo/AltText)</span>
                 </label>
             </div>
+
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 25px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_interface_language') ?></h3>
+            <div style="margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
+                <label for="select-profile-language-spa" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--text-color);"><?= __('profile_interface_language_desc') ?></label>
+                <select id="select-profile-language-spa" onchange="window.location.href='/lang/' + this.value" style="max-width: 280px; width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: white;">
+                    <option value="es" <?= \KutSocial\I18n::getLang() === 'es' ? 'selected' : '' ?>><?= __('spanish') ?> (Spanish)</option>
+                    <option value="en" <?= \KutSocial\I18n::getLang() === 'en' ? 'selected' : '' ?>><?= __('english') ?> (English)</option>
+                </select>
+            </div>
             
             <button type="submit" style="margin-top: 15px;">Guardar Preferencias de Privacidad</button>
             <div id="profile-privacy-save-status" style="margin-top: 12px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>

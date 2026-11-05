@@ -2,7 +2,7 @@
 $basePath = $basePath ?? '';
 ?>
 <!DOCTYPE html>
-<html lang="es">
+<html lang="<?= htmlspecialchars(\KutSocial\I18n::getLang()) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -30,22 +30,28 @@ $basePath = $basePath ?? '';
     <!-- Pantalla de Login / Carga -->
     <div id="login-container" class="full-screen-container" style="display: none;">
         <div class="login-card">
+            <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                <div style="display: inline-flex; gap: 4px; background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 6px; font-size: 11px; font-weight: 700;">
+                    <a href="/lang/es" style="color: white; text-decoration: none; padding: 2px 6px; border-radius: 4px; <?= \KutSocial\I18n::getLang() === 'es' ? 'background: var(--primary);' : 'opacity: 0.6;' ?>">ES</a>
+                    <a href="/lang/en" style="color: white; text-decoration: none; padding: 2px 6px; border-radius: 4px; <?= \KutSocial\I18n::getLang() === 'en' ? 'background: var(--primary);' : 'opacity: 0.6;' ?>">EN</a>
+                </div>
+            </div>
             <img src="/kutsocial_logo.svg" alt="Logo" style="width: 64px; height: 64px; margin: 0 auto 15px auto; display: block;">
             <div class="logo-text">KutSocial</div>
-            <div class="logo-subtitle">Acceso de Administrador</div>
+            <div class="logo-subtitle"><?= __('login') ?></div>
             
             <div id="login-error" style="color: var(--error); font-size: 14px; margin-bottom: 15px; display: none;"></div>
 
             <form id="login-form">
                 <div class="form-group">
-                    <label for="username">Usuario</label>
+                    <label for="username"><?= __('username') ?></label>
                     <input type="text" id="username" required placeholder="ej. admin">
                 </div>
                 <div class="form-group">
-                    <label for="password">Contraseña</label>
+                    <label for="password"><?= __('password') ?></label>
                     <input type="password" id="password" required placeholder="••••••••">
                 </div>
-                <button type="submit">Iniciar Sesión</button>
+                <button type="submit"><?= __('login') ?></button>
             </form>
         </div>
     </div>
@@ -67,76 +73,87 @@ $basePath = $basePath ?? '';
                 <ul class="nav-menu">
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/home" id="nav-home" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">home</span> Inicio
+                            <span class="material-icons-outlined">home</span> <?= __('nav_home') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/catchup" id="nav-catchup" class="nav-link <?= ($section === 'catchup') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">bolt</span> Ponerse al día
+                            <span class="material-icons-outlined">bolt</span> <?= __('nav_catchup') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/local" id="nav-local" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'local') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">groups</span> Timeline Local
+                            <span class="material-icons-outlined">groups</span> <?= __('nav_local') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/public" id="nav-public" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'public') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">public</span> Federación Pública
+                            <span class="material-icons-outlined">public</span> <?= __('nav_public') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/notifications" id="nav-notifications" class="nav-link <?= ($section === 'notifications') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">notifications</span> Notificaciones
+                            <span class="material-icons-outlined">notifications</span> <?= __('nav_notifications') ?>
                             <span id="nav-notifications-count" class="notification-badge" style="display: none; background: var(--error, #ef4444); color: white; border-radius: 10px; padding: 2px 6px; font-size: 11px; font-weight: bold; margin-left: auto;">0</span>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/bookmarks" id="nav-bookmarks" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'bookmarks') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">bookmark_border</span> Marcadores
+                            <span class="material-icons-outlined">bookmark_border</span> <?= __('nav_bookmarks') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/direct" id="nav-direct" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'direct') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">mail_outline</span> Mensajes Privados
+                            <span class="material-icons-outlined">mail_outline</span> <?= __('nav_direct') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/lists" id="nav-lists" class="nav-link <?= ($section === 'lists') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">list</span> Listas
+                            <span class="material-icons-outlined">list</span> <?= __('nav_lists') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/collections" id="nav-collections" class="nav-link <?= ($section === 'collections') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">folder</span> Colecciones
+                            <span class="material-icons-outlined">folder</span> <?= __('nav_collections') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/followed-hashtags" id="nav-hashtags" class="nav-link <?= ($section === 'followed-hashtags') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">tag</span> Hashtags Seguidos
+                            <span class="material-icons-outlined">tag</span> <?= __('nav_hashtags') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">person</span> Mi Perfil
+                            <span class="material-icons-outlined">person</span> <?= __('nav_profile') ?>
                         </a>
                     </li>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/profile" id="nav-settings" class="nav-link <?= ($section === 'profile') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">tune</span> Ajustes & Datos
+                            <span class="material-icons-outlined">tune</span> <?= __('nav_settings') ?>
                         </a>
                     </li>
                     <li class="nav-item" id="nav-admin-settings">
                         <a href="/admin/update" class="nav-link">
-                            <span class="material-icons-outlined">settings</span> Ajustes & Actualizador
+                            <span class="material-icons-outlined">settings</span> <?= __('nav_admin') ?>
                         </a>
                     </li>
                     <li class="nav-item" id="nav-item-owner" style="display: none;">
                         <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-owner-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">verified_user</span> Propietario
+                            <span class="material-icons-outlined">verified_user</span> <?= __('nav_owner') ?>
                         </a>
                     </li>
                 </ul>
+
+                <!-- Selector de Idioma en Sidebar -->
+                <div style="margin: 15px 12px 10px 12px; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                        <span class="material-icons-outlined" style="font-size: 15px;">language</span> <?= __('language') ?>
+                    </span>
+                    <div style="display: inline-flex; gap: 4px; background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 6px; font-size: 11px; font-weight: 700;">
+                        <a href="/lang/es" style="color: white; text-decoration: none; padding: 2px 6px; border-radius: 4px; <?= \KutSocial\I18n::getLang() === 'es' ? 'background: var(--primary);' : 'opacity: 0.6;' ?>">ES</a>
+                        <a href="/lang/en" style="color: white; text-decoration: none; padding: 2px 6px; border-radius: 4px; <?= \KutSocial\I18n::getLang() === 'en' ? 'background: var(--primary);' : 'opacity: 0.6;' ?>">EN</a>
+                    </div>
+                </div>
             </div>
 
             <!-- Perfil del usuario actual -->
@@ -170,7 +187,7 @@ $basePath = $basePath ?? '';
             <div class="sidebar-search right-panel-search">
                 <div class="search-input-wrapper">
                     <span class="material-icons-outlined search-icon">search</span>
-                    <input type="text" class="sidebar-search-input" placeholder="Buscar en el Fediverso..." 
+                    <input type="text" class="sidebar-search-input" placeholder="<?= __('search_placeholder') ?>" 
                            onkeydown="if(event.key === 'Enter') performSearch(this.value)">
                 </div>
             </div>
@@ -181,19 +198,19 @@ $basePath = $basePath ?? '';
                     <span class="update-dot"></span>
                     <span id="stat-version">v0.0.0</span>
                 </div>
-                <div style="font-size: 15px; font-weight: 700; margin-bottom: 5px;">Servidor Activo</div>
-                <div style="font-size: 12.5px; color: var(--text-muted); line-height: 1.4;">KutSocial se ejecuta de forma descentralizada y federada.</div>
+                <div style="font-size: 15px; font-weight: 700; margin-bottom: 5px;"><?= __('server_active') ?></div>
+                <div style="font-size: 12.5px; color: var(--text-muted); line-height: 1.4;"><?= __('server_desc') ?></div>
             </div>
 
             <!-- Estadísticas Locales -->
             <div class="widget-card">
-                <h3 class="widget-title">Estadísticas</h3>
+                <h3 class="widget-title"><?= __('stats') ?></h3>
                 <div class="stat-item">
-                    <span class="stat-label">Usuarios</span>
+                    <span class="stat-label"><?= __('stats_users') ?></span>
                     <span class="stat-value" id="stat-users">-</span>
                 </div>
                 <div class="stat-item">
-                    <span class="stat-label">Publicaciones</span>
+                    <span class="stat-label"><?= __('stats_posts') ?></span>
                     <span class="stat-value" id="stat-toots">-</span>
                 </div>
             </div>

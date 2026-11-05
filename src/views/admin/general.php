@@ -1,9 +1,19 @@
-<h3>Ajustes Generales</h3>
+<h3><?= __('admin_tab_general') ?></h3>
 <form method="POST" action="/admin/settings">
+    <!-- Idioma de la Interfaz -->
+    <div class="form-group" style="margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+        <label for="site_language"><?= __('admin_language_setting') ?></label>
+        <select name="site_language" id="site_language" style="max-width: 320px;">
+            <option value="es" <?= ($siteLanguage ?? 'es') === 'es' ? 'selected' : '' ?>><?= __('spanish') ?> (Spanish)</option>
+            <option value="en" <?= ($siteLanguage ?? 'es') === 'en' ? 'selected' : '' ?>><?= __('english') ?> (English)</option>
+        </select>
+        <p class="help-text"><?= __('admin_language_desc') ?></p>
+    </div>
+
     <div class="form-group">
-        <label for="max_toot_chars">Límite de Caracteres por Toot</label>
+        <label for="max_toot_chars"><?= __('admin_toot_limit_title') ?></label>
         <input type="number" name="max_toot_chars" id="max_toot_chars" value="<?= htmlspecialchars($maxChars) ?>" min="500" max="9999" required>
-        <p class="help-text">Elige la longitud máxima de caracteres permitida para los toots locales. Mínimo 500 y máximo 9999.</p>
+        <p class="help-text"><?= __('admin_toot_limit_desc') ?></p>
     </div>
     <div class="form-group" style="margin-top: 20px;">
         <label for="update_github_token">Token de GitHub (PAT · Opcional para desarrollo)</label>

@@ -15,12 +15,12 @@
 
     <!-- Input de Advertencia de Contenido (Content Warning) -->
     <div id="composer-cw-container" class="cw-input-container" style="display: none;">
-        <input type="text" id="composer-cw-text" class="cw-textarea" style="height: 36px; padding: 6px 12px; margin-bottom: 8px;" placeholder="Escribe aquí la advertencia de contenido (CW)...">
+        <input type="text" id="composer-cw-text" class="cw-textarea" style="height: 36px; padding: 6px 12px; margin-bottom: 8px;" placeholder="<?= __('composer_cw_placeholder') ?>">
     </div>
 
     <div class="composer-header" style="position: relative;">
         <img id="composer-avatar" class="user-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.png') ?>" alt="Avatar">
-        <textarea id="composer-text" class="composer-textarea" placeholder="¿Qué está pasando en el Fediverso?" maxlength="500" oninput="updateCharCount()"></textarea>
+        <textarea id="composer-text" class="composer-textarea" placeholder="<?= __('composer_placeholder') ?>" maxlength="500" oninput="updateCharCount()"></textarea>
         <!-- Autocomplete dropdown suggestions -->
         <div id="composer-autocomplete" class="autocomplete-suggestions" style="display: none;"></div>
     </div>
@@ -32,19 +32,19 @@
     <!-- Creador de Encuestas -->
     <div id="composer-poll-container" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px; margin: 0 12px 12px 12px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <span style="font-size: 13.5px; font-weight: 600; color: var(--text-muted);">Encuesta</span>
+            <span style="font-size: 13.5px; font-weight: 600; color: var(--text-muted);"><?= __('composer_poll') ?></span>
             <span onclick="closeComposerPoll()" style="color:var(--text-muted); cursor:pointer; font-size:14px; user-select:none; padding: 2px 6px;">✕</span>
         </div>
         <div id="poll-options-inputs" style="display: flex; flex-direction: column; gap: 8px;">
-            <input type="text" class="poll-option-field" placeholder="Opción 1" maxlength="25" style="padding:8px;">
-            <input type="text" class="poll-option-field" placeholder="Opción 2" maxlength="25" style="padding:8px;">
+            <input type="text" class="poll-option-field" placeholder="<?= __('composer_poll_option') ?> 1" maxlength="25" style="padding:8px;">
+            <input type="text" class="poll-option-field" placeholder="<?= __('composer_poll_option') ?> 2" maxlength="25" style="padding:8px;">
         </div>
         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
-            <span onclick="addPollOptionField()" style="font-size: 12.5px; color: #818cf8; cursor:pointer; font-weight:600; user-select:none; padding: 4px 0;">➕ Añadir opción</span>
+            <span onclick="addPollOptionField()" style="font-size: 12.5px; color: #818cf8; cursor:pointer; font-weight:600; user-select:none; padding: 4px 0;">➕ <?= __('composer_poll_add') ?></span>
             <select id="poll-expires-in" style="width: 120px; height: 32px; padding: 4px 8px; font-size: 12.5px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 6px; color: white; cursor: pointer; outline: none;">
-                <option value="3600">1 hora</option>
-                <option value="86400" selected>1 día</option>
-                <option value="604800">1 semana</option>
+                <option value="3600">1 <?= \KutSocial\I18n::getLang() === 'en' ? 'hour' : 'hora' ?></option>
+                <option value="86400" selected>1 <?= \KutSocial\I18n::getLang() === 'en' ? 'day' : 'día' ?></option>
+                <option value="604800">1 <?= \KutSocial\I18n::getLang() === 'en' ? 'week' : 'semana' ?></option>
             </select>
         </div>
     </div>
@@ -59,47 +59,47 @@
     <div class="composer-toolbar">
         <div class="composer-tools">
             <!-- Botón Subir Imagen / Multimedia -->
-            <button class="composer-tool-btn" onclick="document.getElementById('composer-file-input').click()" title="Adjuntar multimedia">
+            <button class="composer-tool-btn" onclick="document.getElementById('composer-file-input').click()" title="<?= __('composer_attach_media') ?>">
                 <span class="material-icons-outlined">image</span>
             </button>
             <!-- Botón Crear Encuesta -->
-            <button class="composer-tool-btn" onclick="toggleComposerPoll()" title="Crear encuesta">
+            <button class="composer-tool-btn" onclick="toggleComposerPoll()" title="<?= __('composer_poll') ?>">
                 <span class="material-icons-outlined">poll</span>
             </button>
             <!-- Botón Content Warning (CW) -->
-            <button id="composer-cw-btn" class="composer-tool-btn" onclick="toggleComposerCW()" title="Advertencia de Contenido">
+            <button id="composer-cw-btn" class="composer-tool-btn" onclick="toggleComposerCW()" title="<?= __('composer_cw') ?>">
                 <span class="material-icons-outlined">warning_amber</span>
             </button>
             <!-- Botón Emojis -->
-            <button id="emoji-picker-btn" class="composer-tool-btn" onclick="toggleEmojiPicker(event)" title="Insertar emoji">
+            <button id="emoji-picker-btn" class="composer-tool-btn" onclick="toggleEmojiPicker(event)" title="<?= __('composer_emoji') ?>">
                 <span class="material-icons-outlined">sentiment_satisfied_alt</span>
             </button>
             <!-- Botón GIF -->
-            <button id="gif-picker-btn" class="composer-tool-btn" onclick="openGifModal()" title="Insertar GIF">
+            <button id="gif-picker-btn" class="composer-tool-btn" onclick="openGifModal()" title="GIF">
                 <span class="material-icons-outlined" style="font-size: 26px;">gif_box</span>
             </button>
             <!-- Selector de Visibilidad (Público) -->
-            <div class="composer-select-wrapper" title="Visibilidad de la publicación">
+            <div class="composer-select-wrapper" title="<?= __('composer_visibility_public') ?>">
                 <select id="composer-visibility">
-                    <option value="public">🌐 Público</option>
-                    <option value="unlisted">🌙 Público silencioso</option>
-                    <option value="private">🔒 Solo seguidores</option>
-                    <option value="direct">✉️ Mensaje privado</option>
+                    <option value="public">🌐 <?= __('composer_visibility_public') ?></option>
+                    <option value="unlisted">🌙 <?= __('composer_visibility_unlisted') ?></option>
+                    <option value="private">🔒 <?= __('composer_visibility_private') ?></option>
+                    <option value="direct">✉️ <?= __('composer_visibility_direct') ?></option>
                 </select>
                 <span class="material-icons-outlined" id="composer-visibility-icon">public</span>
             </div>
             <!-- Selector de Idioma -->
-            <div class="composer-select-wrapper" title="Idioma de la publicación">
+            <div class="composer-select-wrapper" title="<?= __('language') ?>">
                 <select id="composer-language">
-                    <option value="es">🇪🇸 Español</option>
-                    <option value="en">🇺🇸 English</option>
+                    <option value="es">🇪🇸 <?= __('spanish') ?></option>
+                    <option value="en">🇺🇸 <?= __('english') ?></option>
                 </select>
                 <span class="material-icons-outlined">translate</span>
             </div>
         </div>
         <div style="display: flex; align-items: center; gap: 12px;">
             <span id="char-count" class="char-counter">500</span>
-            <button class="btn-publish" id="composer-submit-btn" onclick="publishToot()">Publicar</button>
+            <button class="btn-publish" id="composer-submit-btn" onclick="publishToot()"><?= __('composer_publish') ?></button>
         </div>
     </div>
 </div>

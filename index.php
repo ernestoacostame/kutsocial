@@ -35,6 +35,7 @@ require_once __DIR__ . '/version.php';
 use KutSocial\Router;
 use KutSocial\Database;
 use KutSocial\UpdaterService;
+use KutSocial\I18n;
 use KutSocial\Controllers\MastodonApiController;
 use KutSocial\Controllers\ActivityPubController;
 use KutSocial\Controllers\AdminController;
@@ -187,8 +188,13 @@ $renderFrontend = function() {
         $giphyApiKey = $stmtGiphy->fetchColumn() ?: '';
         
         // Inyectar variables globales en el head para el JS
+        $currentLang = I18n::getLang();
+        $i18nStrings = json_encode(I18n::getAll(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
         $jsGlobals = "
     <script>
+        window.KUTSOCIAL_LANG = '{$currentLang}';
+        window.KUTSOCIAL_I18N = {$i18nStrings};
         window.KUTSOCIAL_VERSION = '{$version}';
         window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
         window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
@@ -421,9 +427,14 @@ $renderPagesFrontend = function() {
         $stmtGiphy->execute();
         $giphyApiKey = $stmtGiphy->fetchColumn() ?: '';
         
+        $currentLang = I18n::getLang();
+        $i18nStrings = json_encode(I18n::getAll(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
         $jsGlobals = "
     <script>
         window.KUTSOCIAL_BASE_PATH = '{$basePath}';
+        window.KUTSOCIAL_LANG = '{$currentLang}';
+        window.KUTSOCIAL_I18N = {$i18nStrings};
         window.KUTSOCIAL_VERSION = '{$version}';
         window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
         window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
@@ -681,6 +692,15 @@ $router->get('/api/v1/export/filters', [MastodonApiController::class, 'exportFil
 $router->get('/api/v1/export/lists', [MastodonApiController::class, 'exportLists']);
 $router->post('/api/v1/import', [MastodonApiController::class, 'handleImport']);
 $router->post('/api/v1/queue/process', [MastodonApiController::class, 'processQueue']);
+
+// --- Cambio de Idioma ---
+$router->get('/lang/:code', function($params) {
+    $code = $params['code'] ?? 'es';
+    \KutSocial\I18n::setLang($code);
+    $referer = $_SERVER['HTTP_REFERER'] ?? '/';
+    header("Location: " . $referer);
+    exit;
+});
 
 // --- Cliente Web MPA (Páginas Independientes por defecto) ---
 $router->get('/', $renderPagesFrontend);

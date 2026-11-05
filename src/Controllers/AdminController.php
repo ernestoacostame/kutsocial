@@ -8,6 +8,7 @@ use KutSocial\TotpHelper;
 use KutSocial\Queue;
 use PDO;
 use Exception;
+use KutSocial\I18n;
 
 class AdminController {
     /**
@@ -260,18 +261,33 @@ class AdminController {
 
         $version = KUTSOCIAL_VERSION;
 
+        $txtTitle = htmlspecialchars(I18n::t('login') . ' - KutSocial Admin');
+        $lblUser = htmlspecialchars(I18n::t('username'));
+        $lblPass = htmlspecialchars(I18n::t('password'));
+        $btnNext = htmlspecialchars(I18n::t('next'));
+        $lbl2fa = htmlspecialchars(I18n::t('admin_2fa_title'));
+        $btnVerify = htmlspecialchars(I18n::t('verify'));
+        $btnCancel = htmlspecialchars(I18n::t('cancel'));
+        $langCode = I18n::getLang();
+
         $html = <<<HTML
         <!DOCTYPE html>
-        <html lang="es">
+        <html lang="{$langCode}">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Iniciar Sesión - KutSocial Admin</title>
+            <title>{$txtTitle}</title>
             <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
             <link rel="stylesheet" href="/assets/admin.css?v={$version}">
         </head>
         <body class="admin-login-body">
             <div class="login-card">
+                <div style="display: flex; justify-content: flex-end; margin-bottom: 10px;">
+                    <div style="display: inline-flex; gap: 4px; background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 6px; font-size: 11px; font-weight: 700;">
+                        <a href="/lang/es" style="color: white; text-decoration: none; padding: 2px 6px; border-radius: 4px; background: {$btnEsBg};">ES</a>
+                        <a href="/lang/en" style="color: white; text-decoration: none; padding: 2px 6px; border-radius: 4px; background: {$btnEnBg};">EN</a>
+                    </div>
+                </div>
                 <img src="/kutsocial_logo.svg" alt="Logo" style="width: 56px; height: 56px; margin: 0 auto 15px auto; display: block;">
                 <h2>KutSocial Admin</h2>
                 
@@ -280,30 +296,42 @@ class AdminController {
                 <!-- Formulario Normal -->
                 <form method="POST" action="/admin/login" style="display: {$showNormal};">
                     <div class="form-group">
-                        <label for="username">Usuario Administrador</label>
+                        <label for="username">{$lblUser}</label>
                         <input type="text" name="username" id="username" required>
                     </div>
                     <div class="form-group">
-                        <label for="password">Contraseña</label>
+                        <label for="password">{$lblPass}</label>
                         <input type="password" name="password" id="password" required>
                     </div>
-                    <button type="submit">Siguiente</button>
+                    <button type="submit">{$btnNext}</button>
                 </form>
 
                 <!-- Formulario 2FA -->
                 <form method="POST" action="/admin/login" style="display: {$show2fa};">
                     <input type="hidden" name="step_2fa" value="1">
                     <div class="form-group">
-                        <label for="otp_code">Código de Autenticación 2FA</label>
+                        <label for="otp_code">{$lbl2fa}</label>
                         <input type="text" name="otp_code" id="otp_code" placeholder="123456" pattern="\d{6}" maxlength="6" required autocomplete="one-time-code" autofocus>
                     </div>
-                    <button type="submit">Verificar Código</button>
-                    <a href="/admin/logout" class="cancel-link">Cancelar e iniciar de nuevo</a>
+                    <button type="submit">{$btnVerify}</button>
+                    <a href="/admin/logout" class="cancel-link">{$btnCancel}</a>
                 </form>
             </div>
         </body>
         </html>
         HTML;
+
+        $btnEsBg = ($langCode === 'es') ? 'var(--primary)' : 'transparent';
+        $btnEnBg = ($langCode === 'en') ? 'var(--primary)' : 'transparent';
+        $html = str_replace('{$btnEsBg}', $btnEsBg, $html);
+        $html = str_replace('{$btnEnBg}', $btnEnBg, $html);
+        $html = str_replace('{$txtTitle}', $txtTitle, $html);
+        $html = str_replace('{$lblUser}', $lblUser, $html);
+        $html = str_replace('{$lblPass}', $lblPass, $html);
+        $html = str_replace('{$btnNext}', $btnNext, $html);
+        $html = str_replace('{$lbl2fa}', $lbl2fa, $html);
+        $html = str_replace('{$btnVerify}', $btnVerify, $html);
+        $html = str_replace('{$btnCancel}', $btnCancel, $html);
 
         // Limpiar parser de lógica simple de variables
         $html = str_replace('{$errorHtml}', $errorHtml, $html);
@@ -449,6 +477,10 @@ class AdminController {
         $stmtGiphy->execute();
         $giphyApiKey = $stmtGiphy->fetchColumn() ?: '';
 
+        $stmtLang = $db->prepare("SELECT value FROM options WHERE key = 'site_language' LIMIT 1");
+        $stmtLang->execute();
+        $siteLanguage = $stmtLang->fetchColumn() ?: 'es';
+
         $rollbacks = $updater->getAvailableRollbacks();
         $updatesHistory = [];
         try {
@@ -500,6 +532,15 @@ class AdminController {
 
             $stmt3 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('giphy_api_key', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
             $stmt3->execute([$giphyApiKey]);
+
+            // Guardar idioma de la interfaz
+            $siteLanguage = trim($_POST['site_language'] ?? 'es');
+            if (!in_array($siteLanguage, ['es', 'en'], true)) {
+                $siteLanguage = 'es';
+            }
+            $stmtLang = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('site_language', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
+            $stmtLang->execute([$siteLanguage]);
+            I18n::setLang($siteLanguage);
 
             // Guardar preferencias SMTP y Atribución
             $smtpHost = trim($_POST['smtp_host'] ?? '');

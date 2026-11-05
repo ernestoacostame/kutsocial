@@ -48,6 +48,16 @@ function parseDate(dateInput) {
     return isNaN(d.getTime()) ? null : d;
 }
 
+function __(key, fallback, replace) {
+    let str = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N[key]) || fallback || key;
+    if (replace && typeof replace === 'object') {
+        for (const [k, v] of Object.entries(replace)) {
+            str = str.replace(new RegExp(':' + k, 'g'), v);
+        }
+    }
+    return str;
+}
+
 function formatRelativeTime(dateInput) {
     const date = parseDate(dateInput);
     if (!date) return '';
@@ -58,7 +68,7 @@ function formatRelativeTime(dateInput) {
     // Si la fecha parece en el futuro por desincronización de reloj o zona horaria
     if (diffSecs < 0) {
         if (diffSecs >= -60) {
-            return 'hace segundos';
+            return __('time_just_now', 'hace segundos');
         }
         // Si hay desfase de huso horario (ej: UTC vs local o reloj desfasado), calculamos la diferencia absoluta
         diffSecs = Math.abs(diffSecs);
@@ -69,18 +79,19 @@ function formatRelativeTime(dateInput) {
     const diffDays = Math.floor(diffHours / 24);
 
     if (diffSecs < 60) {
-        return 'hace segundos';
+        return __('time_just_now', 'hace segundos');
     } else if (diffMins < 60) {
-        return `hace ${diffMins} min`;
+        return __('time_mins_ago', `hace ${diffMins} min`, { n: diffMins });
     } else if (diffHours < 24) {
-        return `hace ${diffHours} h`;
+        return __('time_hours_ago', `hace ${diffHours} h`, { n: diffHours });
     } else if (diffDays === 1) {
-        return 'ayer';
+        return __('time_yesterday', 'ayer');
     } else if (diffDays > 1 && diffDays < 7) {
-        return `hace ${diffDays} días`;
+        return __('time_days_ago', `hace ${diffDays} días`, { n: diffDays });
     } else {
         const isSameYear = date.getFullYear() === now.getFullYear();
-        return date.toLocaleDateString('es-ES', {
+        const locale = (window.KUTSOCIAL_LANG === 'en') ? 'en-US' : 'es-ES';
+        return date.toLocaleDateString(locale, {
             day: 'numeric',
             month: 'short',
             year: isSameYear ? undefined : 'numeric'
@@ -1193,27 +1204,27 @@ function createThreadTootElement(toot, isMain = false) {
                 ${quotePlaceholderHTML}
                 
                 <div class="toot-actions" style="margin-top: 12px;">
-                    <button class="toot-action-btn btn-reply" onclick="event.stopPropagation(); handleReplyButtonClick(this)" title="Responder">
+                    <button class="toot-action-btn btn-reply" onclick="event.stopPropagation(); handleReplyButtonClick(this)" title="${__('toot_reply', 'Responder')}">
                         <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn ${favClass}" onclick="event.stopPropagation(); toggleFavourite('${toot.id}', this)" title="Favorito">
+                    <button class="toot-action-btn ${favClass}" onclick="event.stopPropagation(); toggleFavourite('${toot.id}', this)" title="${__('toot_favorite', 'Favorito')}">
                         <span class="${toot.favourited ? 'material-icons' : 'material-icons-outlined'}">${toot.favourited ? 'star' : 'star_border'}</span> <span class="fav-count">${toot.favourites_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" data-reblog-toot-id="${toot.id}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="Compartir / Citar">
+                    <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" data-reblog-toot-id="${toot.id}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="${__('toot_boost', 'Compartir / Citar')}">
                         <span class="${toot.reblogged ? 'material-icons' : 'material-icons-outlined'}" style="${toot.reblogged ? 'color: #10b981;' : ''}">repeat</span> <span class="reblog-count" style="${toot.reblogged ? 'color: #10b981; font-weight: bold;' : ''}">${toot.reblogs_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn ${bookmarkClass}" onclick="event.stopPropagation(); toggleBookmark('${toot.id}', this)" title="Guardar">
+                    <button class="toot-action-btn ${bookmarkClass}" onclick="event.stopPropagation(); toggleBookmark('${toot.id}', this)" title="${__('toot_bookmark', 'Guardar')}">
                         <span class="${toot.bookmarked ? 'material-icons' : 'material-icons-outlined'}">${toot.bookmarked ? 'bookmark' : 'bookmark_border'}</span>
                     </button>
                     ${isMyToot ? `
-                        <button class="toot-action-btn btn-edit" onclick="event.stopPropagation(); handleEditButtonClick(this)" title="Editar">
+                        <button class="toot-action-btn btn-edit" onclick="event.stopPropagation(); handleEditButtonClick(this)" title="${__('edit', 'Editar')}">
                             <span class="material-icons-outlined">edit</span>
                         </button>
-                        <button class="toot-action-btn btn-delete" onclick="event.stopPropagation(); deleteToot('${toot.id}', this)" title="Eliminar">
+                        <button class="toot-action-btn btn-delete" onclick="event.stopPropagation(); deleteToot('${toot.id}', this)" title="${__('delete', 'Eliminar')}">
                             <span class="material-icons-outlined">delete</span>
                         </button>
                     ` : `
-                        <button class="toot-action-btn btn-options" onclick="toggleTootOptionsMenu('${toot.id}', this, event)" title="Opciones de Moderación">
+                        <button class="toot-action-btn btn-options" onclick="toggleTootOptionsMenu('${toot.id}', this, event)" title="${__('options', 'Opciones de Moderación')}">
                             <span class="material-icons-outlined">more_horiz</span>
                         </button>
                     `}
@@ -3895,7 +3906,7 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
     const postUrl = toot.url || toot.uri;
     if (postUrl) {
         const optOpen = document.createElement('button');
-        optOpen.innerHTML = '<span class="material-icons-outlined">open_in_new</span> <span>Abrir página original</span>';
+        optOpen.innerHTML = `<span class="material-icons-outlined">open_in_new</span> <span>${__('toot_open_original', 'Abrir página original')}</span>`;
         setupMenuBtn(optOpen, () => {
             menu.remove();
             activeTootOptionsMenu = null;
@@ -3905,18 +3916,18 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
 
         // Opción: Copiar enlace
         const optCopy = document.createElement('button');
-        optCopy.innerHTML = '<span class="material-icons-outlined">content_copy</span> <span>Copiar enlace</span>';
+        optCopy.innerHTML = `<span class="material-icons-outlined">content_copy</span> <span>${__('toot_copy_link', 'Copiar enlace')}</span>`;
         setupMenuBtn(optCopy, () => {
             menu.remove();
             activeTootOptionsMenu = null;
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(postUrl).then(() => {
-                    alert('Enlace copiado al portapapeles');
+                    alert(__('copied_to_clipboard', 'Enlace copiado al portapapeles'));
                 }).catch(() => {
-                    prompt('Copia el enlace manualmente:', postUrl);
+                    prompt(__('toot_copy_link', 'Copia el enlace manualmente:') + ' ', postUrl);
                 });
             } else {
-                prompt('Copia el enlace manualmente:', postUrl);
+                prompt(__('toot_copy_link', 'Copia el enlace manualmente:') + ' ', postUrl);
             }
         });
         menu.appendChild(optCopy);
@@ -3924,7 +3935,7 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
 
     // Opción: Ver perfil
     const optProfile = document.createElement('button');
-    optProfile.innerHTML = '<span class="material-icons-outlined">person</span> <span>Ver perfil</span>';
+    optProfile.innerHTML = `<span class="material-icons-outlined">person</span> <span>${__('nav_profile', 'Ver perfil')}</span>`;
     setupMenuBtn(optProfile, () => {
         menu.remove();
         activeTootOptionsMenu = null;
@@ -4035,7 +4046,7 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
     if (rel.following) {
         const isExclusive = !!rel.only_replies_to_me;
         const optExclusive = document.createElement('button');
-        optExclusive.innerHTML = `<span class="material-icons-outlined">${isExclusive ? 'chat' : 'filter_alt'}</span> <span>${isExclusive ? 'Mostrar todas las respuestas' : 'Solo respuestas cuando me responda a mí'}</span>`;
+        optExclusive.innerHTML = `<span class="material-icons-outlined">${isExclusive ? 'chat' : 'filter_alt'}</span> <span>${isExclusive ? __('toot_show_all_replies', 'Mostrar todas las respuestas') : __('toot_only_replies_to_me', 'Solo respuestas cuando me responda a mí')}</span>`;
         setupMenuBtn(optExclusive, async () => {
             menu.remove();
             activeTootOptionsMenu = null;
@@ -4064,15 +4075,15 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
                     }
 
                     alert(nowExclusive ? 
-                        `Ahora solo verás respuestas de @${acctHandle} cuando te responda a ti.` : 
-                        `Se volverán a mostrar todas las respuestas de @${acctHandle}.`);
+                        __('toot_exclusive_replies_enabled', `Ahora solo verás respuestas de @${acctHandle} cuando te responda a ti.`) : 
+                        __('toot_exclusive_replies_disabled', `Se volverán a mostrar todas las respuestas de @${acctHandle}.`));
                     reloadCurrentTimeline(true);
                 } else {
-                    alert("Error al actualizar preferencia de respuestas");
+                    alert(__('error', 'Error al actualizar preferencia de respuestas'));
                 }
             } catch (e) {
                 console.error(e);
-                alert("Error de conexión");
+                alert(__('error', 'Error de conexión'));
             }
         });
         menu.appendChild(optExclusive);

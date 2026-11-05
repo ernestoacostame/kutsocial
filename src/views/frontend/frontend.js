@@ -48,6 +48,16 @@ function parseDate(dateInput) {
     return isNaN(d.getTime()) ? null : d;
 }
 
+function __(key, fallback, replace) {
+    let str = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N[key]) || fallback || key;
+    if (replace && typeof replace === 'object') {
+        for (const [k, v] of Object.entries(replace)) {
+            str = str.replace(new RegExp(':' + k, 'g'), v);
+        }
+    }
+    return str;
+}
+
 function formatRelativeTime(dateInput) {
     const date = parseDate(dateInput);
     if (!date) return '';
@@ -58,7 +68,7 @@ function formatRelativeTime(dateInput) {
     // Si la fecha parece en el futuro por desincronización de reloj o zona horaria
     if (diffSecs < 0) {
         if (diffSecs >= -60) {
-            return 'hace segundos';
+            return __('time_just_now', 'hace segundos');
         }
         // Si hay desfase de huso horario (ej: UTC vs local o reloj desfasado), calculamos la diferencia absoluta
         diffSecs = Math.abs(diffSecs);
@@ -69,18 +79,19 @@ function formatRelativeTime(dateInput) {
     const diffDays = Math.floor(diffHours / 24);
 
     if (diffSecs < 60) {
-        return 'hace segundos';
+        return __('time_just_now', 'hace segundos');
     } else if (diffMins < 60) {
-        return `hace ${diffMins} min`;
+        return __('time_mins_ago', `hace ${diffMins} min`, { n: diffMins });
     } else if (diffHours < 24) {
-        return `hace ${diffHours} h`;
+        return __('time_hours_ago', `hace ${diffHours} h`, { n: diffHours });
     } else if (diffDays === 1) {
-        return 'ayer';
+        return __('time_yesterday', 'ayer');
     } else if (diffDays > 1 && diffDays < 7) {
-        return `hace ${diffDays} días`;
+        return __('time_days_ago', `hace ${diffDays} días`, { n: diffDays });
     } else {
         const isSameYear = date.getFullYear() === now.getFullYear();
-        return date.toLocaleDateString('es-ES', {
+        const locale = (window.KUTSOCIAL_LANG === 'en') ? 'en-US' : 'es-ES';
+        return date.toLocaleDateString(locale, {
             day: 'numeric',
             month: 'short',
             year: isSameYear ? undefined : 'numeric'
@@ -1164,27 +1175,27 @@ function createThreadTootElement(toot, isMain = false) {
                 ${quotePlaceholderHTML}
                 
                 <div class="toot-actions" style="margin-top: 12px;">
-                    <button class="toot-action-btn btn-reply" onclick="event.stopPropagation(); handleReplyButtonClick(this)" title="Responder">
+                    <button class="toot-action-btn btn-reply" onclick="event.stopPropagation(); handleReplyButtonClick(this)" title="${__('toot_reply', 'Responder')}">
                         <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn ${favClass}" onclick="event.stopPropagation(); toggleFavourite('${toot.id}', this)" title="Favorito">
+                    <button class="toot-action-btn ${favClass}" onclick="event.stopPropagation(); toggleFavourite('${toot.id}', this)" title="${__('toot_favorite', 'Favorito')}">
                         <span class="${toot.favourited ? 'material-icons' : 'material-icons-outlined'}">${toot.favourited ? 'star' : 'star_border'}</span> <span class="fav-count">${toot.favourites_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" data-reblog-toot-id="${toot.id}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="Compartir / Citar">
+                    <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" data-reblog-toot-id="${toot.id}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="${__('toot_boost', 'Compartir / Citar')}">
                         <span class="${toot.reblogged ? 'material-icons' : 'material-icons-outlined'}" style="${toot.reblogged ? 'color: #10b981;' : ''}">repeat</span> <span class="reblog-count" style="${toot.reblogged ? 'color: #10b981; font-weight: bold;' : ''}">${toot.reblogs_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn ${bookmarkClass}" onclick="event.stopPropagation(); toggleBookmark('${toot.id}', this)" title="Guardar">
+                    <button class="toot-action-btn ${bookmarkClass}" onclick="event.stopPropagation(); toggleBookmark('${toot.id}', this)" title="${__('toot_bookmark', 'Guardar')}">
                         <span class="${toot.bookmarked ? 'material-icons' : 'material-icons-outlined'}">${toot.bookmarked ? 'bookmark' : 'bookmark_border'}</span>
                     </button>
                     ${isMyToot ? `
-                        <button class="toot-action-btn btn-edit" onclick="event.stopPropagation(); handleEditButtonClick(this)" title="Editar">
+                        <button class="toot-action-btn btn-edit" onclick="event.stopPropagation(); handleEditButtonClick(this)" title="${__('edit', 'Editar')}">
                             <span class="material-icons-outlined">edit</span>
                         </button>
-                        <button class="toot-action-btn btn-delete" onclick="event.stopPropagation(); deleteToot('${toot.id}', this)" title="Eliminar">
+                        <button class="toot-action-btn btn-delete" onclick="event.stopPropagation(); deleteToot('${toot.id}', this)" title="${__('delete', 'Eliminar')}">
                             <span class="material-icons-outlined">delete</span>
                         </button>
                     ` : `
-                        <button class="toot-action-btn btn-options" onclick="toggleTootOptionsMenu('${toot.id}', this, event)" title="Opciones de Moderación">
+                        <button class="toot-action-btn btn-options" onclick="toggleTootOptionsMenu('${toot.id}', this, event)" title="${__('options', 'Opciones de Moderación')}">
                             <span class="material-icons-outlined">more_horiz</span>
                         </button>
                     `}
