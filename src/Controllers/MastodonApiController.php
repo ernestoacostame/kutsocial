@@ -2995,13 +2995,14 @@ HTML;
                                 )
                             )
                             OR
-                            -- Cuenta con filtro exclusivo activado (solo respuestas a mí o posts propios raíz)
+                            -- Cuenta con filtro exclusivo activado (solo respuestas a mí o menciones a mí)
                             (
                                 s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND only_replies_to_me = 1)
                                 AND (
-                                    (s.in_reply_to_account_id = ? OR s.content LIKE ? OR s.content LIKE ? OR s.in_reply_to_id IN (SELECT id FROM statuses WHERE account_id = ?))
-                                    OR
-                                    (s.in_reply_to_id IS NULL AND s.in_reply_to_account_id IS NULL AND (s.in_reply_to_url IS NULL OR s.in_reply_to_url = '') AND s.content NOT LIKE '<p><span class=\"h-card\"><a href=%' AND s.content NOT LIKE '<p>@%')
+                                    s.in_reply_to_account_id = ? 
+                                    OR s.content LIKE ? 
+                                    OR s.content LIKE ? 
+                                    OR s.in_reply_to_id IN (SELECT id FROM statuses WHERE account_id = ?)
                                 )
                             )
                         )
@@ -5712,8 +5713,34 @@ HTML;
             }
         }
 
+        // Cuentas con filtro 'only_replies_to_me' activado por el usuario actual
+        $exclusiveAccountIds = [];
+        if ($currUser) {
+            $stmtExcl = $db->prepare("SELECT target_account_id FROM follows WHERE account_id = ? AND only_replies_to_me = 1");
+            $stmtExcl->execute([$currUser['id']]);
+            $exclusiveAccountIds = array_map('intval', $stmtExcl->fetchAll(\PDO::FETCH_COLUMN));
+        }
+
         $filtered = [];
         foreach ($rows as $row) {
+            $authorId = (int)($row['account_id'] ?? $row['id'] ?? 0);
+
+            // Filtrar cuentas marcadas como exclusivas si no van dirigidas a mí
+            if (!empty($exclusiveAccountIds) && in_array($authorId, $exclusiveAccountIds, true) && $currUser) {
+                $myUsername = $currUser['username'];
+                $content = $row['status_content'] ?? $row['content'] ?? '';
+                $mentionPattern = '/@' . preg_quote($myUsername, '/') . '(?![a-zA-Z0-9_\-])/i';
+                $urlPattern = '/\/users\/' . preg_quote($myUsername, '/') . '(?![a-zA-Z0-9_\-])/i';
+                $isMentioned = preg_match($mentionPattern, $content) || preg_match($urlPattern, $content);
+
+                $inReplyToAccountId = (int)($row['in_reply_to_account_id'] ?? 0);
+                $isReplyToMe = ($inReplyToAccountId === (int)$currUser['id']);
+
+                if (!$isMentioned && !$isReplyToMe) {
+                    continue; // Excluir respuesta de bot a terceros
+                }
+            }
+
             // 1. Filtrar visibilidad direct (DMs) para evitar fugas de privacidad
             $visibility = $row['status_visibility'] ?? $row['visibility'] ?? 'public';
             if ($visibility === 'direct') {

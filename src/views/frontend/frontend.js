@@ -3596,12 +3596,28 @@ async function handleProfileToggleExclusiveReplies() {
             const data = await res.json();
             currentProfileRelationship = data;
             const nowExclusive = !!data.only_replies_to_me;
+
+            if (nowExclusive) {
+                const myUsername = (window.KUTSOCIAL_CURRENT_USER && window.KUTSOCIAL_CURRENT_USER.username) || '';
+                const cards = document.querySelectorAll('.toot-card');
+                cards.forEach(c => {
+                    const cToot = c._toot;
+                    if (cToot && (String(cToot.account.id) === String(activeProfileViewId) || (currentProfileData && cToot.account.username === currentProfileData.username))) {
+                        const content = cToot.content || '';
+                        const isForMe = myUsername && (content.includes('@' + myUsername) || content.includes('/users/' + myUsername));
+                        if (!isForMe) {
+                            c.remove();
+                        }
+                    }
+                });
+            }
+
             alert(nowExclusive ? 
                 'Ahora solo verás respuestas de este usuario cuando te responda a ti directamente.' : 
                 'Se volverán a mostrar todas las respuestas de este usuario.');
             updateProfileModerationMenu(currentProfileData);
             if (typeof reloadCurrentTimeline === 'function') {
-                reloadCurrentTimeline();
+                reloadCurrentTimeline(true);
             }
         } else {
             alert('Error al cambiar la preferencia de respuestas');
@@ -3731,8 +3747,15 @@ async function handleProfileDomainBlock() {
     }
 }
 
-function reloadCurrentTimeline() {
+function reloadCurrentTimeline(forceReset = false) {
     if (window.KUTSOCIAL_ACTIVE_SECTION === 'feed') {
+        if (forceReset) {
+            lastId = 0;
+            oldestId = null;
+            const feed = showFeedContainer(currentTimeline);
+            if (feed) feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+            isLoadingToots = false;
+        }
         loadTimeline(false);
     } else if (window.KUTSOCIAL_ACTIVE_SECTION === 'profile-view' && activeProfileViewId) {
         loadProfileStatuses(activeProfileViewId);
@@ -3949,10 +3972,26 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
                 if (res.ok) {
                     const data = await res.json();
                     const nowExclusive = !!data.only_replies_to_me;
+
+                    if (nowExclusive) {
+                        const myUsername = (window.KUTSOCIAL_CURRENT_USER && window.KUTSOCIAL_CURRENT_USER.username) || '';
+                        const cards = document.querySelectorAll('.toot-card');
+                        cards.forEach(c => {
+                            const cToot = c._toot;
+                            if (cToot && (String(cToot.account.id) === String(account.id) || cToot.account.acct === acctHandle || cToot.account.username === account.username)) {
+                                const content = cToot.content || '';
+                                const isForMe = myUsername && (content.includes('@' + myUsername) || content.includes('/users/' + myUsername));
+                                if (!isForMe) {
+                                    c.remove();
+                                }
+                            }
+                        });
+                    }
+
                     alert(nowExclusive ? 
                         `Ahora solo verás respuestas de @${acctHandle} cuando te responda a ti.` : 
                         `Se volverán a mostrar todas las respuestas de @${acctHandle}.`);
-                    reloadCurrentTimeline();
+                    reloadCurrentTimeline(true);
                 } else {
                     alert("Error al actualizar preferencia de respuestas");
                 }
