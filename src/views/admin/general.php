@@ -15,6 +15,43 @@
         <input type="number" name="max_toot_chars" id="max_toot_chars" value="<?= htmlspecialchars($maxChars) ?>" min="500" max="9999" required>
         <p class="help-text"><?= __('admin_toot_limit_desc') ?></p>
     </div>
+
+    <!-- Opciones del Menú Lateral de Navegación -->
+    <div class="form-group" style="margin-top: 25px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+        <label style="font-size: 16px; font-weight: 600;">🧭 <?= __('admin_nav_menu_title') ?></label>
+        <p class="help-text"><?= __('admin_nav_menu_desc') ?></p>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; margin-top: 15px; padding: 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 10px;">
+            <?php
+            $availableNavItems = [
+                'home' => ['label' => __('nav_home'), 'icon' => 'home'],
+                'catchup' => ['label' => __('nav_catchup'), 'icon' => 'bolt'],
+                'local' => ['label' => __('nav_local'), 'icon' => 'groups'],
+                'public' => ['label' => __('nav_public'), 'icon' => 'public'],
+                'notifications' => ['label' => __('nav_notifications'), 'icon' => 'notifications'],
+                'bookmarks' => ['label' => __('nav_bookmarks'), 'icon' => 'bookmark_border'],
+                'direct' => ['label' => __('nav_direct'), 'icon' => 'mail_outline'],
+                'lists' => ['label' => __('nav_lists'), 'icon' => 'list'],
+                'collections' => ['label' => __('nav_collections'), 'icon' => 'folder'],
+                'hashtags' => ['label' => __('nav_hashtags'), 'icon' => 'tag'],
+                'profile' => ['label' => __('nav_profile'), 'icon' => 'person', 'badge' => __('admin_nav_avatar_note')],
+                'settings' => ['label' => __('nav_settings'), 'icon' => 'tune'],
+                'admin' => ['label' => __('nav_admin'), 'icon' => 'settings'],
+            ];
+            foreach ($availableNavItems as $key => $item):
+                $isChecked = in_array($key, $enabledNavItems ?? [], true);
+            ?>
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid <?= $isChecked ? 'rgba(99, 102, 241, 0.4)' : 'rgba(255,255,255,0.05)' ?>; user-select: none;">
+                    <input type="checkbox" name="sidebar_nav_items[]" value="<?= $key ?>" <?= $isChecked ? 'checked' : '' ?> style="cursor: pointer; width: 17px; height: 17px; accent-color: var(--primary);">
+                    <span class="material-icons-outlined" style="font-size: 19px; color: <?= $isChecked ? 'var(--primary)' : 'var(--text-muted)' ?>;"><?= $item['icon'] ?></span>
+                    <span style="font-size: 13.5px; font-weight: 500;"><?= $item['label'] ?></span>
+                    <?php if (!empty($item['badge'])): ?>
+                        <span style="margin-left: auto; font-size: 10px; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--text-muted); font-weight: 400;"><?= $item['badge'] ?></span>
+                    <?php endif; ?>
+                </label>
+            <?php endforeach; ?>
+        </div>
+    </div>
     <div class="form-group" style="margin-top: 20px;">
         <label for="update_github_token"><?= __('admin_github_token') ?></label>
         <input type="password" name="update_github_token" id="update_github_token" value="<?= htmlspecialchars($githubToken) ?>" placeholder="<?= __('admin_github_token_placeholder') ?>">

@@ -66,77 +66,100 @@ $basePath = $basePath ?? '';
                     <img src="/kutsocial_logo.svg" alt="Logo" style="width: 28px; height: 28px;">
                     <span>KutSocial</span>
                 </div>
-                
-                <!-- Espacio reservado para mantener la posición del menú -->
-                <div class="sidebar-search-spacer" style="height: 60px;" aria-hidden="true"></div>
 
                 <ul class="nav-menu">
+                    <?php if (in_array('home', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/home" id="nav-home" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">home</span> <?= __('nav_home') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('catchup', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/catchup" id="nav-catchup" class="nav-link <?= ($section === 'catchup') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">bolt</span> <?= __('nav_catchup') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('local', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/local" id="nav-local" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'local') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">groups</span> <?= __('nav_local') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('public', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/public" id="nav-public" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'public') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">public</span> <?= __('nav_public') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('notifications', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/notifications" id="nav-notifications" class="nav-link <?= ($section === 'notifications') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">notifications</span> <?= __('nav_notifications') ?>
                             <span id="nav-notifications-count" class="notification-badge" style="display: none; background: var(--error, #ef4444); color: white; border-radius: 10px; padding: 2px 6px; font-size: 11px; font-weight: bold; margin-left: auto;">0</span>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('bookmarks', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/bookmarks" id="nav-bookmarks" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'bookmarks') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">bookmark_border</span> <?= __('nav_bookmarks') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('direct', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/direct" id="nav-direct" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'direct') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">mail_outline</span> <?= __('nav_direct') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('lists', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/lists" id="nav-lists" class="nav-link <?= ($section === 'lists') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">list</span> <?= __('nav_lists') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('collections', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/collections" id="nav-collections" class="nav-link <?= ($section === 'collections') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">folder</span> <?= __('nav_collections') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('hashtags', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/followed-hashtags" id="nav-hashtags" class="nav-link <?= ($section === 'followed-hashtags') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">tag</span> <?= __('nav_hashtags') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('profile', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>">
                             <span class="material-icons-outlined">person</span> <?= __('nav_profile') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('settings', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/profile" id="nav-settings" class="nav-link <?= ($section === 'profile') ? 'active' : '' ?>">
                             <span class="material-icons-outlined">tune</span> <?= __('nav_settings') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
+                    <?php if (in_array('admin', $enabledNavItems, true)): ?>
                     <li class="nav-item" id="nav-admin-settings">
                         <a href="/admin/update" class="nav-link">
                             <span class="material-icons-outlined">settings</span> <?= __('nav_admin') ?>
                         </a>
                     </li>
+                    <?php endif; ?>
                     <li class="nav-item" id="nav-item-owner" style="display: none;">
                         <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-owner-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>">
                             <span class="material-icons-outlined">verified_user</span> <?= __('nav_owner') ?>
@@ -145,19 +168,19 @@ $basePath = $basePath ?? '';
                 </ul>
 
                 <!-- Selector de Idioma en Sidebar -->
-                <div style="margin: 15px 12px 10px 12px; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
-                    <span style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-                        <span class="material-icons-outlined" style="font-size: 15px;">language</span> <?= __('language') ?>
+                <div style="margin: 8px 8px 6px 8px; padding: 6px 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
+                    <span style="font-size: 11.5px; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
+                        <span class="material-icons-outlined" style="font-size: 14px;">language</span> <?= __('language') ?>
                     </span>
-                    <div style="display: inline-flex; gap: 4px; background: rgba(255,255,255,0.06); padding: 2px 4px; border-radius: 6px; font-size: 11px; font-weight: 700;">
-                        <a href="/lang/es" style="color: white; text-decoration: none; padding: 2px 6px; border-radius: 4px; <?= \KutSocial\I18n::getLang() === 'es' ? 'background: var(--primary);' : 'opacity: 0.6;' ?>">ES</a>
-                        <a href="/lang/en" style="color: white; text-decoration: none; padding: 2px 6px; border-radius: 4px; <?= \KutSocial\I18n::getLang() === 'en' ? 'background: var(--primary);' : 'opacity: 0.6;' ?>">EN</a>
+                    <div style="display: inline-flex; gap: 3px; background: rgba(255,255,255,0.06); padding: 2px 3px; border-radius: 6px; font-size: 10.5px; font-weight: 700;">
+                        <a href="/lang/es" style="color: white; text-decoration: none; padding: 2px 5px; border-radius: 4px; <?= \KutSocial\I18n::getLang() === 'es' ? 'background: var(--primary);' : 'opacity: 0.6;' ?>">ES</a>
+                        <a href="/lang/en" style="color: white; text-decoration: none; padding: 2px 5px; border-radius: 4px; <?= \KutSocial\I18n::getLang() === 'en' ? 'background: var(--primary);' : 'opacity: 0.6;' ?>">EN</a>
                     </div>
                 </div>
             </div>
 
             <!-- Perfil del usuario actual -->
-            <div class="user-profile-summary" style="cursor: pointer;" onclick="if(currentProfileData) window.location.href='<?= $basePath ?>/@' + currentProfileData.username;">
+            <div class="user-profile-summary" style="cursor: pointer;" onclick="const u = (typeof currentProfileData !== 'undefined' && currentProfileData?.username) ? currentProfileData.username : '<?= htmlspecialchars($localUser['username'] ?? '') ?>'; if(u) window.location.href='<?= $basePath ?>/@' + u;">
                 <img id="my-avatar" class="user-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.png') ?>" alt="Mi Avatar">
                 <div class="user-info">
                     <div id="my-display-name" class="user-name"><?= htmlspecialchars($localUser['display_name'] ?: ($localUser['username'] ?? 'Cargando...')) ?></div>

@@ -1,3 +1,19 @@
+# Versión 2.0.70: Optimización del menú lateral para 1080p y configuración de opciones de navegación
+
+1. Optimización del Menú Lateral para pantallas 1080p:
+  * **Eliminación del espaciador artificial y acercamiento al logotipo:** Se eliminó el espaciador residual (`.sidebar-search-spacer` de 60px) entre el logo y el primer elemento del menú, y se redujo el margen inferior de `.nav-logo` de 30px a 10px para pegar el menú al logotipo y ganar altura.
+  * **Densidad y espaciado compacto:** Se optimizó el relleno (`padding: 7px 12px`), márgenes (`margin-bottom: 2px`) e iconos de los enlaces (`.nav-link`), así como el tamaño del selector de idioma y la tarjeta de perfil inferior (`padding: 8px 10px`), reduciendo más de 280px de altura total del menú.
+  * **Scroll suave de respaldo:** Se agregó `overflow-y: auto` y barra de scroll fina en `.sidebar` para garantizar que en cualquier resolución baja o ventana redimensionada nunca se corte ningún elemento.
+
+2. Configuración de opciones visibles del menú en el Panel de Control:
+  * **Gestor de elementos de navegación:** En el panel administrativo (`/admin/dashboard/general`), se añadió una sección visual con casillas de verificación para activar o desactivar cada enlace del menú lateral (Inicio, Ponerse al día, Timeline local, Federación pública, Notificaciones, Marcadores, Mensajes directos, Listas, Colecciones, Hashtags, Mi Perfil, Ajustes y Panel de administración).
+  * **Persistencia centralizada:** Las preferencias se guardan en la tabla `options` (`sidebar_nav_items`) y se reflejan de forma inmediata tanto en las vistas del enrutador `/p` como en la plantilla principal.
+
+3. Ocultamiento por defecto de "Mi Perfil":
+  * Dado que hacer clic en el avatar o la tarjeta de perfil inferior ya conduce directamente a `@usuario`, la opción "Mi Perfil" queda desmarcada (oculta) por defecto en la barra lateral para evitar redundancia y ahorrar espacio vertical, permaneciendo como opción disponible en el panel de control si se desea volver a mostrar.
+
+---
+
 # Versión 2.0.68: Modo de escritura sin distracción (Zen Mode) en el editor
 
 1. Modo de escritura sin distracción (Pantalla completa / Zen Mode):

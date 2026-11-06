@@ -499,6 +499,7 @@ class AdminController {
         $smtpFrom = htmlspecialchars($admin['smtp_from'] ?? '');
         $emailNotificationsChecked = !empty($admin['email_notifications']) ? 'checked' : '';
         $attributionDomains = htmlspecialchars($admin['attribution_domains'] ?? '');
+        $enabledNavItems = self::getEnabledNavItems();
 
         // Mensaje de éxito de ajustes
         $successMsg = $_SESSION['admin_success_msg'] ?? '';
@@ -574,10 +575,36 @@ class AdminController {
                 $adminId
             ]);
 
+            // Guardar opciones del menú lateral
+            $submittedNav = $_POST['sidebar_nav_items'] ?? [];
+            if (!is_array($submittedNav)) {
+                $submittedNav = [];
+            }
+            $validKeys = ['home', 'catchup', 'local', 'public', 'notifications', 'bookmarks', 'direct', 'lists', 'collections', 'hashtags', 'profile', 'settings', 'admin'];
+            $cleanNav = array_values(array_intersect($validKeys, $submittedNav));
+            $stmtNav = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('sidebar_nav_items', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
+            $stmtNav->execute([json_encode($cleanNav)]);
+
             $_SESSION['admin_success_msg'] = __raw('msg_admin_settings_saved', 'Ajustes generales guardados correctamente.');
         }
         header("Location: /admin/dashboard/general");
         exit;
+    }
+
+    public static function getDefaultNavItems(): array {
+        return ['home', 'catchup', 'local', 'public', 'notifications', 'bookmarks', 'direct', 'lists', 'collections', 'hashtags', 'settings', 'admin'];
+    }
+
+    public static function getEnabledNavItems(): array {
+        $db = Database::connect();
+        $stmt = $db->prepare("SELECT value FROM options WHERE key = 'sidebar_nav_items' LIMIT 1");
+        $stmt->execute();
+        $raw = $stmt->fetchColumn();
+        if ($raw === false || $raw === null) {
+            return self::getDefaultNavItems();
+        }
+        $decoded = json_decode($raw, true);
+        return is_array($decoded) ? $decoded : self::getDefaultNavItems();
     }
 
     /**

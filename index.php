@@ -212,6 +212,7 @@ $renderFrontend = function() {
         || ($section === 'thread-view')
         || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup', 'direct']));
 
+    $enabledNavItems = \KutSocial\Controllers\AdminController::getEnabledNavItems();
     $path = __DIR__ . '/src/views/frontend.html';
     if (file_exists($path)) {
         // Evaluar frontend.html como PHP (permite los includes de las vistas)
@@ -460,6 +461,7 @@ $renderPagesFrontend = function() {
         || ($section === 'feed' && in_array($currentTimeline, ['home', 'local', 'public', 'catchup', 'direct']));
 
     $basePath = (str_starts_with($uri, '/p/') || $uri === '/p') ? '/p' : '';
+    $enabledNavItems = \KutSocial\Controllers\AdminController::getEnabledNavItems();
     $path = __DIR__ . '/src/views/pages/layout.php';
     if (file_exists($path)) {
         ob_start();
