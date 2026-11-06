@@ -1,5 +1,6 @@
 {
-  "version": "2.0.70",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.70/kutsocial-v2.0.70.zip",
-  "changelog": "Optimización del menú lateral para 1080p, configuración de opciones visibles desde el panel de control y ocultamiento por defecto de Mi Perfil"
+  "version": "2.0.71",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.71/kutsocial-v2.0.71.zip",
+  "changelog": "Se pueden seleccionar que elementos mostrar en el sidebar
+"
 }
