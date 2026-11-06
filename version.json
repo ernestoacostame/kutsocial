@@ -1,5 +1,6 @@
 {
-  "version": "2.0.68",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.68/kutsocial-v2.0.68.zip",
-  "changelog": "Modo de escritura sin distracción (pantalla completa) con contador de palabras y caracteres en el editor"
+  "version": "2.0.69",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.69/kutsocial-v2.0.69.zip",
+  "changelog": "Editor sin distracciones en KutSocial
+"
 }
