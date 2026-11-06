@@ -3663,7 +3663,7 @@ function updateProfileModerationMenu(account) {
             const isExclusive = !!currentProfileRelationship.only_replies_to_me;
             const exclText = document.getElementById('profile-exclusive-replies-text');
             const exclIcon = document.getElementById('profile-exclusive-replies-icon');
-            if (exclText) exclText.innerText = isExclusive ? 'Mostrar todas las respuestas' : 'Solo respuestas cuando me responda a mí';
+            if (exclText) exclText.innerText = isExclusive ? __('toot_show_all_replies', 'Mostrar todas las respuestas') : __('toot_only_replies_to_me', 'Solo respuestas cuando me responda a mí');
             if (exclIcon) exclIcon.innerText = isExclusive ? 'chat' : 'filter_alt';
         } else {
             exclusiveBtn.style.display = 'none';
@@ -3682,35 +3682,46 @@ async function handleProfileToggleExclusiveReplies() {
             const data = await res.json();
             currentProfileRelationship = data;
             const nowExclusive = !!data.only_replies_to_me;
+            const handle = currentProfileData?.acct || currentProfileData?.username || '';
 
             if (nowExclusive) {
-                const myUsername = (window.KUTSOCIAL_CURRENT_USER && window.KUTSOCIAL_CURRENT_USER.username) || '';
+                const myUsername = (window.KUTSOCIAL_CURRENT_USER && window.KUTSOCIAL_CURRENT_USER.username) || 
+                                   (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username) || '';
+                const targetId = String(activeProfileViewId);
+                const targetUser = (currentProfileData?.username || '').toLowerCase();
                 const cards = document.querySelectorAll('.toot-card');
                 cards.forEach(c => {
                     const cToot = c._toot;
-                    if (cToot && (String(cToot.account.id) === String(activeProfileViewId) || (currentProfileData && cToot.account.username === currentProfileData.username))) {
-                        const content = cToot.content || '';
-                        const isForMe = myUsername && (content.includes('@' + myUsername) || content.includes('/users/' + myUsername));
-                        if (!isForMe) {
-                            c.remove();
+                    if (cToot && cToot.account) {
+                        const cId = String(cToot.account.id);
+                        const cUser = (cToot.account.username || '').toLowerCase();
+                        if (cId === targetId || cUser === targetUser) {
+                            const content = cToot.content || '';
+                            const isForMe = myUsername && (
+                                content.toLowerCase().includes('@' + myUsername.toLowerCase()) || 
+                                content.toLowerCase().includes('/users/' + myUsername.toLowerCase())
+                            );
+                            if (!isForMe) {
+                                c.remove();
+                            }
                         }
                     }
                 });
             }
 
             alert(nowExclusive ? 
-                'Ahora solo verás respuestas de este usuario cuando te responda a ti directamente.' : 
-                'Se volverán a mostrar todas las respuestas de este usuario.');
+                __('toot_exclusive_replies_enabled', `Ahora solo verás respuestas de @${handle} cuando te responda a ti.`, {acct: handle}) : 
+                __('toot_exclusive_replies_disabled', `Se volverán a mostrar todas las respuestas de @${handle}.`, {acct: handle}));
             updateProfileModerationMenu(currentProfileData);
             if (typeof reloadCurrentTimeline === 'function') {
                 reloadCurrentTimeline(true);
             }
         } else {
-            alert('Error al cambiar la preferencia de respuestas');
+            alert(__('error', 'Error al cambiar la preferencia de respuestas'));
         }
     } catch (e) {
         console.error(e);
-        alert('Error de conexión');
+        alert(__('error', 'Error de conexión'));
     }
 }
 
@@ -3834,18 +3845,22 @@ async function handleProfileDomainBlock() {
 }
 
 function reloadCurrentTimeline(forceReset = false) {
-    if (window.KUTSOCIAL_ACTIVE_SECTION === 'feed') {
+    const activeSection = window.KUTSOCIAL_ACTIVE_SECTION || 
+        (document.getElementById('tab-profile-view')?.style.display === 'block' ? 'profile-view' : 
+        (document.getElementById('tab-thread-view')?.style.display === 'block' ? 'thread-view' : 'feed'));
+
+    if (activeSection === 'feed') {
         if (forceReset) {
             lastId = 0;
             oldestId = null;
             const feed = showFeedContainer(currentTimeline);
-            if (feed) feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+            if (feed) feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">' + __('loading', 'Cargando toots...') + '</div>';
             isLoadingToots = false;
         }
         loadTimeline(false);
-    } else if (window.KUTSOCIAL_ACTIVE_SECTION === 'profile-view' && activeProfileViewId) {
+    } else if (activeSection === 'profile-view' && activeProfileViewId) {
         loadProfileStatuses(activeProfileViewId);
-    } else if (window.KUTSOCIAL_ACTIVE_SECTION === 'thread-view' && typeof activeThreadTootId !== 'undefined' && activeThreadTootId) {
+    } else if (activeSection === 'thread-view' && typeof activeThreadTootId !== 'undefined' && activeThreadTootId) {
         viewTootThread(activeThreadTootId);
     }
 }
@@ -4018,14 +4033,15 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
 
     // Opción Silenciar
     const optMute = document.createElement('button');
-    optMute.innerHTML = `<span class="material-icons-outlined">${isMuted ? 'volume_up' : 'volume_off'}</span> <span>${isMuted ? 'Desactivar silencio' : 'Silenciar a @' + escapeHTML(acctHandle)}</span>`;
+    const muteLabel = isMuted ? __('toot_unmute_user', 'Desactivar silencio') : (__('toot_mute_user', 'Silenciar a') + ' @' + escapeHTML(acctHandle));
+    optMute.innerHTML = `<span class="material-icons-outlined">${isMuted ? 'volume_up' : 'volume_off'}</span> <span>${muteLabel}</span>`;
     setupMenuBtn(optMute, async () => {
         menu.remove();
         activeTootOptionsMenu = null;
 
         const confirmMsg = isMuted ? 
-            `¿Deseas reactivar el sonido de @${acctHandle}?` : 
-            `¿Deseas silenciar a @${acctHandle}? No verás sus publicaciones.`;
+            __('toot_unmute_confirm', `¿Deseas reactivar el sonido de @${acctHandle}?`, {acct: acctHandle}) : 
+            __('toot_mute_confirm', `¿Deseas silenciar a @${acctHandle}? No verás sus publicaciones.`, {acct: acctHandle});
         if (!confirm(confirmMsg)) return;
 
         const action = isMuted ? 'unmute' : 'mute';
@@ -4034,10 +4050,10 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
-            alert(`Usuario ${isMuted ? 'desilenciado' : 'silenciado'} con éxito`);
+            alert(isMuted ? __('toot_unmuted_success', 'Usuario desilenciado con éxito') : __('toot_muted_success', 'Usuario silenciado con éxito'));
             reloadCurrentTimeline();
         } else {
-            alert("Error al cambiar estado de silencio");
+            alert(__('error', 'Error'));
         }
     });
     menu.appendChild(optMute);
@@ -4060,23 +4076,37 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
                     const nowExclusive = !!data.only_replies_to_me;
 
                     if (nowExclusive) {
-                        const myUsername = (window.KUTSOCIAL_CURRENT_USER && window.KUTSOCIAL_CURRENT_USER.username) || '';
+                        const myUsername = (window.KUTSOCIAL_CURRENT_USER && window.KUTSOCIAL_CURRENT_USER.username) || 
+                                           (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username) || '';
+                        const targetAcct = (account.acct || account.username || '').toLowerCase();
+                        const targetUser = (account.username || '').toLowerCase();
+                        const targetId = String(account.id);
+
                         const cards = document.querySelectorAll('.toot-card');
                         cards.forEach(c => {
                             const cToot = c._toot;
-                            if (cToot && (String(cToot.account.id) === String(account.id) || cToot.account.acct === acctHandle || cToot.account.username === account.username)) {
-                                const content = cToot.content || '';
-                                const isForMe = myUsername && (content.includes('@' + myUsername) || content.includes('/users/' + myUsername));
-                                if (!isForMe) {
-                                    c.remove();
+                            if (cToot && cToot.account) {
+                                const cId = String(cToot.account.id);
+                                const cAcct = (cToot.account.acct || cToot.account.username || '').toLowerCase();
+                                const cUser = (cToot.account.username || '').toLowerCase();
+
+                                if (cId === targetId || cAcct === targetAcct || cUser === targetUser) {
+                                    const content = cToot.content || '';
+                                    const isForMe = myUsername && (
+                                        content.toLowerCase().includes('@' + myUsername.toLowerCase()) || 
+                                        content.toLowerCase().includes('/users/' + myUsername.toLowerCase())
+                                    );
+                                    if (!isForMe) {
+                                        c.remove();
+                                    }
                                 }
                             }
                         });
                     }
 
                     alert(nowExclusive ? 
-                        __('toot_exclusive_replies_enabled', `Ahora solo verás respuestas de @${acctHandle} cuando te responda a ti.`) : 
-                        __('toot_exclusive_replies_disabled', `Se volverán a mostrar todas las respuestas de @${acctHandle}.`));
+                        __('toot_exclusive_replies_enabled', `Ahora solo verás respuestas de @${acctHandle} cuando te responda a ti.`, {acct: acctHandle}) : 
+                        __('toot_exclusive_replies_disabled', `Se volverán a mostrar todas las respuestas de @${acctHandle}.`, {acct: acctHandle}));
                     reloadCurrentTimeline(true);
                 } else {
                     alert(__('error', 'Error al actualizar preferencia de respuestas'));
@@ -4091,14 +4121,15 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
 
     // Opción Bloquear
     const optBlock = document.createElement('button');
-    optBlock.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">block</span> <span style="color: var(--error, #ef4444);">${isBlocked ? 'Desbloquear a @' + escapeHTML(acctHandle) : 'Bloquear a @' + escapeHTML(acctHandle)}</span>`;
+    const blockLabel = isBlocked ? (__('toot_unblock_user', 'Desbloquear a') + ' @' + escapeHTML(acctHandle)) : (__('toot_block_user', 'Bloquear a') + ' @' + escapeHTML(acctHandle));
+    optBlock.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">block</span> <span style="color: var(--error, #ef4444);">${blockLabel}</span>`;
     setupMenuBtn(optBlock, async () => {
         menu.remove();
         activeTootOptionsMenu = null;
 
         const confirmMsg = isBlocked ? 
-            `¿Deseas desbloquear a @${acctHandle}?` : 
-            `¿Deseas bloquear a @${acctHandle}? Se romperá la relación de seguimiento y no verás sus publicaciones.`;
+            __('toot_unblock_confirm', `¿Deseas desbloquear a @${acctHandle}?`, {acct: acctHandle}) : 
+            __('toot_block_confirm', `¿Deseas bloquear a @${acctHandle}? Se romperá la relación de seguimiento y no verás sus publicaciones.`, {acct: acctHandle});
         if (!confirm(confirmMsg)) return;
 
         const action = isBlocked ? 'unblock' : 'block';
@@ -4107,7 +4138,7 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
-            alert(`Usuario ${isBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+            alert(isBlocked ? __('toot_unblocked_success', 'Usuario desbloqueado con éxito') : __('toot_blocked_success', 'Usuario bloqueado con éxito'));
             const card = btn ? btn.closest('.toot-card') : null;
             if (card) {
                 card.style.opacity = '0.3';
@@ -4115,7 +4146,7 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
             }
             reloadCurrentTimeline();
         } else {
-            alert("Error al cambiar estado de bloqueo");
+            alert(__('error', 'Error al cambiar estado de bloqueo'));
         }
     });
     menu.appendChild(optBlock);
@@ -4125,14 +4156,15 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
         const domain = acctHandle.split('@')[1];
         const optDomain = document.createElement('button');
         const isDomainBlocked = !!rel.domain_blocking;
-        optDomain.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">public_off</span> <span style="color: var(--error, #ef4444);">${isDomainBlocked ? 'Desbloquear dominio ' + escapeHTML(domain) : 'Bloquear dominio ' + escapeHTML(domain)}</span>`;
+        const domLabel = isDomainBlocked ? (__('toot_unblock_domain', 'Desbloquear dominio') + ' ' + escapeHTML(domain)) : (__('toot_block_domain', 'Bloquear dominio') + ' ' + escapeHTML(domain));
+        optDomain.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">public_off</span> <span style="color: var(--error, #ef4444);">${domLabel}</span>`;
         setupMenuBtn(optDomain, async () => {
             menu.remove();
             activeTootOptionsMenu = null;
 
             const confirmMsg = isDomainBlocked ? 
-                `¿Deseas desbloquear el dominio ${domain}?` : 
-                `¿Deseas bloquear completamente el dominio ${domain}? No verás publicaciones de este servidor.`;
+                __('toot_unblock_domain_confirm', `¿Deseas desbloquear el servidor ${domain}?`, {domain: domain}) : 
+                __('toot_block_domain_confirm', `¿Deseas bloquear todas las publicaciones del servidor ${domain}?`, {domain: domain});
             if (!confirm(confirmMsg)) return;
 
             const res = await fetch(`/api/v1/domain_blocks`, {
@@ -4144,10 +4176,10 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
                 body: JSON.stringify({ domain: domain })
             });
             if (res.ok) {
-                alert(`Dominio ${domain} ${isDomainBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+                alert(isDomainBlocked ? __('toot_domain_unblocked_success', 'Dominio desbloqueado con éxito') : __('toot_domain_blocked_success', 'Dominio bloqueado con éxito'));
                 reloadCurrentTimeline();
             } else {
-                alert("Error al cambiar estado de bloqueo de dominio");
+                alert(__('error', 'Error al cambiar estado de bloqueo de dominio'));
             }
         });
         menu.appendChild(optDomain);
@@ -4160,7 +4192,7 @@ function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
 
     // Opción Reportar Usuario / Publicación
     const optReport = document.createElement('button');
-    optReport.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">flag</span> <span style="color: var(--error, #ef4444);">Reportar a @${escapeHTML(acctHandle)}</span>`;
+    optReport.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">flag</span> <span style="color: var(--error, #ef4444);">${__('toot_report', 'Reportar')} @${escapeHTML(acctHandle)}</span>`;
     setupMenuBtn(optReport, () => {
         menu.remove();
         activeTootOptionsMenu = null;

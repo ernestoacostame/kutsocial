@@ -1639,6 +1639,19 @@ HTML;
         $token = Router::getBearerToken();
         \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: token received=" . ($token ?: 'null') . " for URI=" . ($_SERVER['REQUEST_URI'] ?? 'unknown'));
         if (!$token) {
+            // Fallback a sesión activa de administrador si existe
+            if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+                @session_start();
+            }
+            if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['admin_account_id'])) {
+                $db = Database::connect();
+                $stmt = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
+                $stmt->execute([(int)$_SESSION['admin_account_id']]);
+                $account = $stmt->fetch();
+                if ($account) {
+                    return $account;
+                }
+            }
             return null;
         }
 
@@ -2979,7 +2992,12 @@ HTML;
                         AND (
                             -- Cuenta normal (sin filtro exclusivo only_replies_to_me)
                             (
-                                s.account_id NOT IN (SELECT target_account_id FROM follows WHERE account_id = ? AND only_replies_to_me = 1)
+                                s.account_id NOT IN (
+                                    SELECT a2.id FROM accounts a2
+                                    JOIN accounts a1 ON (LOWER(a1.username) = LOWER(a2.username) AND LOWER(COALESCE(a1.domain, '')) = LOWER(COALESCE(a2.domain, '')))
+                                    JOIN follows f ON f.target_account_id = a1.id
+                                    WHERE f.account_id = ? AND f.only_replies_to_me = 1
+                                )
                                 AND (
                                     -- Post raíz (no es respuesta)
                                     (s.in_reply_to_id IS NULL AND (s.in_reply_to_account_id IS NULL OR s.in_reply_to_account_id = s.account_id) AND (s.in_reply_to_url IS NULL OR s.in_reply_to_url = ''))
@@ -2997,7 +3015,12 @@ HTML;
                             OR
                             -- Cuenta con filtro exclusivo activado (solo respuestas a mí o menciones a mí)
                             (
-                                s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND only_replies_to_me = 1)
+                                s.account_id IN (
+                                    SELECT a2.id FROM accounts a2
+                                    JOIN accounts a1 ON (LOWER(a1.username) = LOWER(a2.username) AND LOWER(COALESCE(a1.domain, '')) = LOWER(COALESCE(a2.domain, '')))
+                                    JOIN follows f ON f.target_account_id = a1.id
+                                    WHERE f.account_id = ? AND f.only_replies_to_me = 1
+                                )
                                 AND (
                                     s.in_reply_to_account_id = ? 
                                     OR s.content LIKE ? 
@@ -3785,10 +3808,14 @@ HTML;
                 ORDER BY s.id ASC
             ");
             $stmt->execute($queryParams);
-            $newStatuses = $stmt->fetchAll();
+            $fetchedStatuses = $stmt->fetchAll();
+            $newStatuses = self::filterStatuses($fetchedStatuses);
+
+            foreach ($fetchedStatuses as $frow) {
+                $lastId = max($lastId, (int)$frow['status_id']);
+            }
 
             foreach ($newStatuses as $row) {
-                $lastId = max($lastId, (int)$row['status_id']);
                 $statusFormatted = self::formatStatus($row, $currUserId);
                 echo "event: update\n";
                 echo "data: " . json_encode($statusFormatted, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n\n";
@@ -5715,18 +5742,38 @@ HTML;
 
         // Cuentas con filtro 'only_replies_to_me' activado por el usuario actual
         $exclusiveAccountIds = [];
+        $exclusiveHandles = [];
         if ($currUser) {
-            $stmtExcl = $db->prepare("SELECT target_account_id FROM follows WHERE account_id = ? AND only_replies_to_me = 1");
+            $stmtExcl = $db->prepare("
+                SELECT DISTINCT a2.id, LOWER(a2.username) as u, LOWER(COALESCE(a2.domain, '')) as d
+                FROM accounts a2
+                JOIN accounts a1 ON (LOWER(a1.username) = LOWER(a2.username) AND LOWER(COALESCE(a1.domain, '')) = LOWER(COALESCE(a2.domain, '')))
+                JOIN follows f ON f.target_account_id = a1.id
+                WHERE f.account_id = ? AND f.only_replies_to_me = 1
+            ");
             $stmtExcl->execute([$currUser['id']]);
-            $exclusiveAccountIds = array_map('intval', $stmtExcl->fetchAll(\PDO::FETCH_COLUMN));
+            $exclRows = $stmtExcl->fetchAll();
+            foreach ($exclRows as $er) {
+                $exclusiveAccountIds[] = (int)$er['id'];
+                if (!empty($er['d'])) {
+                    $exclusiveHandles[] = $er['u'] . '@' . $er['d'];
+                }
+                $exclusiveHandles[] = $er['u'];
+            }
         }
 
         $filtered = [];
         foreach ($rows as $row) {
             $authorId = (int)($row['account_id'] ?? $row['id'] ?? 0);
+            $authorUser = strtolower($row['username'] ?? '');
+            $authorDom = strtolower($row['domain'] ?? '');
+            $authorHandle = $authorDom ? ($authorUser . '@' . $authorDom) : $authorUser;
+
+            $isExclusiveTarget = (!empty($exclusiveAccountIds) && in_array($authorId, $exclusiveAccountIds, true))
+                || (!empty($exclusiveHandles) && (in_array($authorHandle, $exclusiveHandles, true) || in_array($authorUser, $exclusiveHandles, true)));
 
             // Filtrar cuentas marcadas como exclusivas si no van dirigidas a mí
-            if (!empty($exclusiveAccountIds) && in_array($authorId, $exclusiveAccountIds, true) && $currUser) {
+            if ($isExclusiveTarget && $currUser) {
                 $myUsername = $currUser['username'];
                 $content = $row['status_content'] ?? $row['content'] ?? '';
                 $mentionPattern = '/@' . preg_quote($myUsername, '/') . '(?![a-zA-Z0-9_\-])/i';

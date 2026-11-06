@@ -229,11 +229,18 @@ $renderFrontend = function() {
         $currentLang = I18n::getLang();
         $i18nStrings = json_encode(I18n::getAll(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
+        $currentUserData = json_encode($localUser ? [
+            'id' => (string)$localUser['id'],
+            'username' => $localUser['username'],
+            'display_name' => $localUser['display_name'] ?: $localUser['username']
+        ] : null, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
         $jsGlobals = "
     <script>
         window.KUTSOCIAL_LANG = '{$currentLang}';
         window.KUTSOCIAL_I18N = {$i18nStrings};
         window.KUTSOCIAL_VERSION = '{$version}';
+        window.KUTSOCIAL_CURRENT_USER = {$currentUserData};
         window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
         window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
         window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
@@ -468,12 +475,19 @@ $renderPagesFrontend = function() {
         $currentLang = I18n::getLang();
         $i18nStrings = json_encode(I18n::getAll(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
+        $currentUserData = json_encode($localUser ? [
+            'id' => (string)$localUser['id'],
+            'username' => $localUser['username'],
+            'display_name' => $localUser['display_name'] ?: $localUser['username']
+        ] : null, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
         $jsGlobals = "
     <script>
         window.KUTSOCIAL_BASE_PATH = '{$basePath}';
         window.KUTSOCIAL_LANG = '{$currentLang}';
         window.KUTSOCIAL_I18N = {$i18nStrings};
         window.KUTSOCIAL_VERSION = '{$version}';
+        window.KUTSOCIAL_CURRENT_USER = {$currentUserData};
         window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
         window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
         window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
