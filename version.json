@@ -1,6 +1,5 @@
 {
-  "version": "2.0.71",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.71/kutsocial-v2.0.71.zip",
-  "changelog": "Se pueden seleccionar que elementos mostrar en el sidebar
-"
+  "version": "2.0.72",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.72/kutsocial-v2.0.72.zip",
+  "changelog": "Diseño adaptativo del sidebar con mayor separación entre elementos y respecto al logo para resoluciones 1440p y superiores"
 }
