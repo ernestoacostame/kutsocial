@@ -1,5 +1,6 @@
 {
-  "version": "2.0.72",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.72/kutsocial-v2.0.72.zip",
-  "changelog": "Diseño adaptativo del sidebar con mayor separación entre elementos y respecto al logo para resoluciones 1440p y superiores"
+  "version": "2.0.73",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.73/kutsocial-v2.0.73.zip",
+  "changelog": "Ajustes en el diseño según resolución
+"
 }
