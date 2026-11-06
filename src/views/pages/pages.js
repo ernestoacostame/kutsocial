@@ -1646,6 +1646,20 @@ function handleComposerKeydown(e) {
         return;
     }
 
+    if (e.key === 'Escape') {
+        const dropdown = document.getElementById('composer-autocomplete');
+        if (dropdown && dropdown.style.display !== 'none') {
+            e.preventDefault();
+            closeAutocompleteDropdown();
+            return;
+        }
+        if (isComposerZenActive()) {
+            e.preventDefault();
+            toggleComposerZen(false);
+            return;
+        }
+    }
+
     const dropdown = document.getElementById('composer-autocomplete');
     if (!dropdown || dropdown.style.display === 'none') return;
     
@@ -1893,27 +1907,128 @@ function switchTimeline(type, fromHashChange = false) {
     }
 }
 
+function isComposerZenActive() {
+    return document.body.classList.contains('composer-zen-active') || !!document.querySelector('.composer-card.zen-mode');
+}
+
+function updateZenStats() {
+    const textarea = document.getElementById('composer-text');
+    const statsEl = document.getElementById('composer-zen-stats');
+    if (!textarea || !statsEl) return;
+
+    const text = textarea.value;
+    const charsRemaining = maxTootChars - text.length;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const wordLabel = words === 1 ? __('word', 'palabra') : __('words', 'palabras');
+    const charsLabel = __('chars_remaining', 'restantes');
+
+    statsEl.textContent = `${words} ${wordLabel} · ${charsRemaining} ${charsLabel}`;
+    if (charsRemaining < 0) {
+        statsEl.style.color = 'var(--error, #ef4444)';
+    } else if (charsRemaining < 50) {
+        statsEl.style.color = 'var(--warning, #f59e0b)';
+    } else {
+        statsEl.style.color = 'var(--text-muted, #94a3b8)';
+    }
+}
+
+function toggleComposerZen(forceState) {
+    const card = document.querySelector('.composer-card.zen-mode') 
+        || (document.getElementById('modal-composer') && document.getElementById('modal-composer').style.display !== 'none' 
+            ? document.querySelector('#modal-composer .composer-card') 
+            : null)
+        || document.querySelector('#tab-feed > .composer-card') 
+        || document.querySelector('.composer-card');
+    if (!card) return;
+
+    const isZen = (typeof forceState === 'boolean') ? !forceState : card.classList.contains('zen-mode');
+
+    if (!isZen) {
+        card.classList.add('zen-mode');
+        document.body.classList.add('composer-zen-active');
+
+        const modalComposer = document.getElementById('modal-composer');
+        if (modalComposer && modalComposer.style.display !== 'none') {
+            modalComposer.classList.add('zen-active');
+        }
+
+        const icon = document.getElementById('composer-zen-icon');
+        if (icon) icon.textContent = 'close_fullscreen';
+        const btn = document.getElementById('composer-zen-btn');
+        if (btn) {
+            btn.classList.add('active');
+            btn.title = __('composer_exit_distraction_free', 'Salir del modo sin distracción');
+        }
+
+        const textarea = document.getElementById('composer-text');
+        if (textarea) {
+            textarea.focus();
+        }
+        updateZenStats();
+    } else {
+        card.classList.remove('zen-mode');
+        document.body.classList.remove('composer-zen-active');
+
+        const modalComposer = document.getElementById('modal-composer');
+        if (modalComposer) {
+            modalComposer.classList.remove('zen-active');
+        }
+
+        const icon = document.getElementById('composer-zen-icon');
+        if (icon) icon.textContent = 'open_in_full';
+        const btn = document.getElementById('composer-zen-btn');
+        if (btn) {
+            btn.classList.remove('active');
+            btn.title = __('composer_distraction_free', 'Modo sin distracción');
+        }
+
+        updateCharCount();
+
+        const textarea = document.getElementById('composer-text');
+        if (textarea) {
+            textarea.focus();
+        }
+    }
+}
+
 function updateCharCount() {
     const textarea = document.getElementById('composer-text');
     if (textarea) {
         const text = textarea.value;
-        document.getElementById('char-count').innerText = maxTootChars - text.length;
-
-        // Auto-grow textarea up to twice its height (180px), then scroll
-        textarea.style.height = '90px';
-        const scrollHeight = textarea.scrollHeight;
-        const maxHeight = 180;
-        if (scrollHeight > 90) {
-            if (scrollHeight > maxHeight) {
-                textarea.style.height = maxHeight + 'px';
-                textarea.style.overflowY = 'auto';
+        const charCount = document.getElementById('char-count');
+        const charsRemaining = maxTootChars - text.length;
+        if (charCount) {
+            charCount.innerText = charsRemaining;
+            if (charsRemaining < 0) {
+                charCount.style.color = 'var(--error, #ef4444)';
+            } else if (charsRemaining < 50) {
+                charCount.style.color = 'var(--warning, #f59e0b)';
             } else {
-                textarea.style.height = scrollHeight + 'px';
+                charCount.style.color = '';
+            }
+        }
+
+        if (isComposerZenActive()) {
+            updateZenStats();
+            textarea.style.height = '';
+            textarea.style.overflowY = 'auto';
+        } else {
+            // Auto-grow textarea up to twice its height (180px), then scroll
+            textarea.style.height = '90px';
+            const scrollHeight = textarea.scrollHeight;
+            const maxHeight = 180;
+            if (scrollHeight > 90) {
+                if (scrollHeight > maxHeight) {
+                    textarea.style.height = maxHeight + 'px';
+                    textarea.style.overflowY = 'auto';
+                } else {
+                    textarea.style.height = scrollHeight + 'px';
+                    textarea.style.overflowY = 'hidden';
+                }
+            } else {
+                textarea.style.height = '90px';
                 textarea.style.overflowY = 'hidden';
             }
-        } else {
-            textarea.style.height = '90px';
-            textarea.style.overflowY = 'hidden';
         }
 
         // Sincronizar estado visual de los chips si estamos en modo respuesta
@@ -5199,6 +5314,9 @@ function closeComposerModal() {
 }
 
 function cancelComposerContext() {
+    if (isComposerZenActive()) {
+        toggleComposerZen(false);
+    }
     replyToId = null;
     editTootId = null;
     quoteTootId = null;
@@ -6580,9 +6698,13 @@ function closeImageViewerModal(event) {
     }
 }
 
-// Cerrar visor con la tecla Escape
+// Cerrar visor o salir de modo sin distracción con la tecla Escape
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
+        if (isComposerZenActive()) {
+            toggleComposerZen(false);
+            return;
+        }
         const modal = document.getElementById('modal-image-viewer');
         if (modal && modal.style.display === 'flex') {
             closeImageViewerModal();

@@ -78,6 +78,11 @@ return [
     'composer_poll' => 'Crear encuesta',
     'composer_cw' => 'Advertencia de contenido (CW)',
     'composer_warning_missing_alt' => 'Hay imágenes sin texto alternativo. ¿Deseas publicar de todos modos?',
+    'composer_distraction_free' => 'Modo sin distracción',
+    'composer_exit_distraction_free' => 'Salir del modo sin distracción',
+    'word' => 'palabra',
+    'words' => 'palabras',
+    'chars_remaining' => 'restantes',
 
     // Feed & Toots
     'feed_empty' => 'No hay publicaciones para mostrar aún.',

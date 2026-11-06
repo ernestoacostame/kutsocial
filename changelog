@@ -1,3 +1,15 @@
+# Versión 2.0.68: Modo de escritura sin distracción (Zen Mode) en el editor
+
+1. Modo de escritura sin distracción (Pantalla completa / Zen Mode):
+  * **Nuevo botón en la barra del editor:** Se incorporó el botón "Modo sin distracción" (`open_in_full` / `close_fullscreen`) en la barra de herramientas del compositor de publicaciones y respuestas.
+  * **Entorno enfocado y espacioso:** Al activarse, el editor se expande a pantalla completa con fondo desenfocado oscuro (`backdrop-filter: blur(28px)`), eliminando todas las distracciones de la interfaz (barras laterales, navegación, feed).
+  * **Tipografía y área de texto ampliada:** El área de redacción crece verticalmente y adopta una tipografía generosa (19px, interlineado 1.68) ideal para escribir textos largos, hilos o artículos extensos cómodamente.
+  * **Contador en tiempo real de palabras y caracteres:** La barra superior del modo zen muestra el número de palabras redactadas y los caracteres restantes dinámicamente.
+  * **Navegación ágil por teclado:** Se puede salir del modo sin distracción en cualquier momento presionando la tecla <kbd>Esc</kbd> o pulsando el botón de salida, conservando intacto todo el contenido escrito, las menciones, advertencias de contenido (CW), encuestas y adjuntos.
+  * **Compatibilidad completa:** Funciona tanto en el compositor principal del feed como en la ventana modal de respuesta rápida, adaptándose fluidamente a dispositivos móviles y de escritorio.
+
+---
+
 # Versión 2.0.55: Filtro de hashtags y refinamiento visual de participantes en respuestas
 
 1. Exclusión estricta de hashtags en participantes de respuesta:

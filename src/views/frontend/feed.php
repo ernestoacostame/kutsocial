@@ -1,6 +1,21 @@
 <div id="tab-feed">
     <!-- Composer para publicar -->
     <div class="composer-card">
+        <!-- Barra superior para Modo sin distracción (Zen Mode) -->
+        <div class="composer-zen-topbar" style="display: none;">
+            <div class="composer-zen-title">
+                <span class="material-icons-outlined" style="font-size: 20px; color: var(--primary);">edit_note</span>
+                <span style="font-weight: 600; font-size: 15px;"><?= __('composer_distraction_free') ?></span>
+                <span class="composer-zen-badge">ESC</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span id="composer-zen-stats" style="font-size: 13px; color: var(--text-muted);"></span>
+                <button type="button" class="composer-tool-btn composer-zen-close-btn" onclick="toggleComposerZen()" title="<?= __('composer_exit_distraction_free') ?>" style="width: 32px; height: 32px;">
+                    <span class="material-icons-outlined" style="font-size: 20px;">close_fullscreen</span>
+                </button>
+            </div>
+        </div>
+
         <!-- Contexto: Respuesta / Edición -->
         <div id="composer-context" class="composer-context-bar" style="display: none;">
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
@@ -99,6 +114,10 @@
                     </select>
                     <span class="material-icons-outlined">translate</span>
                 </div>
+                <!-- Botón Modo Sin Distracción -->
+                <button type="button" id="composer-zen-btn" class="composer-tool-btn" onclick="toggleComposerZen()" title="<?= __('composer_distraction_free') ?>">
+                    <span class="material-icons-outlined" id="composer-zen-icon">open_in_full</span>
+                </button>
             </div>
             <div style="display: flex; align-items: center; gap: 12px;">
                 <span id="char-count" class="char-counter">500</span>

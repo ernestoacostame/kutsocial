@@ -78,6 +78,11 @@ return [
     'composer_poll' => 'Create poll',
     'composer_cw' => 'Content warning (CW)',
     'composer_warning_missing_alt' => 'Some images are missing alternative text. Do you want to post anyway?',
+    'composer_distraction_free' => 'Distraction-free mode',
+    'composer_exit_distraction_free' => 'Exit distraction-free mode',
+    'word' => 'word',
+    'words' => 'words',
+    'chars_remaining' => 'remaining',
 
     // Feed & Toots
     'feed_empty' => 'No posts to display yet.',
