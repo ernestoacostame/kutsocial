@@ -2142,6 +2142,31 @@ async function loadNotifications() {
             return;
         }
         list.innerHTML = '';
+
+        // Sincronizar lectura con Markers API (Mona, Ivory, etc.) y ocultar badge
+        if (Array.isArray(data) && data.length > 0) {
+            const latestNotifId = data[0].id;
+            try {
+                fetch('/api/v1/markers', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        notifications: {
+                            last_read_id: String(latestNotifId)
+                        }
+                    })
+                }).catch(() => {});
+            } catch (e) {}
+
+            const badge = document.getElementById('nav-notifications-count');
+            if (badge) {
+                badge.innerText = '0';
+                badge.style.display = 'none';
+            }
+        }
         
         // 3. Renderizar solicitudes de seguimiento pendientes en la parte superior
         followRequests.forEach(req => {

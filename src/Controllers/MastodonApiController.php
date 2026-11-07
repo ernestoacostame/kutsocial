@@ -1205,6 +1205,32 @@ HTML;
 
         $readAt = !empty($account['notifications_read_at']) ? strtotime($account['notifications_read_at']) : 0;
 
+        // Comprobar también el marcador sincronizado (Mona, Ivory, etc.)
+        $markerLastReadId = null;
+        $markerUpdatedAt = 0;
+        try {
+            $stmtMarker = $db->prepare("SELECT last_read_id, updated_at FROM markers WHERE account_id = ? AND timeline = 'notifications' LIMIT 1");
+            $stmtMarker->execute([$currUserId]);
+            $markerRow = $stmtMarker->fetch();
+            if ($markerRow) {
+                $markerLastReadId = (string)$markerRow['last_read_id'];
+                $markerUpdatedAt = !empty($markerRow['updated_at']) ? strtotime($markerRow['updated_at']) : 0;
+            }
+        } catch (\Throwable $e) {}
+
+        // Encontrar la fecha asociada al marcador last_read_id si existe
+        $markerTargetTime = 0;
+        if (!empty($markerLastReadId)) {
+            foreach ($notifications as $n) {
+                if ((string)$n['id'] === $markerLastReadId) {
+                    $markerTargetTime = strtotime($n['created_at']);
+                    break;
+                }
+            }
+        }
+
+        $effectiveReadTime = max($readAt, $markerUpdatedAt, $markerTargetTime);
+
         // Lógica de fallback para tipos no soportados
         $filtered = [];
         foreach ($notifications as $notification) {
@@ -1212,7 +1238,7 @@ HTML;
                 $notification['type'] = 'mention'; // Fallback a mención genérica
             }
             $createdTime = strtotime($notification['created_at']);
-            $notification['read'] = ($createdTime <= $readAt);
+            $notification['read'] = ($createdTime <= $effectiveReadTime);
             $filtered[] = $notification;
         }
 
@@ -1442,10 +1468,69 @@ HTML;
         }
 
         $db = Database::connect();
+        $currUserId = (int)$account['id'];
         $stmt = $db->prepare("UPDATE accounts SET notifications_read_at = datetime('now') WHERE id = ?");
-        $stmt->execute([$account['id']]);
+        $stmt->execute([$currUserId]);
+
+        // Sincronizar también con la tabla markers para apps como Mona, Ivory, Ice Cubes
+        try {
+            $latestId = self::fetchLatestNotificationId($db, $currUserId, $account['username']);
+            $db->exec("CREATE TABLE IF NOT EXISTS markers (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                timeline TEXT NOT NULL,
+                last_read_id TEXT NOT NULL,
+                version INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(account_id, timeline)
+            )");
+            $stmtM = $db->prepare("
+                INSERT INTO markers (account_id, timeline, last_read_id, updated_at)
+                VALUES (?, 'notifications', ?, datetime('now'))
+                ON CONFLICT(account_id, timeline) DO UPDATE SET
+                    last_read_id = excluded.last_read_id,
+                    version = version + 1,
+                    updated_at = datetime('now')
+            ");
+            $stmtM->execute([$currUserId, $latestId]);
+        } catch (\Throwable $e) {}
 
         Router::json([]);
+    }
+
+    /**
+     * Helper para obtener el ID de la notificación más reciente
+     */
+    private static function fetchLatestNotificationId(\PDO $db, int $userId, string $username): string {
+        $candidates = [];
+        try {
+            $r = $db->query("SELECT ('follow_' || id) as nid, created_at FROM follows WHERE target_account_id = $userId ORDER BY id DESC LIMIT 1")->fetch();
+            if ($r) $candidates[] = $r;
+        } catch (\Throwable $e) {}
+        try {
+            $r = $db->query("SELECT ('favourite_' || fav.id) as nid, fav.created_at FROM favourites fav JOIN statuses s ON fav.status_id = s.id WHERE s.account_id = $userId ORDER BY fav.id DESC LIMIT 1")->fetch();
+            if ($r) $candidates[] = $r;
+        } catch (\Throwable $e) {}
+        try {
+            $stmt = $db->prepare("SELECT ('mention_' || s.id) as nid, s.created_at FROM statuses s WHERE s.account_id != ? AND (s.content LIKE ? OR s.in_reply_to_id IN (SELECT id FROM statuses WHERE account_id = ?)) ORDER BY s.id DESC LIMIT 1");
+            $stmt->execute([$userId, "%@$username%", $userId]);
+            $r = $stmt->fetch();
+            if ($r) $candidates[] = $r;
+        } catch (\Throwable $e) {}
+        try {
+            $r = $db->query("SELECT ('reblog_' || s.id) as nid, s.created_at FROM statuses s JOIN statuses orig ON s.reblog_of_id = orig.id WHERE orig.account_id = $userId AND s.content = '' ORDER BY s.id DESC LIMIT 1")->fetch();
+            if ($r) $candidates[] = $r;
+        } catch (\Throwable $e) {}
+
+        if (empty($candidates)) {
+            return '0';
+        }
+
+        usort($candidates, function($a, $b) {
+            return strcmp($b['created_at'], $a['created_at']);
+        });
+
+        return (string)$candidates[0]['nid'];
     }
 
     /**
@@ -1458,7 +1543,47 @@ HTML;
             return;
         }
 
-        Router::json(['count' => 0]);
+        $db = Database::connect();
+        $currUserId = (int)$account['id'];
+        $readAt = !empty($account['notifications_read_at']) ? strtotime($account['notifications_read_at']) : 0;
+
+        $markerUpdatedAt = 0;
+        try {
+            $stmtMarker = $db->prepare("SELECT updated_at FROM markers WHERE account_id = ? AND timeline = 'notifications' LIMIT 1");
+            $stmtMarker->execute([$currUserId]);
+            $row = $stmtMarker->fetch();
+            if ($row && !empty($row['updated_at'])) {
+                $markerUpdatedAt = strtotime($row['updated_at']);
+            }
+        } catch (\Throwable $e) {}
+
+        $effectiveReadTime = max($readAt, $markerUpdatedAt);
+        $readDateStr = date('Y-m-d H:i:s', $effectiveReadTime);
+
+        $count = 0;
+        try {
+            // Follows
+            $stmt = $db->prepare("SELECT COUNT(*) FROM follows f WHERE f.target_account_id = ? AND f.created_at > ? AND ('follow_' || f.id) NOT IN (SELECT notification_id FROM dismissed_notifications WHERE account_id = ?)");
+            $stmt->execute([$currUserId, $readDateStr, $currUserId]);
+            $count += (int)$stmt->fetchColumn();
+
+            // Favourites
+            $stmt = $db->prepare("SELECT COUNT(*) FROM favourites fav JOIN statuses s ON fav.status_id = s.id WHERE s.account_id = ? AND fav.created_at > ? AND ('favourite_' || fav.id) NOT IN (SELECT notification_id FROM dismissed_notifications WHERE account_id = ?)");
+            $stmt->execute([$currUserId, $readDateStr, $currUserId]);
+            $count += (int)$stmt->fetchColumn();
+
+            // Mentions
+            $stmt = $db->prepare("SELECT COUNT(*) FROM statuses s WHERE s.account_id != ? AND s.created_at > ? AND (s.content LIKE ? OR s.in_reply_to_id IN (SELECT id FROM statuses WHERE account_id = ?)) AND ('mention_' || s.id) NOT IN (SELECT notification_id FROM dismissed_notifications WHERE account_id = ?)");
+            $stmt->execute([$currUserId, $readDateStr, '%@' . $account['username'] . '%', $currUserId, $currUserId]);
+            $count += (int)$stmt->fetchColumn();
+
+            // Reblogs
+            $stmt = $db->prepare("SELECT COUNT(*) FROM statuses s JOIN statuses orig ON s.reblog_of_id = orig.id WHERE orig.account_id = ? AND s.content = '' AND s.created_at > ? AND ('reblog_' || s.id) NOT IN (SELECT notification_id FROM dismissed_notifications WHERE account_id = ?)");
+            $stmt->execute([$currUserId, $readDateStr, $currUserId]);
+            $count += (int)$stmt->fetchColumn();
+        } catch (\Throwable $e) {}
+
+        Router::json(['count' => $count]);
     }
 
     /**
@@ -1576,6 +1701,12 @@ HTML;
                         updated_at = datetime('now')
                 ");
                 $stmt->execute([$account['id'], $tl, $lastReadId]);
+
+                if ($tl === 'notifications') {
+                    try {
+                        $db->prepare("UPDATE accounts SET notifications_read_at = datetime('now') WHERE id = ?")->execute([$account['id']]);
+                    } catch (\Throwable $e) {}
+                }
 
                 $stmtFetch = $db->prepare("SELECT last_read_id, version, updated_at FROM markers WHERE account_id = ? AND timeline = ? LIMIT 1");
                 $stmtFetch->execute([$account['id'], $tl]);
