@@ -1,5 +1,5 @@
 <?php
-namespace KutSocial;
+namespace KutSocial {
 
 class I18n {
     private static ?string $currentLang = null;
@@ -112,9 +112,13 @@ class I18n {
     /**
      * Translate key with optional parameter replacements.
      */
-    public static function t(string $key, string $fallback = '', array $replace = []): string {
+    public static function t(string $key, $fallback = '', array $replace = []): string {
+        if (is_array($fallback)) {
+            $replace = $fallback;
+            $fallback = '';
+        }
         $strings = self::loadStrings();
-        $text = $strings[$key] ?? ($fallback !== '' ? $fallback : $key);
+        $text = $strings[$key] ?? ((string)$fallback !== '' ? (string)$fallback : $key);
 
         if (!empty($replace)) {
             foreach ($replace as $k => $v) {
@@ -132,17 +136,28 @@ class I18n {
         return self::loadStrings();
     }
 }
-
-// Global functions for convenience in templates:
-if (!function_exists('__')) {
-    function __(string $key, string $fallback = '', array $replace = []): string {
-        return htmlspecialchars(\KutSocial\I18n::t($key, $fallback, $replace), ENT_QUOTES, 'UTF-8');
-    }
 }
 
-if (!function_exists('__raw')) {
-    function __raw(string $key, string $fallback = '', array $replace = []): string {
-        return \KutSocial\I18n::t($key, $fallback, $replace);
+namespace {
+    // Global functions for convenience in templates:
+    if (!function_exists('__')) {
+        function __(string $key, $fallback = '', array $replace = []): string {
+            if (is_array($fallback)) {
+                $replace = $fallback;
+                $fallback = '';
+            }
+            return htmlspecialchars(\KutSocial\I18n::t($key, $fallback, $replace), ENT_QUOTES, 'UTF-8');
+        }
+    }
+
+    if (!function_exists('__raw')) {
+        function __raw(string $key, $fallback = '', array $replace = []): string {
+            if (is_array($fallback)) {
+                $replace = $fallback;
+                $fallback = '';
+            }
+            return \KutSocial\I18n::t($key, $fallback, $replace);
+        }
     }
 }
 

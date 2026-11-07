@@ -55,9 +55,9 @@
                     <span class="material-icons-outlined">rocket_launch</span>
                 </div>
                 <div class="update-banner-body">
-                    <div class="update-banner-title"><?= __('admin_update_available_title') ?></div>
+                    <div class="update-banner-title"><?= __('admin_update_available_title', '¡Nueva versión disponible!') ?></div>
                     <div class="update-banner-desc">
-                        <?= __('admin_update_available_desc', [
+                        <?= __raw('admin_update_available_desc', 'Hay una nueva versión de KutSocial (:version). Actualmente tienes instalada la v:current.', [
                             'version' => '<strong id="kutsocial-update-ver-label">v' . htmlspecialchars($availableVersion) . '</strong>',
                             'current' => htmlspecialchars($currentVersion)
                         ]) ?>

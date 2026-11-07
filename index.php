@@ -54,19 +54,27 @@ if (file_exists(__DIR__ . '/src/I18n.php')) {
 
 // Funciones globales seguras de fallback si I18n no se ha podido cargar
 if (!function_exists('__')) {
-    function __(string $key, string $fallback = '', array $replace = []): string {
+    function __(string $key, $fallback = '', array $replace = []): string {
+        if (is_array($fallback)) {
+            $replace = $fallback;
+            $fallback = '';
+        }
         if (class_exists('\\KutSocial\\I18n')) {
             return htmlspecialchars(\KutSocial\I18n::t($key, $fallback, $replace), ENT_QUOTES, 'UTF-8');
         }
-        return htmlspecialchars($fallback !== '' ? $fallback : $key, ENT_QUOTES, 'UTF-8');
+        return htmlspecialchars((string)$fallback !== '' ? (string)$fallback : $key, ENT_QUOTES, 'UTF-8');
     }
 }
 if (!function_exists('__raw')) {
-    function __raw(string $key, string $fallback = '', array $replace = []): string {
+    function __raw(string $key, $fallback = '', array $replace = []): string {
+        if (is_array($fallback)) {
+            $replace = $fallback;
+            $fallback = '';
+        }
         if (class_exists('\\KutSocial\\I18n')) {
             return \KutSocial\I18n::t($key, $fallback, $replace);
         }
-        return $fallback !== '' ? $fallback : $key;
+        return (string)$fallback !== '' ? (string)$fallback : $key;
     }
 }
 
