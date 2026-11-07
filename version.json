@@ -1,5 +1,6 @@
 {
-  "version": "2.0.74",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.74/kutsocial-v2.0.74.zip",
-  "changelog": "Sincronización bidireccional de notificaciones leídas mediante Mastodon Markers API con clientes como Mona e Ivory"
+  "version": "2.0.75",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.75/kutsocial-v2.0.75.zip",
+  "changelog": "Sincronización de notificaciones entre apps en KutSocial
+"
 }
