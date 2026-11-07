@@ -507,6 +507,18 @@ class AdminController {
         $errorMsg = $_SESSION['admin_error_msg'] ?? '';
         unset($_SESSION['admin_error_msg']);
 
+        // Detección de actualización disponible para notificación y badge
+        $updateCache = $updater->getCached();
+        $isUpdateAvailable = false;
+        $availableVersion = '';
+        if ($updateCache && !empty($updateCache['available']) && !empty($updateCache['new_version'])) {
+            if (version_compare($updateCache['new_version'], $currentVersion, '>')) {
+                $isUpdateAvailable = true;
+                $availableVersion = $updateCache['new_version'];
+            }
+        }
+        $checkUpdateAsync = $updater->isCacheStale();
+
         // Incluir la vista de la plantilla
         include __DIR__ . '/../views/admin/layout.php';
     }

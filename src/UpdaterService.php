@@ -52,6 +52,37 @@ class UpdaterService {
     }
 
     /**
+     * Devuelve los datos en caché del último chequeo o null si no existe
+     */
+    public function getCached(): ?array {
+        try {
+            $db = Database::connect();
+            $stmt = $db->prepare("SELECT value FROM options WHERE key = 'update_cache' LIMIT 1");
+            $stmt->execute();
+            $json = $stmt->fetchColumn();
+            return $json ? (json_decode($json, true) ?: null) : null;
+        } catch (Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Comprueba si la caché tiene más de 6 horas
+     */
+    public function isCacheStale(): bool {
+        try {
+            $db = Database::connect();
+            $stmt = $db->prepare("SELECT value FROM options WHERE key = 'update_cache_at' LIMIT 1");
+            $stmt->execute();
+            $val = $stmt->fetchColumn();
+            if ($val === false || $val === null || $val === '') return true;
+            return (time() - (int)$val) > 21600; // 6 horas
+        } catch (Throwable $e) {
+            return true;
+        }
+    }
+
+    /**
      * Consulta la versión disponible (KutStudio Update Server o GitHub directo si hay token)
      */
     public function checkVersion(): array {

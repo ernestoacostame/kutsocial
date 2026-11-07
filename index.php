@@ -824,6 +824,7 @@ $router->post('/admin/users/delete', [AdminController::class, 'deleteUser']);
 $router->post('/admin/users/role', [AdminController::class, 'changeUserRole']);
 $router->post('/admin/maintenance/clean', [AdminController::class, 'runMaintenanceClean']);
 $router->post('/admin/update/action', [AdminController::class, 'handleUpdateAction']);
+$router->get('/admin/update/action', [AdminController::class, 'handleUpdateAction']);
 
 // Redirigir la antigua ruta del actualizador al dashboard
 $router->get('/admin/update', function() {
