@@ -269,6 +269,8 @@ class AdminController {
         $btnVerify = htmlspecialchars(I18n::t('verify'));
         $btnCancel = htmlspecialchars(I18n::t('cancel'));
         $langCode = I18n::getLang();
+        $btnEsBg = ($langCode === 'es') ? 'var(--primary)' : 'transparent';
+        $btnEnBg = ($langCode === 'en') ? 'var(--primary)' : 'transparent';
 
         $html = <<<HTML
         <!DOCTYPE html>

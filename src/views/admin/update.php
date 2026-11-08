@@ -1,3 +1,13 @@
+<?php
+$updaterService = new \KutSocial\UpdaterService();
+$ks_update_cache = $updaterService->getCached();
+$hasAvailableUpdate = false;
+if ($ks_update_cache && !empty($ks_update_cache['available']) && !empty($ks_update_cache['new_version'])) {
+    if (version_compare($ks_update_cache['new_version'], \KutSocial\Database::getVersion(), '>')) {
+        $hasAvailableUpdate = true;
+    }
+}
+?>
 <h3><?= __('admin_update_title') ?></h3>
 <p class="help-text" style="margin-bottom: 25px;"><?= __('admin_update_desc') ?></p>
 
@@ -103,7 +113,24 @@
 </div>
 
 <script>
-    let _updateData = null;
+    let _updateData = <?= $hasAvailableUpdate ? json_encode($ks_update_cache) : 'null' ?>;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        if (_updateData && _updateData.available) {
+            const status = document.getElementById('update-status');
+            const available = document.getElementById('update-available');
+            if (status) status.style.display = 'none';
+            if (available) available.style.display = 'block';
+            document.getElementById('update-version-label').textContent = '🎉 ' + (_updateData.tag || _updateData.new_version) + ' - ' + adminI18n.newVersionTpl;
+            document.getElementById('update-date-label').textContent = adminI18n.publishedAt + ' ' + _updateData.published_at;
+            document.getElementById('update-changelog-body').textContent = _updateData.changelog;
+        } else {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('check') === '1' || urlParams.get('auto') === '1') {
+                kpUpdateCheck();
+            }
+        }
+    });
     const adminI18n = {
         checking: <?= json_encode(__('admin_update_checking')) ?>,
         consulting: <?= json_encode(__('admin_update_consulting')) ?>,
