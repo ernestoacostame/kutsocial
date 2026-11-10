@@ -1,3 +1,7 @@
+<img width="2249" height="1371" alt="kutsocial_front" src="https://github.com/user-attachments/assets/d3d1f66f-6d69-4711-affe-e6d3a05ea5db" />
+<img width="2249" height="1371" alt="kutsocial_admin" src="https://github.com/user-attachments/assets/28a32e98-a165-4326-a87b-31a515c95355" />
+
+
 # 🚀 KutSocial
 
 <p align="center">
