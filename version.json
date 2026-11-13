@@ -1,5 +1,5 @@
 {
-  "version": "2.0.78",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.78/kutsocial-v2.0.78.zip",
-  "changelog": "Sincronización de notificaciones entre apps en KutSocial"
+  "version": "2.0.79",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.79/kutsocial-v2.0.79.zip",
+  "changelog": "### Mejoras y Correcciones\n- Restringida la navegación al perfil del usuario estrictamente al avatar y al nombre/handle en la cabecera del toot.\n- Los clics en cualquier parte libre de la tarjeta (incluyendo la franja lateral bajo el avatar y el cuerpo) ahora abren el hilo de la publicación.\n- Optimización de layout y enlaces interactivos en las publicaciones."
 }
