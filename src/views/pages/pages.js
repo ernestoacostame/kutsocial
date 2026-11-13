@@ -1186,15 +1186,15 @@ function createThreadTootElement(toot, isMain = false) {
     card.innerHTML = `
         ${reblogHeaderHTML}
         <div class="toot-card-body">
-            <a href="${authorProfileHref}" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" title="Ver perfil de @${toot.account.acct}"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
+            <a href="${authorProfileHref}" class="toot-avatar-link clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" title="Ver perfil de @${toot.account.acct}"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
             <div style="flex-grow: 1; min-width: 0;">
                 <div class="toot-header">
-                    <div class="toot-author-details">
-                        <span class="toot-author-name clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewTootThread('${toot.id}')" style="cursor: pointer;">${displayNameHTML}</span>
-                        <a href="${authorProfileHref}" class="toot-author-handle clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')">@${toot.account.acct}</a>
+                    <a href="${authorProfileHref}" class="toot-author-details clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" style="text-decoration: none; color: inherit;">
+                        <span class="toot-author-name">${displayNameHTML}</span>
+                        <span class="toot-author-handle">@${toot.account.acct}</span>
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
-                    </div>
+                    </a>
                     <a href="${tootStatusHref}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewTootThread('${toot.id}')" title="${absoluteDateStr}">${relativeDateStr}</a>
                 </div>
                 ${contentHTML}

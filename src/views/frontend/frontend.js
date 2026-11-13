@@ -1157,7 +1157,7 @@ function createThreadTootElement(toot, isMain = false) {
     card.innerHTML = `
         ${reblogHeaderHTML}
         <div class="toot-card-body">
-            <a href="/@${toot.account.acct}" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
+            <a href="/@${toot.account.acct}" class="toot-avatar-link clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" title="Ver perfil de @${toot.account.acct}"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
             <div style="flex-grow: 1; min-width: 0;">
                 <div class="toot-header">
                     <a href="/@${toot.account.acct}" class="toot-author-details clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" style="text-decoration: none; color: inherit;">

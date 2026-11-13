@@ -616,8 +616,18 @@ button:hover {
 }
 .toot-card-body {
     display: flex;
+    align-items: flex-start;
     gap: 16px;
     width: 100%;
+}
+
+.toot-avatar-link {
+    display: inline-block;
+    align-self: flex-start;
+    flex-shrink: 0;
+    line-height: 0;
+    width: fit-content;
+    height: fit-content;
 }
 
 @keyframes slideIn {
@@ -629,6 +639,7 @@ button:hover {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 12px;
     margin-bottom: 8px;
 }
 
@@ -638,6 +649,7 @@ button:hover {
     flex-wrap: wrap;
     gap: 4px 10px;
     min-width: 0;
+    flex-grow: 0;
 }
 
 .toot-author-name {
