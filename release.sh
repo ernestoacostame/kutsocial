@@ -74,8 +74,15 @@ if [[ -f "$VERSION_JSON" ]]; then
   sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW\"/" "$VERSION_JSON"
   sed -i "s|\"zip_url\": \"[^\"]*\"|\"zip_url\": \"https://github.com/ernestoacostame/kutsocial/releases/download/v$NEW/kutsocial-v$NEW.zip\"|" "$VERSION_JSON"
   if [[ -n "$NOTES" ]]; then
-    ESCAPED_NOTES=$(echo "$NOTES" | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
-    sed -i "s/\"changelog\": \"[^\"]*\"/\"changelog\": \"$ESCAPED_NOTES\"/" "$VERSION_JSON"
+    python3 -c "
+import json, sys
+p = sys.argv[1]
+with open(p, 'r') as f:
+    d = json.load(f)
+d['changelog'] = sys.argv[2]
+with open(p, 'w') as f:
+    json.dump(d, f, indent=2, ensure_ascii=False)
+" "$VERSION_JSON" "$NOTES"
   fi
 fi
 
