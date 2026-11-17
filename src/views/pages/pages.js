@@ -2828,10 +2828,10 @@ async function loadProfileFormValues() {
             const fver = document.getElementById(`field-verified-${idx}`);
             if (fver) {
                 if (f.verified_at) {
-                    fver.innerText = '✓ Verificado';
+                    fver.innerText = __('profile_verified_badge', '✓ Verificado');
                     fver.style.color = 'var(--secondary)';
                 } else {
-                    fver.innerText = 'No verificado';
+                    fver.innerText = __('profile_not_verified_badge', 'No verificado');
                     fver.style.color = 'var(--text-muted)';
                 }
             }
@@ -2918,10 +2918,10 @@ async function openEditProfileModal() {
                 }
                 if (fVer) {
                     if (f.verified_at) {
-                        fVer.innerText = '✓ Verificado';
+                        fVer.innerText = __('profile_verified_badge', '✓ Verificado');
                         fVer.style.color = 'var(--secondary)';
                     } else {
-                        fVer.innerText = 'No verificado';
+                        fVer.innerText = __('profile_not_verified_badge', 'No verificado');
                         fVer.style.color = 'var(--text-muted)';
                     }
                 }
@@ -3052,7 +3052,7 @@ if (modalImportForm) {
         e.preventDefault();
         const statusDiv = document.getElementById('modal-import-status-msg');
         if (statusDiv) {
-            statusDiv.innerText = 'Procesando importación...';
+            statusDiv.innerText = __('profile_import_processing', 'Procesando importación...');
             statusDiv.style.color = 'var(--text-muted)';
         }
 
@@ -3070,7 +3070,7 @@ if (modalImportForm) {
             if (response.ok) {
                 const data = await response.json();
                 if (statusDiv) {
-                    statusDiv.innerText = `✓ Importación completada: ${data.imported} registros procesados correctamente. Errores: ${data.errors || 0}`;
+                    statusDiv.innerText = __('profile_import_success', '✓ Importación completada: :imported registros procesados correctamente. Errores: :errors', { imported: data.imported, errors: data.errors || 0 });
                     statusDiv.style.color = 'var(--secondary)';
                 }
                 const fileInput = document.getElementById('modal-import-file');
@@ -3078,13 +3078,13 @@ if (modalImportForm) {
             } else {
                 const data = await response.json();
                 if (statusDiv) {
-                    statusDiv.innerText = 'Error al importar: ' + (data.error || 'Intenta de nuevo.');
+                    statusDiv.innerText = __('profile_import_error', 'Error al importar: :error', { error: data.error || 'Intenta de nuevo.' });
                     statusDiv.style.color = 'var(--error)';
                 }
             }
         } catch (err) {
             if (statusDiv) {
-                statusDiv.innerText = 'Error al conectar al servidor.';
+                statusDiv.innerText = __('profile_network_error', 'Error al conectar al servidor.');
                 statusDiv.style.color = 'var(--error)';
             }
         }
@@ -3103,11 +3103,11 @@ if (modalProfileForm) {
         if (submitBtn) submitBtn.disabled = true;
         if (privSubmitBtn) privSubmitBtn.disabled = true;
         if (statusDiv) {
-            statusDiv.innerText = 'Guardando cambios...';
+            statusDiv.innerText = __('profile_saving', 'Guardando cambios...');
             statusDiv.style.color = 'var(--text-muted)';
         }
         if (privStatusDiv) {
-            privStatusDiv.innerText = 'Guardando cambios...';
+            privStatusDiv.innerText = __('profile_saving', 'Guardando cambios...');
             privStatusDiv.style.color = 'var(--text-muted)';
         }
 
@@ -3145,11 +3145,11 @@ if (modalProfileForm) {
                 }
 
                 if (statusDiv) {
-                    statusDiv.innerText = '✓ Cambios guardados correctamente.';
+                    statusDiv.innerText = __('profile_saved', '✓ Cambios guardados correctamente.');
                     statusDiv.style.color = 'var(--secondary)';
                 }
                 if (privStatusDiv) {
-                    privStatusDiv.innerText = '✓ Preferencias guardadas correctamente.';
+                    privStatusDiv.innerText = __('profile_privacy_saved', '✓ Preferencias guardadas correctamente.');
                     privStatusDiv.style.color = 'var(--secondary)';
                 }
 
@@ -3158,7 +3158,7 @@ if (modalProfileForm) {
                 }, 800);
             } else {
                 const data = await response.json();
-                const errText = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
+                const errText = __('profile_save_error', 'Error al guardar: :error', { error: data.error || 'Intenta de nuevo.' });
                 if (statusDiv) {
                     statusDiv.innerText = errText;
                     statusDiv.style.color = 'var(--error)';
@@ -3169,7 +3169,7 @@ if (modalProfileForm) {
                 }
             }
         } catch (err) {
-            const errConn = 'Error al conectar al servidor.';
+            const errConn = __('profile_network_error', 'Error al conectar al servidor.');
             if (statusDiv) {
                 statusDiv.innerText = errConn;
                 statusDiv.style.color = 'var(--error)';
@@ -3193,11 +3193,11 @@ if (profileForm) {
         const statusDiv = document.getElementById('profile-save-status');
         const privStatusDiv = document.getElementById('profile-privacy-save-status');
         if (statusDiv) {
-            statusDiv.innerText = 'Guardando cambios...';
+            statusDiv.innerText = __('profile_saving', 'Guardando cambios...');
             statusDiv.style.color = 'var(--text-muted)';
         }
         if (privStatusDiv) {
-            privStatusDiv.innerText = 'Guardando cambios...';
+            privStatusDiv.innerText = __('profile_saving', 'Guardando cambios...');
             privStatusDiv.style.color = 'var(--text-muted)';
         }
 
@@ -3236,18 +3236,18 @@ if (profileForm) {
                 }
 
                 if (statusDiv) {
-                    statusDiv.innerText = '✓ Cambios guardados correctamente.';
+                    statusDiv.innerText = __('profile_saved', '✓ Cambios guardados correctamente.');
                     statusDiv.style.color = 'var(--secondary)';
                 }
                 if (privStatusDiv) {
-                    privStatusDiv.innerText = '✓ Preferencias guardadas correctamente.';
+                    privStatusDiv.innerText = __('profile_privacy_saved', '✓ Preferencias guardadas correctamente.');
                     privStatusDiv.style.color = 'var(--secondary)';
                 }
 
                 loadProfileFormValues();
             } else {
                 const data = await response.json();
-                const msg = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
+                const msg = __('profile_save_error', 'Error al guardar: :error', { error: data.error || 'Intenta de nuevo.' });
                 if (statusDiv) {
                     statusDiv.innerText = msg;
                     statusDiv.style.color = 'var(--error)';
@@ -3259,11 +3259,11 @@ if (profileForm) {
             }
         } catch (err) {
             if (statusDiv) {
-                statusDiv.innerText = 'Error al conectar al servidor.';
+                statusDiv.innerText = __('profile_network_error', 'Error al conectar al servidor.');
                 statusDiv.style.color = 'var(--error)';
             }
             if (privStatusDiv) {
-                privStatusDiv.innerText = 'Error al conectar al servidor.';
+                privStatusDiv.innerText = __('profile_network_error', 'Error al conectar al servidor.');
                 privStatusDiv.style.color = 'var(--error)';
             }
         }
@@ -3275,7 +3275,7 @@ async function downloadExport(endpoint, defaultFilename) {
     try {
         const btn = event.target;
         const oldText = btn.innerText;
-        btn.innerText = 'Exportando...';
+        btn.innerText = __('profile_exporting', 'Exportando...');
         btn.disabled = true;
 
         const response = await fetch(endpoint, {
@@ -3309,7 +3309,7 @@ if (importForm) {
     importForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const statusDiv = document.getElementById('import-status-msg');
-        statusDiv.innerText = 'Procesando importación...';
+        statusDiv.innerText = __('profile_import_processing', 'Procesando importación...');
         statusDiv.style.color = 'var(--text-muted)';
 
         const formData = new FormData(importForm);
@@ -3325,16 +3325,16 @@ if (importForm) {
 
             if (response.ok) {
                 const data = await response.json();
-                statusDiv.innerText = `✓ Importación completada: ${data.imported} registros procesados correctamente. Errores: ${data.errors || 0}`;
+                statusDiv.innerText = __('profile_import_success', '✓ Importación completada: :imported registros procesados correctamente. Errores: :errors', { imported: data.imported, errors: data.errors || 0 });
                 statusDiv.style.color = 'var(--secondary)';
                 document.getElementById('import-file').value = '';
             } else {
                 const data = await response.json();
-                statusDiv.innerText = 'Error al importar: ' + (data.error || 'Intenta de nuevo.');
+                statusDiv.innerText = __('profile_import_error', 'Error al importar: :error', { error: data.error || 'Intenta de nuevo.' });
                 statusDiv.style.color = 'var(--error)';
             }
         } catch (err) {
-            statusDiv.innerText = 'Error al conectar al servidor.';
+            statusDiv.innerText = __('profile_network_error', 'Error al conectar al servidor.');
             statusDiv.style.color = 'var(--error)';
         }
     });
@@ -3346,7 +3346,7 @@ async function resendPendingFollows() {
     const statusMsg = document.getElementById('resend-status-msg');
     
     btn.disabled = true;
-    btn.innerText = '⏳ Enviando...';
+    btn.innerText = __('profile_resend_sending', '⏳ Enviando...');
     statusMsg.innerText = '';
     statusMsg.style.color = 'var(--text-muted)';
     
@@ -3360,7 +3360,7 @@ async function resendPendingFollows() {
         
         if (response.ok) {
             const data = await response.json();
-            statusMsg.innerText = `✓ ${data.resent} solicitudes re-enviadas de ${data.total_pending} pendientes.`;
+            statusMsg.innerText = __('profile_resend_success', '✓ :resent solicitudes re-enviadas de :total pendientes.', { resent: data.resent, total: data.total_pending });
             statusMsg.style.color = 'var(--secondary)';
         } else {
             const data = await response.json();
@@ -3368,12 +3368,12 @@ async function resendPendingFollows() {
             statusMsg.style.color = 'var(--error)';
         }
     } catch (err) {
-        statusMsg.innerText = 'Error al conectar al servidor.';
+        statusMsg.innerText = __('profile_network_error', 'Error al conectar al servidor.');
         statusMsg.style.color = 'var(--error)';
     }
     
     btn.disabled = false;
-    btn.innerText = '🔄 Re-enviar Follows Pendientes';
+    btn.innerText = __('profile_resend_btn', '🔄 Re-enviar Follows Pendientes');
 }
 
 // Procesar cola de fondo bajo demanda
@@ -3382,10 +3382,10 @@ async function processQueueNow() {
     const msg = document.getElementById('queue-status-msg');
     if (btn) {
         btn.disabled = true;
-        btn.innerText = '⏳ Procesando...';
+        btn.innerText = '⏳ ' + __('profile_queue_processing', 'Procesando tareas pendientes...');
     }
     if (msg) {
-        msg.innerText = 'Procesando tareas pendientes...';
+        msg.innerText = __('profile_queue_processing', 'Procesando tareas pendientes...');
         msg.style.color = 'var(--text-muted)';
     }
     try {
@@ -3395,18 +3395,18 @@ async function processQueueNow() {
         });
         const data = await res.json();
         if (msg) {
-            msg.innerText = `✓ ${data.message || 'Procesadas ' + (data.processed_count || 0) + ' tareas.'}`;
+            msg.innerText = data.message ? `✓ ${data.message}` : __('profile_queue_success', '✓ Procesadas :count tareas.', { count: data.processed_count || 0 });
             msg.style.color = 'var(--secondary)';
         }
     } catch (e) {
         if (msg) {
-            msg.innerText = 'Error al ejecutar tareas de la cola: ' + e.message;
+            msg.innerText = __('profile_queue_error', 'Error al ejecutar tareas de la cola: :error', { error: e.message });
             msg.style.color = 'var(--error)';
         }
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerText = '⚡ Procesar Tareas Pendientes Ahora';
+            btn.innerText = __('profile_queue_btn', '⚡ Procesar Tareas Pendientes Ahora');
         }
     }
 }

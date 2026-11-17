@@ -1,7 +1,7 @@
 <div id="tab-profile" class="composer-card">
     <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 22px; gap: 15px; flex-wrap: wrap;">
         <h2 style="margin: 0; font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
-            <span class="material-icons-outlined" style="color: var(--primary);">tune</span> Ajustes de Cuenta & Datos
+            <span class="material-icons-outlined" style="color: var(--primary);">tune</span> <?= __('profile_settings_and_data') ?>
         </h2>
         <div class="pill-toggle-group" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); flex-shrink: 0;">
             <button type="button" id="btn-subtab-profile-edit" onclick="switchProfileSettingsTab('edit')" class="profile-subtab-btn active">
@@ -20,31 +20,31 @@
         <!-- Subtab 1: Perfil -->
         <div id="subtab-content-profile-edit">
             <div class="form-group" style="margin-bottom: 22px;">
-                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Imagen de Portada (Header)</label>
+                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_header') ?></label>
                 <input type="file" id="profile-header-input" name="header" accept="image/*" style="padding: 10px 14px;">
             </div>
             <div class="form-group" style="margin-bottom: 22px;">
-                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Imagen de Avatar</label>
+                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_avatar') ?></label>
                 <input type="file" id="profile-avatar-input" name="avatar" accept="image/*" style="padding: 10px 14px;">
             </div>
             <div class="form-group" style="margin-bottom: 22px;">
-                <label for="profile-display-name" style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Nombre a Mostrar</label>
-                <input type="text" id="profile-display-name" name="display_name" placeholder="Tu nombre" value="<?= htmlspecialchars($localUser['display_name'] ?? '') ?>" style="padding: 11px 14px;">
+                <label for="profile-display-name" style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_display_name') ?></label>
+                <input type="text" id="profile-display-name" name="display_name" placeholder="<?= __('profile_display_name_placeholder') ?>" value="<?= htmlspecialchars($localUser['display_name'] ?? '') ?>" style="padding: 11px 14px;">
             </div>
             <div class="form-group" style="margin-bottom: 22px;">
-                <label for="profile-note" style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Biografía (Texto plano)</label>
-                <textarea id="profile-note" name="note" class="composer-textarea" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 14px; height: 100px;" placeholder="Cuéntale algo al Fediverso..."><?= htmlspecialchars($localUser['note'] ?? '') ?></textarea>
+                <label for="profile-note" style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_note') ?></label>
+                <textarea id="profile-note" name="note" class="composer-textarea" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 14px; height: 100px;" placeholder="<?= __('profile_note_placeholder') ?>"><?= htmlspecialchars($localUser['note'] ?? '') ?></textarea>
             </div>
 
             <div class="form-group" style="margin-bottom: 22px;">
-                <label for="profile-also-known-as" style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Migración de Cuenta (alsoKnownAs)</label>
+                <label for="profile-also-known-as" style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_also_known_as') ?></label>
                 <input type="text" id="profile-also-known-as" name="also_known_as" placeholder="https://mastodon.social/users/tu_antiguo_usuario" value="<?= htmlspecialchars($localUser['also_known_as'] ?? '') ?>" style="padding: 11px 14px;">
                 <small style="display: block; color: var(--text-muted); font-size: 12px; margin-top: 8px; line-height: 1.5;">
-                    URL del perfil de tu cuenta anterior en Mastodon para permitir la migración automática de tus seguidores hacia KutSocial.
+                    <?= __('profile_also_known_as_desc') ?>
                 </small>
             </div>
             
-            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Campos Personalizados (Metadatos de Verificación)</h3>
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_fields') ?></h3>
             <div id="metadata-fields-container">
                 <?php 
                 $fields = json_decode($localUser['fields'] ?? '[]', true) ?: [];
@@ -52,54 +52,54 @@
                     $f = $fields[$i] ?? ['name' => '', 'value' => '', 'verified_at' => null];
                 ?>
                 <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center;">
-                    <input type="text" id="field-name-<?= $i ?>" name="fields_attributes[<?= $i ?>][name]" placeholder="Etiqueta" style="flex: 1; padding: 11px 14px;" value="<?= htmlspecialchars($f['name']) ?>">
-                    <input type="text" id="field-value-<?= $i ?>" name="fields_attributes[<?= $i ?>][value]" placeholder="Valor" style="flex: 2; padding: 11px 14px;" value="<?= htmlspecialchars($f['value']) ?>">
+                    <input type="text" id="field-name-<?= $i ?>" name="fields_attributes[<?= $i ?>][name]" placeholder="<?= __('profile_field_label') ?>" style="flex: 1; padding: 11px 14px;" value="<?= htmlspecialchars($f['name']) ?>">
+                    <input type="text" id="field-value-<?= $i ?>" name="fields_attributes[<?= $i ?>][value]" placeholder="<?= __('profile_field_value') ?>" style="flex: 2; padding: 11px 14px;" value="<?= htmlspecialchars($f['value']) ?>">
                     <span id="field-verified-<?= $i ?>" style="font-size: 11.5px; font-weight: 600; width: 95px; text-align: right; color: var(--success, #10b981);">
-                        <?= !empty($f['verified_at']) ? '✓ Verificado' : '' ?>
+                        <?= !empty($f['verified_at']) ? __('profile_verified_badge') : '' ?>
                     </span>
                 </div>
                 <?php endfor; ?>
             </div>
             
             <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 20px; margin-bottom: 24px; line-height: 1.5; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 14px 16px; border-radius: 8px;">
-                💡 <strong>Verificación:</strong> Si añades un enlace aquí (ej. <code>https://tuweb.com</code>), asegúrate de que tu página web tenga un enlace de vuelta a tu perfil local (<code id="profile-verification-url-preview"><?= htmlspecialchars($localUser['url'] ?? '') ?></code>) con el atributo <code>rel="me"</code> (ej: <code>&lt;a href="..." rel="me"&gt;Mi Perfil&lt;/a&gt;</code>) para que aparezca verificado en verde.
+                <?= str_replace(':url', '<code id="profile-verification-url-preview">' . htmlspecialchars($localUser['url'] ?? '') . '</code>', __('profile_verification_tip')) ?>
             </p>
 
-            <button type="submit" style="margin-top: 22px; padding: 12px 24px; font-size: 14px;">Guardar Cambios de Perfil</button>
+            <button type="submit" style="margin-top: 22px; padding: 12px 24px; font-size: 14px;"><?= __('profile_save_changes') ?></button>
             <div id="profile-save-status" style="margin-top: 14px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
         </div>
 
         <!-- Subtab 2: Privacidad -->
         <div id="subtab-content-profile-privacy" style="display: none;">
-            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 5px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Ajustes de Privacidad</h3>
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 5px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_privacy_settings') ?></h3>
             <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
                 <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-discoverable" name="discoverable" style="width: auto;" <?= ($localUser['discoverable'] ?? 0) ? 'checked' : '' ?>>
-                    <span>Descubrible (Aparecer en el directorio de perfiles y sugerencias)</span>
+                    <span><?= __('profile_privacy_discoverable') ?></span>
                 </label>
                 <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-auto-accept" name="auto_accept" style="width: auto;" <?= !($localUser['locked'] ?? 1) ? 'checked' : '' ?>>
-                    <span>Aceptar seguidores automáticamente (Si no se marca, se requerirá aprobación manual)</span>
+                    <span><?= __('profile_privacy_auto_accept') ?></span>
                 </label>
                 <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-searchable" name="searchable" style="width: auto;" <?= ($localUser['searchable'] ?? 0) ? 'checked' : '' ?>>
-                    <span>Permitir búsquedas internas (Permitir que otros busquen tu usuario y contenido)</span>
+                    <span><?= __('profile_privacy_searchable') ?></span>
                 </label>
                 <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-indexable" name="indexable" style="width: auto;" <?= ($localUser['indexable'] ?? 0) ? 'checked' : '' ?>>
-                    <span>Indexable por buscadores (Permitir que Google y otros indexen tu perfil)</span>
+                    <span><?= __('profile_privacy_indexable') ?></span>
                 </label>
                 <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-show-source" name="show_source" style="width: auto;" <?= ($localUser['show_source'] ?? 1) ? 'checked' : '' ?>>
-                    <span>Mostrar aplicación de origen (Mostrar la app cliente con la que publicas tus toots)</span>
+                    <span><?= __('profile_privacy_show_source') ?></span>
                 </label>
             </div>
             
-            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Preferencias de Publicación</h3>
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_publication_preferences') ?></h3>
             <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
                 <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="pref-warn-missing-alt" style="width: auto;">
-                    <span>Avisar cuando se vaya a publicar una imagen sin descripción (texto alternativo/AltText)</span>
+                    <span><?= __('pref_warn_missing_alt_desc') ?></span>
                 </label>
             </div>
 
@@ -120,7 +120,7 @@
                 </select>
             </div>
             
-            <button type="submit" style="margin-top: 22px; padding: 12px 24px; font-size: 14px;">Guardar Preferencias de Privacidad</button>
+            <button type="submit" style="margin-top: 22px; padding: 12px 24px; font-size: 14px;"><?= __('profile_save_privacy') ?></button>
             <div id="profile-privacy-save-status" style="margin-top: 14px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
         </div>
     </form>
@@ -129,48 +129,48 @@
     <div id="subtab-content-profile-import" style="display: none;">
         <!-- Exportar -->
         <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-bottom: 25px;">
-            <h4 style="font-size: 14px; margin-bottom: 6px; color: var(--text-color);">📤 Exportar tus Datos (Formato Mastodon)</h4>
+            <h4 style="font-size: 14px; margin-bottom: 6px; color: var(--text-color);">📤 <?= __('profile_export_title') ?></h4>
             <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 15px;">
-                Descarga copias de seguridad de tus publicaciones, seguidos, seguidores, listas y configuración en formatos CSV o JSON estándar.
+                <?= __('profile_export_desc') ?>
             </p>
             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;">
-                <button onclick="downloadExport('/api/v1/export/posts', 'posts.json')" style="margin: 0; padding: 10px; font-size: 13px;">📝 Exportar Posts (JSON)</button>
-                <button onclick="downloadExport('/api/v1/export/follows', 'following.csv')" style="margin: 0; padding: 10px; font-size: 13px;">👥 Exportar Follows (CSV)</button>
-                <button onclick="downloadExport('/api/v1/export/followers', 'followers.csv')" style="margin: 0; padding: 10px; font-size: 13px;">👤 Exportar Followers (CSV)</button>
-                <button onclick="downloadExport('/api/v1/export/lists', 'lists.csv')" style="margin: 0; padding: 10px; font-size: 13px;">📋 Exportar Listas (CSV)</button>
-                <button onclick="downloadExport('/api/v1/export/mutes', 'mutes.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🔇 Exportar Muteados (CSV)</button>
-                <button onclick="downloadExport('/api/v1/export/blocks', 'blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🚫 Exportar Bloqueados (CSV)</button>
-                <button onclick="downloadExport('/api/v1/export/domain_blocks', 'domain_blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🌐 Dominios Bloqueados (CSV)</button>
-                <button onclick="downloadExport('/api/v1/export/bookmarks', 'bookmarks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🔖 Exportar Marcadores (CSV)</button>
-                <button onclick="downloadExport('/api/v1/export/filters', 'filters.json')" style="margin: 0; padding: 10px; font-size: 13px;">📝 Exportar Filtros (JSON)</button>
+                <button onclick="downloadExport('/api/v1/export/posts', 'posts.json')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_posts') ?></button>
+                <button onclick="downloadExport('/api/v1/export/follows', 'following.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_follows') ?></button>
+                <button onclick="downloadExport('/api/v1/export/followers', 'followers.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_followers') ?></button>
+                <button onclick="downloadExport('/api/v1/export/lists', 'lists.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_lists') ?></button>
+                <button onclick="downloadExport('/api/v1/export/mutes', 'mutes.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_mutes') ?></button>
+                <button onclick="downloadExport('/api/v1/export/blocks', 'blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_blocks') ?></button>
+                <button onclick="downloadExport('/api/v1/export/domain_blocks', 'domain_blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_domain_blocks') ?></button>
+                <button onclick="downloadExport('/api/v1/export/bookmarks', 'bookmarks.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_bookmarks') ?></button>
+                <button onclick="downloadExport('/api/v1/export/filters', 'filters.json')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_filters') ?></button>
             </div>
         </div>
 
         <!-- Importar -->
         <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-bottom: 25px;">
-            <h4 style="font-size: 14px; margin-bottom: 6px; color: var(--text-color);">📥 Importar Datos de Mastodon / KutSocial</h4>
+            <h4 style="font-size: 14px; margin-bottom: 6px; color: var(--text-color);">📥 <?= __('profile_import_title') ?></h4>
             <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 15px;">
-                Sube tus archivos CSV exportados desde Mastodon u otra instancia de KutSocial para restaurar tus seguidos, seguidores, listas y filtros.
+                <?= __('profile_import_desc') ?>
             </p>
             <form id="import-form" style="display: flex; flex-direction: column; gap: 15px;">
                 <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
                     <div style="flex: 1; min-width: 200px;">
-                        <label for="import-type" style="margin-bottom: 6px;">Tipo de Dato</label>
+                        <label for="import-type" style="margin-bottom: 6px;"><?= __('profile_import_data_type') ?></label>
                         <select id="import-type" name="type" style="width:100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; color: white; font-family: inherit;">
-                            <option value="follows" style="background:#161c26;">👥 Seguidos (CSV)</option>
-                            <option value="lists" style="background:#161c26;">📋 Listas (CSV)</option>
-                            <option value="mutes" style="background:#161c26;">🔇 Silenciados (CSV)</option>
-                            <option value="blocks" style="background:#161c26;">🚫 Bloqueados (CSV)</option>
-                            <option value="domain_blocks" style="background:#161c26;">🌐 Dominios Bloqueados (CSV)</option>
-                            <option value="bookmarks" style="background:#161c26;">🔖 Marcadores (CSV)</option>
-                            <option value="filters" style="background:#161c26;">📝 Filtros de Palabra (JSON)</option>
+                            <option value="follows" style="background:#161c26;"><?= __('profile_import_opt_follows') ?></option>
+                            <option value="lists" style="background:#161c26;"><?= __('profile_import_opt_lists') ?></option>
+                            <option value="mutes" style="background:#161c26;"><?= __('profile_import_opt_mutes') ?></option>
+                            <option value="blocks" style="background:#161c26;"><?= __('profile_import_opt_blocks') ?></option>
+                            <option value="domain_blocks" style="background:#161c26;"><?= __('profile_import_opt_domain_blocks') ?></option>
+                            <option value="bookmarks" style="background:#161c26;"><?= __('profile_import_opt_bookmarks') ?></option>
+                            <option value="filters" style="background:#161c26;"><?= __('profile_import_opt_filters') ?></option>
                         </select>
                     </div>
                     <div style="flex: 2; min-width: 250px;">
-                        <label for="import-file" style="margin-bottom: 6px;">Archivo (CSV o JSON)</label>
+                        <label for="import-file" style="margin-bottom: 6px;"><?= __('profile_import_file_label_full') ?></label>
                         <input type="file" id="import-file" name="file" required style="padding: 9px 12px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.05); color: white; border-radius: 10px; font-family: inherit; width: 100%;">
                     </div>
-                    <button type="submit" style="width: auto; margin: 0; padding: 12px 24px; height: 44px;">Subir e Importar</button>
+                    <button type="submit" style="width: auto; margin: 0; padding: 12px 24px; height: 44px;"><?= __('profile_import_submit_btn') ?></button>
                 </div>
             </form>
             <div id="import-status-msg" style="margin-top: 12px; font-size: 13.5px; font-weight: 600; text-align: center;"></div>
@@ -178,24 +178,24 @@
 
         <!-- Cola de Procesamiento -->
         <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-bottom: 25px;">
-            <h4 style="font-size: 13.5px; margin-bottom: 8px; color: var(--text-color);">⚡ Cola de Procesamiento</h4>
+            <h4 style="font-size: 13.5px; margin-bottom: 8px; color: var(--text-color);">⚡ <?= __('profile_queue_title') ?></h4>
             <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 15px;">
-                Las importaciones masivas se procesan en segundo plano. Si quieres forzar la ejecución inmediata de las tareas pendientes de la cola, pulsa el botón:
+                <?= __('profile_queue_desc') ?>
             </p>
             <div style="display: flex; align-items: center; gap: 15px;">
-                <button id="process-queue-btn" onclick="processQueueNow()" style="margin: 0; padding: 12px 24px; font-size: 13px;">⚡ Procesar Tareas Pendientes Ahora</button>
+                <button id="process-queue-btn" onclick="processQueueNow()" style="margin: 0; padding: 12px 24px; font-size: 13px;"><?= __('profile_queue_btn') ?></button>
                 <span id="queue-status-msg" style="font-size: 13px; font-weight: 600;"></span>
             </div>
         </div>
 
         <!-- Re-enviar Follows Pendientes -->
         <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px;">
-            <h4 style="font-size: 13.5px; margin-bottom: 8px; color: var(--text-color);">🔄 Re-enviar Follows Pendientes</h4>
+            <h4 style="font-size: 13.5px; margin-bottom: 8px; color: var(--text-color);">🔄 <?= __('profile_resend_title') ?></h4>
             <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 15px;">
-                Si reinstalaste tu instancia y algunos follows quedaron en "pendiente", usa este botón para re-enviar las solicitudes a los servidores remotos.
+                <?= __('profile_resend_desc') ?>
             </p>
             <div style="display: flex; align-items: center; gap: 15px;">
-                <button id="resend-pending-btn" onclick="resendPendingFollows()" style="margin: 0; padding: 12px 24px; font-size: 13px;">🔄 Re-enviar Follows Pendientes</button>
+                <button id="resend-pending-btn" onclick="resendPendingFollows()" style="margin: 0; padding: 12px 24px; font-size: 13px;"><?= __('profile_resend_btn') ?></button>
                 <span id="resend-status-msg" style="font-size: 13px; font-weight: 600;"></span>
             </div>
         </div>

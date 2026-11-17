@@ -20,9 +20,9 @@
         <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
             <div style="display: flex; align-items: center; gap: 6px;">
                 <span class="material-icons-outlined" id="composer-context-icon" style="font-size: 16px; color: var(--primary);">reply</span>
-                <span id="composer-context-text" style="font-weight: 500;">Respondiendo a:</span>
+                <span id="composer-context-text" style="font-weight: 500;"><?= __('composer_replying_to') ?>:</span>
             </div>
-            <button class="composer-context-close" onclick="cancelComposerContext()" title="Cancelar">✕</button>
+            <button class="composer-context-close" onclick="cancelComposerContext()" title="<?= __('cancel') ?>">✕</button>
         </div>
         <!-- Participantes de la respuesta (chips interactivos) -->
         <div id="composer-reply-participants" class="reply-participants-wrapper" style="display: none;"></div>

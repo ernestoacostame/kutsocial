@@ -256,67 +256,67 @@
                         <span>📥</span> <span><?= __('profile_import_export') ?></span>
                     </button>
                 </div>
-                <button type="button" class="modal-close-btn" onclick="closeEditProfileModal()" aria-label="Cerrar">&times;</button>
+                <button type="button" class="modal-close-btn" onclick="closeEditProfileModal()" aria-label="<?= __('close') ?>">&times;</button>
             </div>
             
             <form id="modal-profile-form" enctype="multipart/form-data">
                 <!-- Subtab 1: Perfil -->
                 <div id="modal-subtab-content-profile-edit">
                     <div class="form-group" style="margin-bottom: 22px;">
-                        <label for="modal-profile-header-input" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Imagen de Portada (Header)</label>
+                        <label for="modal-profile-header-input" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_header') ?></label>
                         <input type="file" id="modal-profile-header-input" name="header" accept="image/*" class="modal-input" style="padding: 10px 14px;">
                     </div>
                     <div class="form-group" style="margin-bottom: 22px;">
-                        <label for="modal-profile-avatar-input" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Imagen de Avatar</label>
+                        <label for="modal-profile-avatar-input" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_avatar') ?></label>
                         <input type="file" id="modal-profile-avatar-input" name="avatar" accept="image/*" class="modal-input" style="padding: 10px 14px;">
                     </div>
                     <div class="form-group" style="margin-bottom: 22px;">
-                        <label for="modal-profile-display-name" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Nombre a Mostrar</label>
-                        <input type="text" id="modal-profile-display-name" name="display_name" class="modal-input" style="padding: 11px 14px;" placeholder="Tu nombre">
+                        <label for="modal-profile-display-name" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_display_name') ?></label>
+                        <input type="text" id="modal-profile-display-name" name="display_name" class="modal-input" style="padding: 11px 14px;" placeholder="<?= __('profile_display_name_placeholder') ?>">
                     </div>
                     <div class="form-group" style="margin-bottom: 22px;">
-                        <label for="modal-profile-note" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Biografía (Texto plano)</label>
-                        <textarea id="modal-profile-note" name="note" class="modal-input" style="height: 100px; padding: 12px 14px; resize: vertical;" placeholder="Cuéntale algo al Fediverso..."></textarea>
+                        <label for="modal-profile-note" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_note') ?></label>
+                        <textarea id="modal-profile-note" name="note" class="modal-input" style="height: 100px; padding: 12px 14px; resize: vertical;" placeholder="<?= __('profile_note_placeholder') ?>"></textarea>
                     </div>
 
                     <div class="form-group" style="margin-bottom: 22px;">
-                        <label for="modal-profile-also-known-as" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Migración de Cuenta (alsoKnownAs)</label>
+                        <label for="modal-profile-also-known-as" style="display:block; font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_also_known_as') ?></label>
                         <input type="text" id="modal-profile-also-known-as" name="also_known_as" class="modal-input" style="padding: 11px 14px;" placeholder="https://mastodon.social/users/tu_antiguo_usuario">
                         <small style="display: block; color: var(--text-muted); font-size: 12px; margin-top: 8px; line-height: 1.5;">
-                            URL del perfil de tu cuenta anterior en Mastodon para permitir la migración automática de tus seguidores hacia KutSocial.
+                            <?= __('profile_also_known_as_desc') ?>
                         </small>
                     </div>
                     
-                    <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Campos Personalizados (Metadatos de Verificación)</h3>
+                    <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_fields') ?></h3>
                     <div id="modal-metadata-fields-container">
                         <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center;">
-                            <input type="text" id="modal-field-name-0" name="fields_attributes[0][name]" placeholder="Etiqueta" class="modal-input" style="flex: 1; padding: 11px 14px;">
-                            <input type="text" id="modal-field-value-0" name="fields_attributes[0][value]" placeholder="Valor / URL" class="modal-input" style="flex: 2; padding: 11px 14px;">
+                            <input type="text" id="modal-field-name-0" name="fields_attributes[0][name]" placeholder="<?= __('profile_field_label') ?>" class="modal-input" style="flex: 1; padding: 11px 14px;">
+                            <input type="text" id="modal-field-value-0" name="fields_attributes[0][value]" placeholder="<?= __('profile_field_value') ?>" class="modal-input" style="flex: 2; padding: 11px 14px;">
                             <span id="modal-field-verified-0" style="font-size: 11.5px; font-weight: 600; width: 95px; text-align: right; color: var(--success, #10b981);"></span>
                         </div>
                         <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center;">
-                            <input type="text" id="modal-field-name-1" name="fields_attributes[1][name]" placeholder="Etiqueta" class="modal-input" style="flex: 1; padding: 11px 14px;">
-                            <input type="text" id="modal-field-value-1" name="fields_attributes[1][value]" placeholder="Valor / URL" class="modal-input" style="flex: 2; padding: 11px 14px;">
+                            <input type="text" id="modal-field-name-1" name="fields_attributes[1][name]" placeholder="<?= __('profile_field_label') ?>" class="modal-input" style="flex: 1; padding: 11px 14px;">
+                            <input type="text" id="modal-field-value-1" name="fields_attributes[1][value]" placeholder="<?= __('profile_field_value') ?>" class="modal-input" style="flex: 2; padding: 11px 14px;">
                             <span id="modal-field-verified-1" style="font-size: 11.5px; font-weight: 600; width: 95px; text-align: right; color: var(--success, #10b981);"></span>
                         </div>
                         <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center;">
-                            <input type="text" id="modal-field-name-2" name="fields_attributes[2][name]" placeholder="Etiqueta" class="modal-input" style="flex: 1; padding: 11px 14px;">
-                            <input type="text" id="modal-field-value-2" name="fields_attributes[2][value]" placeholder="Valor / URL" class="modal-input" style="flex: 2; padding: 11px 14px;">
+                            <input type="text" id="modal-field-name-2" name="fields_attributes[2][name]" placeholder="<?= __('profile_field_label') ?>" class="modal-input" style="flex: 1; padding: 11px 14px;">
+                            <input type="text" id="modal-field-value-2" name="fields_attributes[2][value]" placeholder="<?= __('profile_field_value') ?>" class="modal-input" style="flex: 2; padding: 11px 14px;">
                             <span id="modal-field-verified-2" style="font-size: 11.5px; font-weight: 600; width: 95px; text-align: right; color: var(--success, #10b981);"></span>
                         </div>
                         <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center;">
-                            <input type="text" id="modal-field-name-3" name="fields_attributes[3][name]" placeholder="Etiqueta" class="modal-input" style="flex: 1; padding: 11px 14px;">
-                            <input type="text" id="modal-field-value-3" name="fields_attributes[3][value]" placeholder="Valor / URL" class="modal-input" style="flex: 2; padding: 11px 14px;">
+                            <input type="text" id="modal-field-name-3" name="fields_attributes[3][name]" placeholder="<?= __('profile_field_label') ?>" class="modal-input" style="flex: 1; padding: 11px 14px;">
+                            <input type="text" id="modal-field-value-3" name="fields_attributes[3][value]" placeholder="<?= __('profile_field_value') ?>" class="modal-input" style="flex: 2; padding: 11px 14px;">
                             <span id="modal-field-verified-3" style="font-size: 11.5px; font-weight: 600; width: 95px; text-align: right; color: var(--success, #10b981);"></span>
                         </div>
                     </div>
 
                     <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 20px; margin-bottom: 24px; line-height: 1.5; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 14px 16px; border-radius: 8px;">
-                        💡 <strong>Verificación:</strong> Si añades un enlace aquí (ej. <code>https://tuweb.com</code>), asegúrate de que tu página web tenga un enlace de vuelta a tu perfil local (<code id="modal-profile-verification-url-preview"></code>) con el atributo <code>rel="me"</code> (ej: <code>&lt;a href="..." rel="me"&gt;Mi Perfil&lt;/a&gt;</code>) para que aparezca verificado en verde.
+                        <?= str_replace(':url', '<code id="modal-profile-verification-url-preview"></code>', __('profile_verification_tip')) ?>
                     </p>
 
                     <div class="modal-actions" style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px;">
-                        <button type="button" class="modal-btn-cancel" onclick="closeEditProfileModal()">Cancelar</button>
+                        <button type="button" class="modal-btn-cancel" onclick="closeEditProfileModal()"><?= __('cancel') ?></button>
                         <button type="submit" class="modal-btn-confirm" id="modal-profile-submit-btn"><?= __('profile_save_changes') ?></button>
                     </div>
                     <div id="modal-profile-save-status" style="margin-top: 14px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
@@ -328,31 +328,31 @@
                     <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
                         <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                             <input type="checkbox" id="modal-profile-discoverable" name="discoverable" style="width: auto;">
-                            <span>Descubrible (Aparecer en el directorio de perfiles y sugerencias)</span>
+                            <span><?= __('profile_privacy_discoverable') ?></span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                             <input type="checkbox" id="modal-profile-auto-accept" name="auto_accept" style="width: auto;">
-                            <span>Aceptar seguidores automáticamente (Si no se marca, se requerirá aprobación manual)</span>
+                            <span><?= __('profile_privacy_auto_accept') ?></span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                             <input type="checkbox" id="modal-profile-searchable" name="searchable" style="width: auto;">
-                            <span>Permitir búsquedas internas (Permitir que otros busquen tu usuario y contenido)</span>
+                            <span><?= __('profile_privacy_searchable') ?></span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                             <input type="checkbox" id="modal-profile-indexable" name="indexable" style="width: auto;">
-                            <span>Indexable por buscadores (Permitir que Google y otros indexen tu perfil)</span>
+                            <span><?= __('profile_privacy_indexable') ?></span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                             <input type="checkbox" id="modal-profile-show-source" name="show_source" style="width: auto;">
-                            <span>Mostrar aplicación de origen (Mostrar la app cliente con la que publicas tus toots)</span>
+                            <span><?= __('profile_privacy_show_source') ?></span>
                         </label>
                     </div>
 
-                    <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Preferencias de Publicación</h3>
+                    <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_publication_preferences') ?></h3>
                     <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
                         <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                             <input type="checkbox" id="modal-pref-warn-missing-alt" style="width: auto;">
-                            <span>Avisar cuando se vaya a publicar una imagen sin descripción (texto alternativo/AltText)</span>
+                            <span><?= __('pref_warn_missing_alt_desc') ?></span>
                         </label>
                     </div>
 
@@ -374,8 +374,8 @@
                     </div>
 
                     <div class="modal-actions" style="margin-top: 24px; display: flex; justify-content: flex-end; gap: 12px;">
-                        <button type="button" class="modal-btn-cancel" onclick="closeEditProfileModal()">Cancelar</button>
-                        <button type="submit" class="modal-btn-confirm" id="modal-profile-privacy-submit-btn">Guardar Preferencias de Privacidad</button>
+                        <button type="button" class="modal-btn-cancel" onclick="closeEditProfileModal()"><?= __('cancel') ?></button>
+                        <button type="submit" class="modal-btn-confirm" id="modal-profile-privacy-submit-btn"><?= __('profile_save_privacy') ?></button>
                     </div>
                     <div id="modal-profile-privacy-save-status" style="margin-top: 14px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
                 </div>
@@ -385,49 +385,49 @@
             <div id="modal-subtab-content-profile-import" style="display: none;">
                 <!-- Exportar -->
                 <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-bottom: 25px;">
-                    <h4 style="font-size: 14px; margin-bottom: 6px; color: var(--text-color); font-weight: 700;">📤 Exportar tus Datos (Formato Mastodon)</h4>
+                    <h4 style="font-size: 14px; margin-bottom: 6px; color: var(--text-color); font-weight: 700;">📤 <?= __('profile_export_title') ?></h4>
                     <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
-                        Descarga copias de seguridad de tus publicaciones, seguidos, seguidores, listas y configuración en formatos CSV o JSON estándar.
+                        <?= __('profile_export_desc') ?>
                     </p>
                     <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
-                        <button onclick="downloadExport('/api/v1/export/posts', 'posts.json')" style="margin: 0; padding: 10px; font-size: 13px;">📝 Exportar Posts (JSON)</button>
-                        <button onclick="downloadExport('/api/v1/export/follows', 'following.csv')" style="margin: 0; padding: 10px; font-size: 13px;">👥 Exportar Follows (CSV)</button>
-                        <button onclick="downloadExport('/api/v1/export/followers', 'followers.csv')" style="margin: 0; padding: 10px; font-size: 13px;">👤 Exportar Followers (CSV)</button>
-                        <button onclick="downloadExport('/api/v1/export/lists', 'lists.csv')" style="margin: 0; padding: 10px; font-size: 13px;">📋 Exportar Listas (CSV)</button>
-                        <button onclick="downloadExport('/api/v1/export/mutes', 'mutes.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🔇 Exportar Muteados (CSV)</button>
-                        <button onclick="downloadExport('/api/v1/export/blocks', 'blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🚫 Exportar Bloqueados (CSV)</button>
-                        <button onclick="downloadExport('/api/v1/export/domain_blocks', 'domain_blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🌐 Dominios Bloqueados (CSV)</button>
-                        <button onclick="downloadExport('/api/v1/export/bookmarks', 'bookmarks.csv')" style="margin: 0; padding: 10px; font-size: 13px;">🔖 Exportar Marcadores (CSV)</button>
-                        <button onclick="downloadExport('/api/v1/export/filters', 'filters.json')" style="margin: 0; padding: 10px; font-size: 13px;">📝 Exportar Filtros (JSON)</button>
+                        <button onclick="downloadExport('/api/v1/export/posts', 'posts.json')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_posts') ?></button>
+                        <button onclick="downloadExport('/api/v1/export/follows', 'following.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_follows') ?></button>
+                        <button onclick="downloadExport('/api/v1/export/followers', 'followers.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_followers') ?></button>
+                        <button onclick="downloadExport('/api/v1/export/lists', 'lists.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_lists') ?></button>
+                        <button onclick="downloadExport('/api/v1/export/mutes', 'mutes.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_mutes') ?></button>
+                        <button onclick="downloadExport('/api/v1/export/blocks', 'blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_blocks') ?></button>
+                        <button onclick="downloadExport('/api/v1/export/domain_blocks', 'domain_blocks.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_domain_blocks') ?></button>
+                        <button onclick="downloadExport('/api/v1/export/bookmarks', 'bookmarks.csv')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_bookmarks') ?></button>
+                        <button onclick="downloadExport('/api/v1/export/filters', 'filters.json')" style="margin: 0; padding: 10px; font-size: 13px;"><?= __('profile_export_filters') ?></button>
                     </div>
                 </div>
 
                 <!-- Importar -->
                 <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-bottom: 25px;">
-                    <h4 style="font-size: 14px; margin-bottom: 6px; color: var(--text-color); font-weight: 700;">📥 Importar Datos de Mastodon / KutSocial</h4>
+                    <h4 style="font-size: 14px; margin-bottom: 6px; color: var(--text-color); font-weight: 700;">📥 <?= __('profile_import_title') ?></h4>
                     <p style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
-                        Sube tus archivos CSV exportados desde Mastodon u otra instancia de KutSocial para restaurar tus seguidos, seguidores, listas y filtros.
+                        <?= __('profile_import_desc') ?>
                     </p>
                     <form id="modal-import-form" style="display: flex; flex-direction: column; gap: 15px;">
                         <div style="display: flex; gap: 15px; align-items: flex-end; flex-wrap: wrap;">
                             <div style="flex: 1; min-width: 200px;">
-                                <label for="modal-import-type" style="margin-bottom: 8px;">Tipo de Dato</label>
+                                <label for="modal-import-type" style="margin-bottom: 8px;"><?= __('profile_import_data_type') ?></label>
                                 <select id="modal-import-type" name="type" style="width:100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; color: white; font-family: inherit;">
-                                    <option value="follows" style="background:#161c26;">👥 Seguidos (CSV)</option>
-                                    <option value="followers" style="background:#161c26;">👤 Seguidores (CSV)</option>
-                                    <option value="lists" style="background:#161c26;">📋 Listas (CSV)</option>
-                                    <option value="bookmarks" style="background:#161c26;">🔖 Marcadores (CSV)</option>
-                                    <option value="blocks" style="background:#161c26;">🚫 Bloqueados (CSV)</option>
-                                    <option value="mutes" style="background:#161c26;">🔇 Muteados (CSV)</option>
-                                    <option value="domain_blocks" style="background:#161c26;">🌐 Dominios Bloqueados (CSV)</option>
+                                    <option value="follows" style="background:#161c26;"><?= __('profile_import_opt_follows') ?></option>
+                                    <option value="followers" style="background:#161c26;"><?= __('profile_import_opt_followers') ?></option>
+                                    <option value="lists" style="background:#161c26;"><?= __('profile_import_opt_lists') ?></option>
+                                    <option value="bookmarks" style="background:#161c26;"><?= __('profile_import_opt_bookmarks') ?></option>
+                                    <option value="blocks" style="background:#161c26;"><?= __('profile_import_opt_blocks') ?></option>
+                                    <option value="mutes" style="background:#161c26;"><?= __('profile_import_opt_mutes') ?></option>
+                                    <option value="domain_blocks" style="background:#161c26;"><?= __('profile_import_opt_domain_blocks') ?></option>
                                 </select>
                             </div>
                             <div style="flex: 1; min-width: 200px;">
-                                <label for="modal-import-file" style="margin-bottom: 8px;">Archivo CSV</label>
+                                <label for="modal-import-file" style="margin-bottom: 8px;"><?= __('profile_import_file_label') ?></label>
                                 <input type="file" id="modal-import-file" name="file" accept=".csv,text/csv" required class="modal-input" style="padding: 9px 12px;">
                             </div>
                         </div>
-                        <button type="submit" style="width: auto; align-self: flex-start; padding: 10px 20px; font-size: 13.5px; margin-top: 5px;">📥 Iniciar Importación</button>
+                        <button type="submit" style="width: auto; align-self: flex-start; padding: 10px 20px; font-size: 13.5px; margin-top: 5px;"><?= __('profile_import_start_btn') ?></button>
                     </form>
                     <div id="modal-import-status-msg" style="margin-top: 14px; font-size: 13px; font-weight: 600;"></div>
                 </div>
@@ -451,25 +451,25 @@
     <!-- Modal: Organizar Cuenta (Añadir a listas / colecciones) -->
     <div id="modal-organize-account" class="modal-overlay" style="display: none;">
         <div class="modal-card" style="max-width: 460px;">
-            <h3 class="modal-title">📂 Organizar cuenta</h3>
-            <p style="font-size: 13px; color: var(--text-muted); margin: 0;">Organiza a <strong id="organize-account-handle" style="color:var(--text-color);">@...</strong> en tus listas y colecciones.</p>
+            <h3 class="modal-title">📂 <?= __('organize_account_title') ?></h3>
+            <p style="font-size: 13px; color: var(--text-muted); margin: 0;"><?= str_replace(':handle', '<strong id="organize-account-handle" style="color:var(--text-color);">@...</strong>', __('organize_account_desc')) ?></p>
             
             <div style="margin-top: 5px;">
-                <h4 style="font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; font-weight: bold; letter-spacing: 0.5px;">Mis Listas (Feeds Privados)</h4>
+                <h4 style="font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; font-weight: bold; letter-spacing: 0.5px;"><?= __('organize_my_lists') ?></h4>
                 <div id="organize-lists-checkboxes" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px;">
                     <!-- Checkboxes de listas -->
                 </div>
             </div>
 
             <div style="margin-top: 10px;">
-                <h4 style="font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; font-weight: bold; letter-spacing: 0.5px;">Mis Colecciones (Páginas Curadas Públicas)</h4>
+                <h4 style="font-size: 13px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px; font-weight: bold; letter-spacing: 0.5px;"><?= __('organize_my_collections') ?></h4>
                 <div id="organize-collections-checkboxes" style="max-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px;">
                     <!-- Checkboxes de colecciones -->
                 </div>
             </div>
 
             <div class="modal-actions" style="margin-top: 10px;">
-                <button class="modal-btn-confirm" onclick="closeOrganizeModal()">Listo</button>
+                <button class="modal-btn-confirm" onclick="closeOrganizeModal()"><?= __('done') ?></button>
             </div>
         </div>
     </div>
@@ -477,11 +477,11 @@
     <!-- Modal: Crear/Editar Lista -->
     <div id="modal-manage-list" class="modal-overlay" style="display: none;">
         <div class="modal-card">
-            <h3 class="modal-title" id="list-modal-title">Nueva Lista</h3>
-            <input type="text" id="list-modal-input-title" class="modal-input" placeholder="Nombre de la lista (ej: Desarrolladores)">
+            <h3 class="modal-title" id="list-modal-title"><?= __('lists_create') ?></h3>
+            <input type="text" id="list-modal-input-title" class="modal-input" placeholder="<?= __('lists_name_placeholder') ?>">
             <div class="modal-actions">
-                <button class="modal-btn-cancel" onclick="closeListModal()">Cancelar</button>
-                <button class="modal-btn-confirm" onclick="saveListModal()">Guardar</button>
+                <button class="modal-btn-cancel" onclick="closeListModal()"><?= __('cancel') ?></button>
+                <button class="modal-btn-confirm" onclick="saveListModal()"><?= __('save') ?></button>
             </div>
         </div>
     </div>
@@ -490,19 +490,19 @@
     <div id="modal-import-lists" class="modal-overlay" style="display: none; z-index: 2500;" onclick="if(event.target === this) closeImportListsModal()">
         <div class="modal-card" style="max-width: 440px;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
-                <h3 class="modal-title" style="margin: 0; font-size: 16px;">📥 Importar Listas (CSV)</h3>
-                <button type="button" class="modal-close-btn" onclick="closeImportListsModal()" aria-label="Cerrar">&times;</button>
+                <h3 class="modal-title" style="margin: 0; font-size: 16px;">📥 <?= __('lists_import_title') ?></h3>
+                <button type="button" class="modal-close-btn" onclick="closeImportListsModal()" aria-label="<?= __('close') ?>">&times;</button>
             </div>
             <form id="lists-import-form" onsubmit="handleListsImport(event)">
                 <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 10px 0;">
-                    Selecciona un archivo <code>lists.csv</code> exportado desde Mastodon u otra instancia KutSocial.
+                    <?= __('lists_import_desc') ?>
                 </p>
                 <div class="form-group" style="margin-bottom: 15px;">
                     <input type="file" id="lists-import-file" name="file" accept=".csv,text/csv" required class="modal-input" style="padding: 8px;">
                 </div>
                 <div class="modal-actions" style="margin: 0;">
-                    <button type="button" class="modal-btn-cancel" onclick="closeImportListsModal()">Cancelar</button>
-                    <button type="submit" class="modal-btn-confirm" id="lists-import-submit-btn">Subir e Importar</button>
+                    <button type="button" class="modal-btn-cancel" onclick="closeImportListsModal()"><?= __('cancel') ?></button>
+                    <button type="submit" class="modal-btn-confirm" id="lists-import-submit-btn"><?= __('profile_import_submit_btn') ?></button>
                 </div>
                 <div id="lists-import-status" style="margin-top: 10px; font-size: 13px; text-align: center; font-weight: 600;"></div>
             </form>
@@ -512,14 +512,14 @@
     <!-- Modal: Crear/Editar Colección -->
     <div id="modal-manage-collection" class="modal-overlay" style="display: none;">
         <div class="modal-card">
-            <h3 class="modal-title" id="collection-modal-title">Nueva Colección</h3>
+            <h3 class="modal-title" id="collection-modal-title"><?= __('collections_create') ?></h3>
             <div style="display: flex; flex-direction: column; gap: 10px;">
-                <input type="text" id="collection-modal-input-title" class="modal-input" placeholder="Nombre de la colección (ej: Fotógrafos)">
-                <textarea id="collection-modal-input-desc" class="modal-input" style="height: 80px; resize: none;" placeholder="Descripción corta pública de la colección"></textarea>
+                <input type="text" id="collection-modal-input-title" class="modal-input" placeholder="<?= __('collections_name_placeholder') ?>">
+                <textarea id="collection-modal-input-desc" class="modal-input" style="height: 80px; resize: none;" placeholder="<?= __('collections_desc_placeholder') ?>"></textarea>
             </div>
             <div class="modal-actions" style="margin-top: 5px;">
-                <button class="modal-btn-cancel" onclick="closeCollectionModal()">Cancelar</button>
-                <button class="modal-btn-confirm" onclick="saveCollectionModal()">Guardar</button>
+                <button class="modal-btn-cancel" onclick="closeCollectionModal()"><?= __('cancel') ?></button>
+                <button class="modal-btn-confirm" onclick="saveCollectionModal()"><?= __('save') ?></button>
             </div>
         </div>
     </div>
@@ -528,14 +528,14 @@
         <div class="modal-card" style="max-width: 500px; width: 90%; max-height: 85vh; display: flex; flex-direction: column;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                 <h3 class="modal-title" style="margin: 0; display: flex; align-items: center; gap: 8px;">
-                    <span class="material-icons-outlined" style="color: var(--primary); font-size: 28px;">gif_box</span> Buscar GIF en GIPHY
+                    <span class="material-icons-outlined" style="color: var(--primary); font-size: 28px;">gif_box</span> <?= __('gif_search_title') ?>
                 </h3>
                 <span onclick="closeGifModal()" style="color:var(--text-muted); cursor:pointer; font-size:24px; user-select:none; padding: 2px 6px;">✕</span>
             </div>
             
             <div style="display: flex; gap: 8px; margin-bottom: 15px;">
-                <input type="text" id="gif-search-input" class="modal-input" placeholder="Buscar GIFs..." style="margin: 0; flex-grow: 1;" onkeydown="if(event.key === 'Enter') searchGifs()">
-                <button class="modal-btn-confirm" onclick="searchGifs()" style="padding: 0 20px; margin: 0; height: 42px; border-radius: 6px;">Buscar</button>
+                <input type="text" id="gif-search-input" class="modal-input" placeholder="<?= __('gif_search_placeholder') ?>" style="margin: 0; flex-grow: 1;" onkeydown="if(event.key === 'Enter') searchGifs()">
+                <button class="modal-btn-confirm" onclick="searchGifs()" style="padding: 0 20px; margin: 0; height: 42px; border-radius: 6px;"><?= __('search') ?></button>
             </div>
             
             <div id="gif-results-container" style="flex-grow: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; min-height: 250px; max-height: 450px; padding: 2px;">
@@ -562,46 +562,46 @@
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
                 <h3 class="modal-title" style="margin: 0; font-size: 16px; color: var(--error, #ef4444); display: flex; align-items: center; gap: 8px;">
                     <span class="material-icons-outlined" style="font-size: 20px;">flag</span>
-                    <span id="report-modal-title">Reportar cuenta</span>
+                    <span id="report-modal-title"><?= __('report_account_title') ?></span>
                 </h3>
-                <button type="button" class="modal-close-btn" onclick="closeReportModal()" aria-label="Cerrar">&times;</button>
+                <button type="button" class="modal-close-btn" onclick="closeReportModal()" aria-label="<?= __('close') ?>">&times;</button>
             </div>
             <form id="report-modal-form" onsubmit="handleReportSubmit(event)">
                 <input type="hidden" id="report-account-id" name="account_id">
                 <input type="hidden" id="report-status-id" name="status_id">
                 
                 <p id="report-modal-target-desc" style="font-size: 13.5px; color: var(--text-color); margin: 8px 0 12px 0;">
-                    Estás reportando a <strong id="report-target-handle">@...</strong>
+                    <?= str_replace(':handle', '<strong id="report-target-handle">@...</strong>', __('report_target_desc')) ?>
                 </p>
 
                 <div id="report-status-preview" style="display: none; background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; margin-bottom: 14px; font-size: 12.5px; color: var(--text-muted); max-height: 90px; overflow-y: auto;">
                 </div>
 
                 <div class="form-group" style="margin-bottom: 12px;">
-                    <label for="report-category" style="display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Motivo principal</label>
+                    <label for="report-category" style="display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;"><?= __('report_main_reason') ?></label>
                     <select id="report-category" name="category" class="modal-input" style="cursor: pointer;">
-                        <option value="spam">Spam / Publicidad no deseada o bots</option>
-                        <option value="violation">Acoso o infracción de las normas de la comunidad</option>
-                        <option value="legal">Contenido ilegal o perjudicial</option>
-                        <option value="other">Otro motivo</option>
+                        <option value="spam"><?= __('report_opt_spam') ?></option>
+                        <option value="violation"><?= __('report_opt_violation') ?></option>
+                        <option value="legal"><?= __('report_opt_legal') ?></option>
+                        <option value="other"><?= __('report_opt_other') ?></option>
                     </select>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 14px;">
-                    <label for="report-comment" style="display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;">Comentarios o detalles adicionales</label>
-                    <textarea id="report-comment" name="comment" class="modal-input" style="height: 85px; resize: vertical;" placeholder="Describe brevemente el problema para los moderadores..." required></textarea>
+                    <label for="report-comment" style="display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px;"><?= __('report_comments') ?></label>
+                    <textarea id="report-comment" name="comment" class="modal-input" style="height: 85px; resize: vertical;" placeholder="<?= __('report_comments_placeholder') ?>" required></textarea>
                 </div>
 
                 <div id="report-forward-container" style="display: none; margin-bottom: 16px;">
                     <label style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-color); cursor: pointer;">
                         <input type="checkbox" id="report-forward" name="forward" value="1" checked style="cursor: pointer;">
-                        <span>Reenviar copia de este reporte al servidor <strong id="report-remote-domain">...</strong></span>
+                        <span><?= str_replace(':domain', '<strong id="report-remote-domain">...</strong>', __('report_forward_desc')) ?></span>
                     </label>
                 </div>
 
                 <div class="modal-actions" style="margin-top: 10px;">
-                    <button type="button" class="modal-btn-cancel" onclick="closeReportModal()">Cancelar</button>
-                    <button type="submit" class="modal-btn-confirm" id="report-submit-btn" style="background: var(--error, #ef4444);">Enviar reporte</button>
+                    <button type="button" class="modal-btn-cancel" onclick="closeReportModal()"><?= __('cancel') ?></button>
+                    <button type="submit" class="modal-btn-confirm" id="report-submit-btn" style="background: var(--error, #ef4444);"><?= __('report_submit_btn') ?></button>
                 </div>
             </form>
         </div>
