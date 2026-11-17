@@ -190,17 +190,23 @@ class Database {
                     $db->exec("ALTER TABLE follows ADD COLUMN show_reblogs INTEGER NOT NULL DEFAULT 1");
                 }
 
-                // Asegurar columna also_known_as
+                // Asegurar columna also_known_as y statuses_last_fetched_at
                 $accCols = $db->query("PRAGMA table_info(accounts)")->fetchAll(\PDO::FETCH_ASSOC);
                 $hasAlsoKnownAs = false;
+                $hasStatusesLastFetchedAt = false;
                 foreach ($accCols as $col) {
                     if (strcasecmp($col['name'], 'also_known_as') === 0) {
                         $hasAlsoKnownAs = true;
-                        break;
+                    }
+                    if (strcasecmp($col['name'], 'statuses_last_fetched_at') === 0) {
+                        $hasStatusesLastFetchedAt = true;
                     }
                 }
                 if (!$hasAlsoKnownAs) {
                     $db->exec("ALTER TABLE accounts ADD COLUMN also_known_as TEXT NULL");
+                }
+                if (!$hasStatusesLastFetchedAt) {
+                    $db->exec("ALTER TABLE accounts ADD COLUMN statuses_last_fetched_at TEXT NULL");
                 }
 
                 // Limpieza de auto-seguimientos erróneos
@@ -584,6 +590,9 @@ class Database {
                 )",
                 "CREATE INDEX IF NOT EXISTS idx_admin_sessions_selector ON admin_sessions(selector)",
                 "CREATE INDEX IF NOT EXISTS idx_admin_sessions_account_id ON admin_sessions(account_id)"
+            ],
+            23 => [
+                "ALTER TABLE accounts ADD COLUMN statuses_last_fetched_at TEXT NULL"
             ]
         ];
     }

@@ -2113,8 +2113,16 @@ HTML;
         if ($isRemote) {
             $followersCount = (int)($account['followers_count'] ?? 0);
             $followingCount = (int)($account['following_count'] ?? 0);
-            $statusesCount = (int)($account['statuses_count'] ?? 0);
-            $lastStatusAt = !empty($account['last_status_at']) ? date('Y-m-d', strtotime($account['last_status_at'])) : null;
+            
+            $stmtStatuses = $db->prepare("SELECT COUNT(*) FROM statuses WHERE account_id = ?");
+            $stmtStatuses->execute([$accountId]);
+            $localStatuses = (int)$stmtStatuses->fetchColumn();
+            $statusesCount = max((int)($account['statuses_count'] ?? 0), $localStatuses);
+
+            $stmtLastStatus = $db->prepare("SELECT created_at FROM statuses WHERE account_id = ? ORDER BY id DESC LIMIT 1");
+            $stmtLastStatus->execute([$accountId]);
+            $lastCreated = $stmtLastStatus->fetchColumn();
+            $lastStatusAt = $lastCreated ? date('Y-m-d', strtotime($lastCreated)) : (!empty($account['last_status_at']) ? date('Y-m-d', strtotime($account['last_status_at'])) : null);
         } else {
             // Contar seguidores recibidos
             $stmtFollowers = $db->prepare("SELECT COUNT(*) FROM follows WHERE target_account_id = ? AND (status = 'accepted' OR status = 'pending')");
@@ -2666,18 +2674,26 @@ HTML;
 
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
-        $actorUrl = "https://{$account['domain']}/users/{$account['username']}";
+        $actorUrl = !empty($account['url']) ? $account['url'] : (!empty($account['uri']) ? $account['uri'] : "https://{$account['domain']}/users/{$account['username']}");
 
         try {
+            $db = Database::connect();
+            // Actualizar marca de tiempo de última consulta de estados para no sobrecargar
+            try {
+                $db->prepare("UPDATE accounts SET statuses_last_fetched_at = datetime('now') WHERE id = ?")->execute([$account['id']]);
+            } catch (\Throwable $e) {}
+
             // 1. Obtener la URL de la outbox del perfil del actor remoto
             $ch = curl_init($actorUrl);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 5,
                 CURLOPT_HTTPHEADER => [
                     "Accept: application/activity+json, application/ld+json",
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
-                CURLOPT_TIMEOUT => 5,
+                CURLOPT_TIMEOUT => 8,
                 CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
                 CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
@@ -2694,11 +2710,13 @@ HTML;
             $ch = curl_init($outboxUrl);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 5,
                 CURLOPT_HTTPHEADER => [
                     "Accept: application/activity+json, application/ld+json",
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
-                CURLOPT_TIMEOUT => 5,
+                CURLOPT_TIMEOUT => 8,
                 CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
                 CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
             ]);
@@ -2712,17 +2730,21 @@ HTML;
             $items = [];
             if (isset($outboxJson['orderedItems'])) {
                 $items = $outboxJson['orderedItems'];
+            } elseif (isset($outboxJson['items'])) {
+                $items = $outboxJson['items'];
             } elseif (isset($outboxJson['first'])) {
                 $firstPageUrl = is_array($outboxJson['first']) ? ($outboxJson['first']['id'] ?? '') : $outboxJson['first'];
                 if ($firstPageUrl) {
                     $ch = curl_init($firstPageUrl);
                     curl_setopt_array($ch, [
                         CURLOPT_RETURNTRANSFER => true,
+                        CURLOPT_FOLLOWLOCATION => true,
+                        CURLOPT_MAXREDIRS => 5,
                         CURLOPT_HTTPHEADER => [
                             "Accept: application/activity+json, application/ld+json",
                             "User-Agent: KutSocial/1.0; (+https://$domain)"
                         ],
-                        CURLOPT_TIMEOUT => 5,
+                        CURLOPT_TIMEOUT => 8,
                         CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
                         CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
                     ]);
@@ -2735,15 +2757,14 @@ HTML;
                 }
             }
 
-            $db = Database::connect();
-
+            $importedCount = 0;
             // 3. Procesar e insertar notas en la base de datos local
             foreach ($items as $item) {
                 $activityType = $item['type'] ?? '';
                 $object = null;
                 if ($activityType === 'Create' && isset($item['object'])) {
                     $object = $item['object'];
-                } elseif (isset($item['type']) && ($item['type'] === 'Note' || $item['type'] === 'Question')) {
+                } elseif (isset($item['type']) && in_array($item['type'], ['Note', 'Question', 'Audio', 'Article', 'Page', 'Video'])) {
                     $object = $item;
                 }
 
@@ -2760,52 +2781,108 @@ HTML;
                 }
 
                 $content = $object['content'] ?? '';
-                $visibility = self::determineVisibility($object);
-                $createdAt = $object['published'] ?? date('c');
+                if (empty($content) && !empty($object['summary'])) {
+                    $content = $object['summary'];
+                }
+                if (!empty($object['name']) && is_string($object['name']) && !str_contains($content, $object['name'])) {
+                    $content = '<strong>' . htmlspecialchars($object['name'], ENT_QUOTES, 'UTF-8') . '</strong><br>' . $content;
+                }
 
-                // Procesar adjuntos (media)
+                $visibility = self::determineVisibility($object);
+                $createdAt = $object['published'] ?? $object['publishedAt'] ?? $item['published'] ?? date('c');
+
+                // Procesar adjuntos (media) soportando Document, Image, Audio, Video
                 $attachments = [];
                 if (!empty($object['attachment'])) {
-                    foreach ($object['attachment'] as $att) {
-                        $attType = $att['type'] ?? '';
-                        if ($attType === 'Document' || $attType === 'Image') {
-                            $url = '';
-                            if (isset($att['url'])) {
-                                if (is_string($att['url'])) {
-                                    $url = $att['url'];
-                                } elseif (is_array($att['url'])) {
-                                    if (isset($att['url']['href'])) {
-                                        $url = $att['url']['href'];
-                                    } else {
-                                        foreach ($att['url'] as $subUrl) {
-                                            if (is_array($subUrl) && isset($subUrl['href'])) {
-                                                $url = $subUrl['href'];
-                                                break;
-                                            } elseif (is_string($subUrl)) {
-                                                $url = $subUrl;
-                                                break;
+                    $rawAttachments = $object['attachment'];
+                    if (isset($rawAttachments['type']) || isset($rawAttachments['url']) || isset($rawAttachments['href'])) {
+                        $rawAttachments = [$rawAttachments];
+                    }
+                    if (is_array($rawAttachments)) {
+                        foreach ($rawAttachments as $att) {
+                            if (!is_array($att)) continue;
+                            $attType = $att['type'] ?? '';
+                            if ($attType === 'Document' || $attType === 'Image' || $attType === 'Audio' || $attType === 'Video') {
+                                $url = '';
+                                if (isset($att['url'])) {
+                                    if (is_string($att['url'])) {
+                                        $url = $att['url'];
+                                    } elseif (is_array($att['url'])) {
+                                        if (isset($att['url']['href'])) {
+                                            $url = $att['url']['href'];
+                                        } else {
+                                            foreach ($att['url'] as $subUrl) {
+                                                if (is_array($subUrl) && isset($subUrl['href'])) {
+                                                    $url = $subUrl['href'];
+                                                    break;
+                                                } elseif (is_string($subUrl)) {
+                                                    $url = $subUrl;
+                                                    break;
+                                                }
                                             }
                                         }
                                     }
+                                } elseif (isset($att['href']) && is_string($att['href'])) {
+                                    $url = $att['href'];
                                 }
-                            }
-                            if (empty($url)) {
-                                continue;
-                            }
 
-                            $description = $att['name'] ?? $att['summary'] ?? $att['description'] ?? '';
+                                if (empty($url)) {
+                                    continue;
+                                }
 
-                            $attachments[] = [
-                                'id' => bin2hex(random_bytes(6)),
-                                'type' => 'image',
-                                'url' => $url,
-                                'preview_url' => $url,
-                                'remote_url' => $url,
-                                'description' => $description
-                            ];
+                                $description = $att['name'] ?? $att['summary'] ?? $att['description'] ?? '';
+
+                                $mimeType = $att['mediaType'] ?? $att['mimeType'] ?? '';
+                                if (!empty($mimeType)) {
+                                    $mediaApiType = self::detectMediaType($mimeType);
+                                } else {
+                                    $mediaApiType = self::detectMediaTypeFromUrl($url);
+                                }
+                                if ($attType === 'Audio') {
+                                    $mediaApiType = 'audio';
+                                } elseif ($attType === 'Video') {
+                                    $mediaApiType = 'video';
+                                } elseif ($attType === 'Image') {
+                                    $mediaApiType = 'image';
+                                }
+
+                                if ($mediaApiType === 'unknown') {
+                                    continue;
+                                }
+
+                                $previewUrl = $url;
+                                if ($mediaApiType === 'video' || $mediaApiType === 'audio') {
+                                    $previewUrl = $att['icon']['url'] ?? $att['preview_url'] ?? $url;
+                                }
+
+                                $attachments[] = [
+                                    'id' => bin2hex(random_bytes(6)),
+                                    'type' => $mediaApiType,
+                                    'url' => $url,
+                                    'preview_url' => $previewUrl,
+                                    'remote_url' => $url,
+                                    'description' => $description
+                                ];
+                            }
                         }
                     }
                 }
+
+                // Si el objeto es Audio y no tiene adjuntos, buscar en 'url'
+                if (($object['type'] ?? '') === 'Audio' && empty($attachments) && !empty($object['url'])) {
+                    $audioUrl = is_string($object['url']) ? $object['url'] : ($object['url']['href'] ?? '');
+                    if (!empty($audioUrl)) {
+                        $attachments[] = [
+                            'id' => bin2hex(random_bytes(6)),
+                            'type' => 'audio',
+                            'url' => $audioUrl,
+                            'preview_url' => $audioUrl,
+                            'remote_url' => $audioUrl,
+                            'description' => $object['name'] ?? ''
+                        ];
+                    }
+                }
+
                 $mediaJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
 
                 $stmtIns = $db->prepare("
@@ -2820,6 +2897,19 @@ HTML;
                     date('Y-m-d H:i:s', strtotime($createdAt)),
                     $mediaJson
                 ]);
+
+                $newStatusId = (int)$db->lastInsertId();
+                if (class_exists('\\KutSocial\\NotificationHelper')) {
+                    \KutSocial\NotificationHelper::fetchAndSaveLinkCard($newStatusId, $content);
+                }
+                $importedCount++;
+            }
+
+            if ($importedCount > 0) {
+                try {
+                    $stmtCnt = $db->prepare("UPDATE accounts SET statuses_count = (SELECT COUNT(*) FROM statuses WHERE account_id = ?) WHERE id = ?");
+                    $stmtCnt->execute([$account['id'], $account['id']]);
+                } catch (\Throwable $e) {}
             }
         } catch (\Exception $e) {
             // Ignorar errores de conexión
@@ -2849,8 +2939,12 @@ HTML;
             $stmtCount->execute([$id]);
             $localCount = (int)$stmtCount->fetchColumn();
 
-            $lastUpdated = strtotime($account['updated_at'] ?? 'now');
-            if ($localCount === 0 || (time() - $lastUpdated >= 300)) {
+            $lastFetched = !empty($account['statuses_last_fetched_at'])
+                ? strtotime($account['statuses_last_fetched_at'])
+                : 0;
+
+            // Si nunca se han traído estados, o si pasaron más de 60 segundos desde la última consulta a la outbox:
+            if ($localCount === 0 || (time() - $lastFetched >= 60)) {
                 self::fetchAndImportRemoteStatuses($account);
             }
         }
