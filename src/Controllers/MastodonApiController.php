@@ -3385,7 +3385,24 @@ HTML;
         $local = isset($_GET['local']) && ($_GET['local'] === 'true' || $_GET['local'] === '1');
         if ($local) {
             $whereClauses[] = "(a.domain IS NULL OR a.domain = '')";
+        } else {
+            // En el timeline federado público solo deben mostrarse toots relevantes para la instancia:
+            // 1. Cuentas locales
+            // 2. Cuentas remotas seguidas por algún usuario local
+            // 3. Reblogs / retoots hechos por cuentas locales o seguidas
+            // 4. Si la instancia tiene suscripciones a relays de ActivityPub
+            $hasActiveRelays = (int)$db->query("SELECT COUNT(*) FROM relays WHERE status = 'accepted'")->fetchColumn() > 0;
+            if (!$hasActiveRelays) {
+                $whereClauses[] = "(
+                    (a.domain IS NULL OR a.domain = '')
+                    OR s.account_id IN (SELECT target_account_id FROM follows WHERE status = 'accepted' OR status = 'pending')
+                    OR s.reblog_of_id IS NOT NULL
+                )";
+            }
         }
+
+        // Excluir respuestas a terceros de la vista federada pública (estándar de Mastodon: solo toots raíz o retoots)
+        $whereClauses[] = "(s.in_reply_to_id IS NULL AND (s.in_reply_to_url IS NULL OR s.in_reply_to_url = ''))";
 
         if ($maxId !== null) {
             $whereClauses[] = "s.id < ?";

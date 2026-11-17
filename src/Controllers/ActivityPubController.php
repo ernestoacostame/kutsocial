@@ -816,13 +816,46 @@ XML;
                 $inReplyToId = $parentRow['id'];
                 $inReplyToAccountId = $parentRow['account_id'];
             } else {
+                // Si el autor de esta respuesta es seguido por usuarios locales pero todos tienen activada la opción
+                // 'only_replies_to_me' (ej. bots de alt-text o bots de transcripción) y la respuesta no menciona
+                // a ningún usuario local, evitar descargar y registrar el toot padre de terceros en la BD local.
+                $skipFetchRemote = false;
                 try {
-                    $inReplyToId = self::fetchAndRegisterRemoteStatus($inReplyToUri);
-                    if ($inReplyToId) {
-                        $inReplyToAccountId = $db->query("SELECT account_id FROM statuses WHERE id = " . (int)$inReplyToId)->fetchColumn() ?: null;
+                    $stmtFollowSettings = $db->prepare("
+                        SELECT f.only_replies_to_me 
+                        FROM follows f 
+                        JOIN accounts a ON f.account_id = a.id
+                        WHERE f.target_account_id = ? AND (a.domain IS NULL OR a.domain = '')
+                    ");
+                    $stmtFollowSettings->execute([$remoteAccount['id']]);
+                    $fSettings = $stmtFollowSettings->fetchAll(\PDO::FETCH_COLUMN);
+                    if (!empty($fSettings) && !in_array(0, array_map('intval', $fSettings), true)) {
+                        $stmtLocalUsers = $db->query("SELECT username FROM accounts WHERE domain IS NULL OR domain = ''");
+                        $localUsernames = $stmtLocalUsers->fetchAll(\PDO::FETCH_COLUMN);
+                        $mentionsLocal = false;
+                        $contentLower = strtolower($content);
+                        foreach ($localUsernames as $lUser) {
+                            if (str_contains($contentLower, '@' . strtolower($lUser))) {
+                                $mentionsLocal = true;
+                                break;
+                            }
+                        }
+                        if (!$mentionsLocal) {
+                            $skipFetchRemote = true;
+                            self::log("handleCreate: Omitiendo descarga de inReplyTo '$inReplyToUri' porque el autor tiene only_replies_to_me activado y no menciona usuarios locales");
+                        }
                     }
-                } catch (\Throwable $e) {
-                    self::log("handleCreate: no se pudo pre-resolver inReplyTo '$inReplyToUri': " . $e->getMessage());
+                } catch (\Throwable $e) {}
+
+                if (!$skipFetchRemote) {
+                    try {
+                        $inReplyToId = self::fetchAndRegisterRemoteStatus($inReplyToUri);
+                        if ($inReplyToId) {
+                            $inReplyToAccountId = $db->query("SELECT account_id FROM statuses WHERE id = " . (int)$inReplyToId)->fetchColumn() ?: null;
+                        }
+                    } catch (\Throwable $e) {
+                        self::log("handleCreate: no se pudo pre-resolver inReplyTo '$inReplyToUri': " . $e->getMessage());
+                    }
                 }
             }
         }
