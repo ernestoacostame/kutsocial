@@ -103,6 +103,14 @@
                 </label>
             </div>
 
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 25px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_timeline_preferences') ?></h3>
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                    <input type="checkbox" id="pref-auto-scroll-new" style="width: auto;">
+                    <span><?= __('pref_auto_scroll_new_desc') ?></span>
+                </label>
+            </div>
+
             <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 25px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_interface_language') ?></h3>
             <div style="margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
                 <label for="select-profile-language-spa" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--text-color);"><?= __('profile_interface_language_desc') ?></label>

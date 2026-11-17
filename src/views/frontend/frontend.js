@@ -124,6 +124,9 @@ let oldestId = null;
 let hasMoreToots = true;
 let isLoadingToots = false;
 let eventSource = null;
+let unreadNewTootsCount = 0;
+let isUserScrolling = false;
+let userScrollTimer = null;
 
 // Timeline cache and DOM container state management
 const timelineStates = {};
@@ -155,6 +158,8 @@ function getFeedContainer(timelineId) {
 }
 
 function showFeedContainer(timelineId) {
+    unreadNewTootsCount = 0;
+    updateNewTootsPill();
     const wrapper = document.getElementById('feed-container-wrapper');
     if (wrapper) {
         const containers = wrapper.getElementsByClassName('feed-container');
@@ -229,6 +234,16 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Inicializar checkbox de preferencia de Auto-Scroll a toots nuevos
+    const autoScrollNewCheckbox = document.getElementById('pref-auto-scroll-new');
+    if (autoScrollNewCheckbox) {
+        const savedVal = localStorage.getItem('kutsocial_auto_scroll_new') === 'true';
+        autoScrollNewCheckbox.checked = savedVal;
+        autoScrollNewCheckbox.addEventListener('change', () => {
+            localStorage.setItem('kutsocial_auto_scroll_new', autoScrollNewCheckbox.checked);
+        });
+    }
+
     // Registrar listener de cambio de visibilidad en el composer para actualizar icono
     const visSelect = document.getElementById('composer-visibility');
     if (visSelect) {
@@ -236,10 +251,34 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Event listener de scroll para carga diferida (Infinite Scroll)
+// Event listener de scroll para carga diferida (Infinite Scroll) y control de botones flotantes
 window.addEventListener('scroll', () => {
+    isUserScrolling = true;
+    clearTimeout(userScrollTimer);
+    userScrollTimer = setTimeout(() => {
+        isUserScrolling = false;
+    }, 350);
+
+    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+
+    // Botón flotante para volver arriba
+    const scrollTopBtn = document.getElementById('btn-scroll-to-top');
+    if (scrollTopBtn) {
+        if (scrollY > 350) {
+            scrollTopBtn.classList.add('visible');
+        } else {
+            scrollTopBtn.classList.remove('visible');
+        }
+    }
+
+    // Si el usuario regresa manualmente al tope del timeline, descartar la píldora de nuevos toots
+    if (scrollY < 60 && unreadNewTootsCount > 0) {
+        unreadNewTootsCount = 0;
+        updateNewTootsPill();
+    }
+
     const scrollHeight = Math.max(document.body.offsetHeight, document.documentElement.scrollHeight);
-    if ((window.innerHeight + window.scrollY) >= scrollHeight - 600) {
+    if ((window.innerHeight + scrollY) >= scrollHeight - 600) {
         if (!isLoadingToots && hasMoreToots && currentTimeline !== 'bookmarks') {
             loadTimeline(true);
         }
@@ -791,6 +830,42 @@ function startStreaming() {
     };
 }
 
+function updateNewTootsPill() {
+    const pillContainer = document.getElementById('new-toots-pill-container');
+    const pillText = document.getElementById('new-toots-pill-text');
+    if (!pillContainer || !pillText) return;
+
+    if (unreadNewTootsCount > 0) {
+        const tSingle = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_new_toots_single) || '1 nuevo toot ↑';
+        const tMulti = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_new_toots_multi) || ':count nuevos toots ↑';
+        pillText.innerText = unreadNewTootsCount === 1 ? tSingle : tMulti.replace(':count', unreadNewTootsCount);
+        pillContainer.style.display = 'flex';
+    } else {
+        pillContainer.style.display = 'none';
+    }
+}
+
+function scrollToTopAndDismissPill() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    unreadNewTootsCount = 0;
+    updateNewTootsPill();
+    const feed = getFeedContainer(currentTimeline);
+    if (feed && feed.firstElementChild) {
+        feed.firstElementChild.classList.add('toot-highlight-flash');
+        setTimeout(() => {
+            if (feed.firstElementChild) {
+                feed.firstElementChild.classList.remove('toot-highlight-flash');
+            }
+        }, 1600);
+    }
+}
+
+function scrollToTopTimeline() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    unreadNewTootsCount = 0;
+    updateNewTootsPill();
+}
+
 function prependToot(toot, isNew = false) {
     if (currentTimeline === 'direct' && toot.visibility !== 'direct') {
         return;
@@ -809,6 +884,19 @@ function prependToot(toot, isNew = false) {
     if (isNew) {
         card.style.borderLeft = '3px solid var(--secondary)';
         feed.insertBefore(card, feed.firstChild);
+
+        const isAutoScrollEnabled = localStorage.getItem('kutsocial_auto_scroll_new') === 'true';
+        const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        const isAtTop = scrollY < 60;
+
+        if (isAutoScrollEnabled && isAtTop && !isUserScrolling) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            unreadNewTootsCount = 0;
+            updateNewTootsPill();
+        } else {
+            unreadNewTootsCount++;
+            updateNewTootsPill();
+        }
     } else {
         feed.appendChild(card);
     }
