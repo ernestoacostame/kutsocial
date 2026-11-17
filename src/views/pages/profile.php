@@ -1,17 +1,17 @@
 <div id="tab-profile" class="composer-card">
-    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 20px; gap: 15px; flex-wrap: wrap;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 14px; margin-bottom: 22px; gap: 15px; flex-wrap: wrap;">
         <h2 style="margin: 0; font-size: 18px; font-weight: 700; display: flex; align-items: center; gap: 8px;">
             <span class="material-icons-outlined" style="color: var(--primary);">tune</span> Ajustes de Cuenta & Datos
         </h2>
         <div class="pill-toggle-group" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border-color); flex-shrink: 0;">
             <button type="button" id="btn-subtab-profile-edit" onclick="switchProfileSettingsTab('edit')" class="profile-subtab-btn active">
-                <span>👤</span> <span>Perfil</span>
+                <span>👤</span> <span><?= __('profile_tab_profile') ?></span>
             </button>
             <button type="button" id="btn-subtab-profile-privacy" onclick="switchProfileSettingsTab('privacy')" class="profile-subtab-btn">
-                <span>🔒</span> <span>Privacidad</span>
+                <span>🔒</span> <span><?= __('profile_tab_privacy') ?></span>
             </button>
             <button type="button" id="btn-subtab-profile-import" onclick="switchProfileSettingsTab('import')" class="profile-subtab-btn">
-                <span>📥</span> <span>Importar & Exportar</span>
+                <span>📥</span> <span><?= __('profile_import_export') ?></span>
             </button>
         </div>
     </div>
@@ -19,109 +19,109 @@
     <form id="profile-form" enctype="multipart/form-data">
         <!-- Subtab 1: Perfil -->
         <div id="subtab-content-profile-edit">
-            <div class="form-group" style="margin-bottom: 15px;">
-                <label>Imagen de Portada (Header)</label>
-                <input type="file" id="profile-header-input" name="header" accept="image/*">
+            <div class="form-group" style="margin-bottom: 22px;">
+                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Imagen de Portada (Header)</label>
+                <input type="file" id="profile-header-input" name="header" accept="image/*" style="padding: 10px 14px;">
             </div>
-            <div class="form-group" style="margin-bottom: 15px;">
-                <label>Imagen de Avatar</label>
-                <input type="file" id="profile-avatar-input" name="avatar" accept="image/*">
+            <div class="form-group" style="margin-bottom: 22px;">
+                <label style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Imagen de Avatar</label>
+                <input type="file" id="profile-avatar-input" name="avatar" accept="image/*" style="padding: 10px 14px;">
             </div>
-            <div class="form-group" style="margin-bottom: 15px;">
-                <label for="profile-display-name">Nombre a Mostrar</label>
-                <input type="text" id="profile-display-name" name="display_name" placeholder="Tu nombre" value="<?= htmlspecialchars($localUser['display_name'] ?? '') ?>">
+            <div class="form-group" style="margin-bottom: 22px;">
+                <label for="profile-display-name" style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Nombre a Mostrar</label>
+                <input type="text" id="profile-display-name" name="display_name" placeholder="Tu nombre" value="<?= htmlspecialchars($localUser['display_name'] ?? '') ?>" style="padding: 11px 14px;">
             </div>
-            <div class="form-group" style="margin-bottom: 15px;">
-                <label for="profile-note">Biografía (Texto plano)</label>
-                <textarea id="profile-note" name="note" class="composer-textarea" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px; height: 100px;" placeholder="Cuéntale algo al Fediverso..."><?= htmlspecialchars($localUser['note'] ?? '') ?></textarea>
+            <div class="form-group" style="margin-bottom: 22px;">
+                <label for="profile-note" style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Biografía (Texto plano)</label>
+                <textarea id="profile-note" name="note" class="composer-textarea" style="border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 14px; height: 100px;" placeholder="Cuéntale algo al Fediverso..."><?= htmlspecialchars($localUser['note'] ?? '') ?></textarea>
             </div>
 
-            <div class="form-group" style="margin-bottom: 15px;">
-                <label for="profile-also-known-as">Migración de Cuenta (alsoKnownAs)</label>
-                <input type="text" id="profile-also-known-as" name="also_known_as" placeholder="https://mastodon.social/users/tu_antiguo_usuario" value="<?= htmlspecialchars($localUser['also_known_as'] ?? '') ?>">
-                <small style="display: block; color: var(--text-muted); font-size: 11.5px; margin-top: 4px;">
+            <div class="form-group" style="margin-bottom: 22px;">
+                <label for="profile-also-known-as" style="display: block; font-size: 13px; font-weight: 600; color: var(--text-muted); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Migración de Cuenta (alsoKnownAs)</label>
+                <input type="text" id="profile-also-known-as" name="also_known_as" placeholder="https://mastodon.social/users/tu_antiguo_usuario" value="<?= htmlspecialchars($localUser['also_known_as'] ?? '') ?>" style="padding: 11px 14px;">
+                <small style="display: block; color: var(--text-muted); font-size: 12px; margin-top: 8px; line-height: 1.5;">
                     URL del perfil de tu cuenta anterior en Mastodon para permitir la migración automática de tus seguidores hacia KutSocial.
                 </small>
             </div>
             
-            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Campos Personalizados (Metadatos de Verificación)</h3>
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Campos Personalizados (Metadatos de Verificación)</h3>
             <div id="metadata-fields-container">
                 <?php 
                 $fields = json_decode($localUser['fields'] ?? '[]', true) ?: [];
                 for ($i = 0; $i < 4; $i++): 
                     $f = $fields[$i] ?? ['name' => '', 'value' => '', 'verified_at' => null];
                 ?>
-                <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
-                    <input type="text" id="field-name-<?= $i ?>" name="fields_attributes[<?= $i ?>][name]" placeholder="Etiqueta" style="flex: 1;" value="<?= htmlspecialchars($f['name']) ?>">
-                    <input type="text" id="field-value-<?= $i ?>" name="fields_attributes[<?= $i ?>][value]" placeholder="Valor" style="flex: 2;" value="<?= htmlspecialchars($f['value']) ?>">
-                    <span id="field-verified-<?= $i ?>" style="font-size: 11.5px; font-weight: 600; width: 90px; text-align: right; color: var(--success, #10b981);">
+                <div style="display: flex; gap: 12px; margin-bottom: 12px; align-items: center;">
+                    <input type="text" id="field-name-<?= $i ?>" name="fields_attributes[<?= $i ?>][name]" placeholder="Etiqueta" style="flex: 1; padding: 11px 14px;" value="<?= htmlspecialchars($f['name']) ?>">
+                    <input type="text" id="field-value-<?= $i ?>" name="fields_attributes[<?= $i ?>][value]" placeholder="Valor" style="flex: 2; padding: 11px 14px;" value="<?= htmlspecialchars($f['value']) ?>">
+                    <span id="field-verified-<?= $i ?>" style="font-size: 11.5px; font-weight: 600; width: 95px; text-align: right; color: var(--success, #10b981);">
                         <?= !empty($f['verified_at']) ? '✓ Verificado' : '' ?>
                     </span>
                 </div>
                 <?php endfor; ?>
             </div>
             
-            <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 12px; line-height: 1.4; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px;">
+            <p style="font-size: 12.5px; color: var(--text-muted); margin-top: 20px; margin-bottom: 24px; line-height: 1.5; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 14px 16px; border-radius: 8px;">
                 💡 <strong>Verificación:</strong> Si añades un enlace aquí (ej. <code>https://tuweb.com</code>), asegúrate de que tu página web tenga un enlace de vuelta a tu perfil local (<code id="profile-verification-url-preview"><?= htmlspecialchars($localUser['url'] ?? '') ?></code>) con el atributo <code>rel="me"</code> (ej: <code>&lt;a href="..." rel="me"&gt;Mi Perfil&lt;/a&gt;</code>) para que aparezca verificado en verde.
             </p>
 
-            <button type="submit" style="margin-top: 15px;">Guardar Cambios de Perfil</button>
-            <div id="profile-save-status" style="margin-top: 12px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
+            <button type="submit" style="margin-top: 22px; padding: 12px 24px; font-size: 14px;">Guardar Cambios de Perfil</button>
+            <div id="profile-save-status" style="margin-top: 14px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
         </div>
 
         <!-- Subtab 2: Privacidad -->
         <div id="subtab-content-profile-privacy" style="display: none;">
-            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 5px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Ajustes de Privacidad</h3>
-            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 5px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Ajustes de Privacidad</h3>
+            <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-discoverable" name="discoverable" style="width: auto;" <?= ($localUser['discoverable'] ?? 0) ? 'checked' : '' ?>>
                     <span>Descubrible (Aparecer en el directorio de perfiles y sugerencias)</span>
                 </label>
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-auto-accept" name="auto_accept" style="width: auto;" <?= !($localUser['locked'] ?? 1) ? 'checked' : '' ?>>
                     <span>Aceptar seguidores automáticamente (Si no se marca, se requerirá aprobación manual)</span>
                 </label>
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-searchable" name="searchable" style="width: auto;" <?= ($localUser['searchable'] ?? 0) ? 'checked' : '' ?>>
                     <span>Permitir búsquedas internas (Permitir que otros busquen tu usuario y contenido)</span>
                 </label>
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-indexable" name="indexable" style="width: auto;" <?= ($localUser['indexable'] ?? 0) ? 'checked' : '' ?>>
                     <span>Indexable por buscadores (Permitir que Google y otros indexen tu perfil)</span>
                 </label>
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="profile-show-source" name="show_source" style="width: auto;" <?= ($localUser['show_source'] ?? 1) ? 'checked' : '' ?>>
                     <span>Mostrar aplicación de origen (Mostrar la app cliente con la que publicas tus toots)</span>
                 </label>
             </div>
             
-            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 25px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Preferencias de Publicación</h3>
-            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;">Preferencias de Publicación</h3>
+            <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="pref-warn-missing-alt" style="width: auto;">
                     <span>Avisar cuando se vaya a publicar una imagen sin descripción (texto alternativo/AltText)</span>
                 </label>
             </div>
 
-            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 25px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_timeline_preferences') ?></h3>
-            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
-                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px;">
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_timeline_preferences') ?></h3>
+            <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="pref-auto-scroll-new" style="width: auto;">
                     <span><?= __('pref_auto_scroll_new_desc') ?></span>
                 </label>
             </div>
 
-            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 25px; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_interface_language') ?></h3>
-            <div style="margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 15px; border-radius: 10px;">
-                <label for="select-profile-language" style="display: block; margin-bottom: 8px; font-size: 14px; color: var(--text-color);"><?= __('profile_interface_language_desc') ?></label>
-                <select id="select-profile-language" onchange="window.location.href='/lang/' + this.value" style="max-width: 280px; width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px; color: white;">
+            <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_interface_language') ?></h3>
+            <div style="margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+                <label for="select-profile-language" style="display: block; margin-bottom: 10px; font-size: 14px; color: var(--text-color); text-transform: none;"><?= __('profile_interface_language_desc') ?></label>
+                <select id="select-profile-language" onchange="window.location.href='/lang/' + this.value" style="max-width: 280px; width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; color: white;">
                     <option value="es" <?= \KutSocial\I18n::getLang() === 'es' ? 'selected' : '' ?>><?= __('spanish') ?> (Spanish)</option>
                     <option value="en" <?= \KutSocial\I18n::getLang() === 'en' ? 'selected' : '' ?>><?= __('english') ?> (English)</option>
                 </select>
             </div>
             
-            <button type="submit" style="margin-top: 15px;">Guardar Preferencias de Privacidad</button>
-            <div id="profile-privacy-save-status" style="margin-top: 12px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
+            <button type="submit" style="margin-top: 22px; padding: 12px 24px; font-size: 14px;">Guardar Preferencias de Privacidad</button>
+            <div id="profile-privacy-save-status" style="margin-top: 14px; font-size: 13.5px; text-align: center; font-weight: 600;"></div>
         </div>
     </form>
 

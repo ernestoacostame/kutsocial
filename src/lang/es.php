@@ -166,6 +166,8 @@ return [
     'timeline_scroll_to_top' => 'Volver al principio',
     'profile_interface_language' => 'Idioma de la Interfaz',
     'profile_interface_language_desc' => 'Elige tu idioma preferido para navegar y usar KutSocial.',
+    'profile_tab_profile' => 'Perfil',
+    'profile_tab_privacy' => 'Privacidad',
     'profile_import_export' => 'Importar & Exportar',
 
     // Notificaciones

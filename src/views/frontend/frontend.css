@@ -71,16 +71,16 @@ body {
 }
 
 .form-group {
-    margin-bottom: 20px;
+    margin-bottom: 22px;
     text-align: left;
 }
 
 label {
     display: block;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--text-muted);
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
@@ -1643,12 +1643,14 @@ button:hover {
 }
 .modal-input {
     width: 100%;
-    padding: 10px 12px;
+    padding: 11px 14px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
     background: rgba(0, 0, 0, 0.2);
     color: var(--text-color);
     font-size: 14px;
+    font-family: inherit;
+    box-sizing: border-box;
 }
 .modal-input:focus {
     outline: none;

@@ -2850,18 +2850,24 @@ async function openEditProfileModal() {
         const srcEl = document.getElementById('modal-profile-show-source');
         if (srcEl) srcEl.checked = !!currentProfileData.show_source;
 
-        // Custom fields
+        // Custom fields y badges de verificación
         for (let i = 0; i < 4; i++) {
             const fName = document.getElementById(`modal-field-name-${i}`);
             const fVal = document.getElementById(`modal-field-value-${i}`);
+            const fVer = document.getElementById(`modal-field-verified-${i}`);
             if (fName) fName.value = '';
             if (fVal) fVal.value = '';
+            if (fVer) {
+                fVer.innerText = '';
+                fVer.style.color = 'var(--text-muted)';
+            }
         }
         const fields = currentProfileData.fields || [];
         fields.forEach((f, idx) => {
             if (idx < 4) {
                 const fName = document.getElementById(`modal-field-name-${idx}`);
                 const fVal = document.getElementById(`modal-field-value-${idx}`);
+                const fVer = document.getElementById(`modal-field-verified-${idx}`);
                 if (fName) fName.value = f.name || '';
                 if (fVal) {
                     let val = f.value || '';
@@ -2871,12 +2877,43 @@ async function openEditProfileModal() {
                     }
                     fVal.value = val;
                 }
+                if (fVer) {
+                    if (f.verified_at) {
+                        fVer.innerText = '✓ Verificado';
+                        fVer.style.color = 'var(--secondary)';
+                    } else {
+                        fVer.innerText = 'No verificado';
+                        fVer.style.color = 'var(--text-muted)';
+                    }
+                }
             }
         });
+
+        // URL de verificación rel="me"
+        const prevUrlEl = document.getElementById('modal-profile-verification-url-preview');
+        if (prevUrlEl) {
+            prevUrlEl.innerText = currentProfileData.url || (window.location.origin + '/@' + (currentProfileData.username || ''));
+        }
+
+        // Preferencias de publicación y timeline en modal
+        const modalWarnAlt = document.getElementById('modal-pref-warn-missing-alt');
+        if (modalWarnAlt) {
+            modalWarnAlt.checked = localStorage.getItem('kutsocial_warn_missing_alt') !== 'false';
+        }
+        const modalAutoScroll = document.getElementById('modal-pref-auto-scroll-new');
+        if (modalAutoScroll) {
+            modalAutoScroll.checked = localStorage.getItem('kutsocial_auto_scroll_new') === 'true';
+        }
     }
+
+    switchModalProfileSettingsTab('edit');
 
     const statusDiv = document.getElementById('modal-profile-save-status');
     if (statusDiv) statusDiv.innerText = '';
+    const privStatusDiv = document.getElementById('modal-profile-privacy-save-status');
+    if (privStatusDiv) privStatusDiv.innerText = '';
+    const importStatusMsg = document.getElementById('modal-import-status-msg');
+    if (importStatusMsg) importStatusMsg.innerText = '';
 
     modal.style.display = 'flex';
 }
@@ -2884,6 +2921,22 @@ async function openEditProfileModal() {
 function closeEditProfileModal() {
     const modal = document.getElementById('modal-edit-profile');
     if (modal) modal.style.display = 'none';
+}
+
+function switchModalProfileSettingsTab(subtab = 'edit') {
+    const tabs = ['edit', 'privacy', 'import'];
+    tabs.forEach(t => {
+        const content = document.getElementById('modal-subtab-content-profile-' + t);
+        const btn = document.getElementById('btn-modal-subtab-profile-' + t);
+        if (content) content.style.display = (t === subtab) ? 'block' : 'none';
+        if (btn) {
+            if (t === subtab) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+    });
 }
 
 function switchProfileSettingsTab(subtab = 'edit') {
@@ -2935,17 +2988,88 @@ window.addEventListener('hashchange', () => {
     }
 });
 
+// Sincronizar checkboxes de preferencias en el modal con localStorage y la página
+const modalWarnAltInput = document.getElementById('modal-pref-warn-missing-alt');
+if (modalWarnAltInput) {
+    modalWarnAltInput.addEventListener('change', () => {
+        localStorage.setItem('kutsocial_warn_missing_alt', modalWarnAltInput.checked);
+        const pageWarn = document.getElementById('pref-warn-missing-alt');
+        if (pageWarn) pageWarn.checked = modalWarnAltInput.checked;
+    });
+}
+const modalAutoScrollInput = document.getElementById('modal-pref-auto-scroll-new');
+if (modalAutoScrollInput) {
+    modalAutoScrollInput.addEventListener('change', () => {
+        localStorage.setItem('kutsocial_auto_scroll_new', modalAutoScrollInput.checked);
+        const pageAuto = document.getElementById('pref-auto-scroll-new');
+        if (pageAuto) pageAuto.checked = modalAutoScrollInput.checked;
+    });
+}
+
+// Interceptar submit del formulario de importación en el modal
+const modalImportForm = document.getElementById('modal-import-form');
+if (modalImportForm) {
+    modalImportForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const statusDiv = document.getElementById('modal-import-status-msg');
+        if (statusDiv) {
+            statusDiv.innerText = 'Procesando importación...';
+            statusDiv.style.color = 'var(--text-muted)';
+        }
+
+        const formData = new FormData(modalImportForm);
+
+        try {
+            const response = await fetch('/api/v1/import', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (statusDiv) {
+                    statusDiv.innerText = `✓ Importación completada: ${data.imported} registros procesados correctamente. Errores: ${data.errors || 0}`;
+                    statusDiv.style.color = 'var(--secondary)';
+                }
+                const fileInput = document.getElementById('modal-import-file');
+                if (fileInput) fileInput.value = '';
+            } else {
+                const data = await response.json();
+                if (statusDiv) {
+                    statusDiv.innerText = 'Error al importar: ' + (data.error || 'Intenta de nuevo.');
+                    statusDiv.style.color = 'var(--error)';
+                }
+            }
+        } catch (err) {
+            if (statusDiv) {
+                statusDiv.innerText = 'Error al conectar al servidor.';
+                statusDiv.style.color = 'var(--error)';
+            }
+        }
+    });
+}
+
 // Interceptar submit del formulario modal de perfil
 const modalProfileForm = document.getElementById('modal-profile-form');
 if (modalProfileForm) {
     modalProfileForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const statusDiv = document.getElementById('modal-profile-save-status');
+        const privStatusDiv = document.getElementById('modal-profile-privacy-save-status');
         const submitBtn = document.getElementById('modal-profile-submit-btn');
+        const privSubmitBtn = document.getElementById('modal-profile-privacy-submit-btn');
         if (submitBtn) submitBtn.disabled = true;
+        if (privSubmitBtn) privSubmitBtn.disabled = true;
         if (statusDiv) {
             statusDiv.innerText = 'Guardando cambios...';
             statusDiv.style.color = 'var(--text-muted)';
+        }
+        if (privStatusDiv) {
+            privStatusDiv.innerText = 'Guardando cambios...';
+            privStatusDiv.style.color = 'var(--text-muted)';
         }
 
         const formData = new FormData(modalProfileForm);
@@ -2985,24 +3109,39 @@ if (modalProfileForm) {
                     statusDiv.innerText = '✓ Cambios guardados correctamente.';
                     statusDiv.style.color = 'var(--secondary)';
                 }
+                if (privStatusDiv) {
+                    privStatusDiv.innerText = '✓ Preferencias guardadas correctamente.';
+                    privStatusDiv.style.color = 'var(--secondary)';
+                }
 
                 setTimeout(() => {
                     closeEditProfileModal();
                 }, 800);
             } else {
                 const data = await response.json();
+                const errText = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
                 if (statusDiv) {
-                    statusDiv.innerText = 'Error al guardar: ' + (data.error || 'Intenta de nuevo.');
+                    statusDiv.innerText = errText;
                     statusDiv.style.color = 'var(--error)';
+                }
+                if (privStatusDiv) {
+                    privStatusDiv.innerText = errText;
+                    privStatusDiv.style.color = 'var(--error)';
                 }
             }
         } catch (err) {
+            const errConn = 'Error al conectar al servidor.';
             if (statusDiv) {
-                statusDiv.innerText = 'Error al conectar al servidor.';
+                statusDiv.innerText = errConn;
                 statusDiv.style.color = 'var(--error)';
+            }
+            if (privStatusDiv) {
+                privStatusDiv.innerText = errConn;
+                privStatusDiv.style.color = 'var(--error)';
             }
         } finally {
             if (submitBtn) submitBtn.disabled = false;
+            if (privSubmitBtn) privSubmitBtn.disabled = false;
         }
     });
 }
