@@ -251,7 +251,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-// Event listener de scroll para carga diferida (Infinite Scroll) y control de botones flotantes
+// Event listener de scroll para carga diferida (Infinite Scroll) y control de botones de volver arriba
 window.addEventListener('scroll', () => {
     isUserScrolling = true;
     clearTimeout(userScrollTimer);
@@ -261,21 +261,12 @@ window.addEventListener('scroll', () => {
 
     const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
 
-    // Botón flotante para volver arriba
-    const scrollTopBtn = document.getElementById('btn-scroll-to-top');
-    if (scrollTopBtn) {
-        if (scrollY > 350) {
-            scrollTopBtn.classList.add('visible');
-        } else {
-            scrollTopBtn.classList.remove('visible');
-        }
-    }
-
-    // Si el usuario regresa manualmente al tope del timeline, descartar la píldora de nuevos toots
+    // Si el usuario regresa manualmente al tope del timeline, descartar la cuenta de toots nuevos
     if (scrollY < 60 && unreadNewTootsCount > 0) {
         unreadNewTootsCount = 0;
-        updateNewTootsPill();
     }
+
+    updateTimelineScrollTopUI();
 
     const scrollHeight = Math.max(document.body.offsetHeight, document.documentElement.scrollHeight);
     if ((window.innerHeight + scrollY) >= scrollHeight - 600) {
@@ -830,40 +821,88 @@ function startStreaming() {
     };
 }
 
-function updateNewTootsPill() {
-    const pillContainer = document.getElementById('new-toots-pill-container');
-    const pillText = document.getElementById('new-toots-pill-text');
-    if (!pillContainer || !pillText) return;
+function updateTimelineScrollTopUI() {
+    const sidebarContainer = document.getElementById('sidebar-scroll-top-container');
+    const sidebarBtn = document.getElementById('btn-sidebar-scroll-top');
+    const sidebarText = document.getElementById('sidebar-scroll-top-text');
+    const mobileBtn = document.getElementById('btn-scroll-to-top');
 
-    if (unreadNewTootsCount > 0) {
-        const tSingle = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_new_toots_single) || '1 nuevo toot ↑';
-        const tMulti = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_new_toots_multi) || ':count nuevos toots ↑';
-        pillText.innerText = unreadNewTootsCount === 1 ? tSingle : tMulti.replace(':count', unreadNewTootsCount);
-        pillContainer.style.display = 'flex';
-    } else {
-        pillContainer.style.display = 'none';
+    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    const isScrolledDown = scrollY > 300;
+    const hasNewToots = unreadNewTootsCount > 0;
+
+    const tSingle = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_new_toots_single) || '1 nuevo toot ↑';
+    const tMulti = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_new_toots_multi) || ':count nuevos toots ↑';
+    const tTop = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_scroll_to_top) || 'Volver al principio';
+
+    let btnText = tTop;
+    let isUrgent = false;
+
+    if (hasNewToots) {
+        btnText = unreadNewTootsCount === 1 ? tSingle : tMulti.replace(':count', unreadNewTootsCount);
+        isUrgent = true;
+    }
+
+    // Actualizar botón en Sidebar Derecho (Desktop)
+    if (sidebarContainer && sidebarBtn && sidebarText) {
+        if (hasNewToots || isScrolledDown) {
+            sidebarText.innerText = btnText;
+            if (isUrgent) {
+                sidebarBtn.classList.add('has-new-toots');
+            } else {
+                sidebarBtn.classList.remove('has-new-toots');
+            }
+            sidebarContainer.style.display = 'block';
+            sidebarContainer.classList.add('visible');
+        } else {
+            sidebarContainer.classList.remove('visible');
+            sidebarContainer.style.display = 'none';
+        }
+    }
+
+    // Actualizar botón flotante móvil (< 900px)
+    if (mobileBtn) {
+        if (hasNewToots || isScrolledDown) {
+            mobileBtn.classList.add('visible');
+            if (isUrgent) {
+                mobileBtn.classList.add('has-new-toots');
+                mobileBtn.setAttribute('title', btnText);
+            } else {
+                mobileBtn.classList.remove('has-new-toots');
+                mobileBtn.setAttribute('title', tTop);
+            }
+        } else {
+            mobileBtn.classList.remove('visible');
+            mobileBtn.classList.remove('has-new-toots');
+        }
     }
 }
 
+function updateNewTootsPill() {
+    updateTimelineScrollTopUI();
+}
+
 function scrollToTopAndDismissPill() {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    unreadNewTootsCount = 0;
-    updateNewTootsPill();
-    const feed = getFeedContainer(currentTimeline);
-    if (feed && feed.firstElementChild) {
-        feed.firstElementChild.classList.add('toot-highlight-flash');
-        setTimeout(() => {
-            if (feed.firstElementChild) {
-                feed.firstElementChild.classList.remove('toot-highlight-flash');
-            }
-        }, 1600);
-    }
+    scrollToTopTimeline();
 }
 
 function scrollToTopTimeline() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    const hadNewToots = unreadNewTootsCount > 0;
     unreadNewTootsCount = 0;
-    updateNewTootsPill();
+    updateTimelineScrollTopUI();
+
+    if (hadNewToots) {
+        const feed = getFeedContainer(currentTimeline);
+        if (feed && feed.firstElementChild) {
+            feed.firstElementChild.classList.add('toot-highlight-flash');
+            setTimeout(() => {
+                if (feed.firstElementChild) {
+                    feed.firstElementChild.classList.remove('toot-highlight-flash');
+                }
+            }, 1600);
+        }
+    }
 }
 
 function prependToot(toot, isNew = false) {

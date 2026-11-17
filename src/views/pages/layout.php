@@ -237,6 +237,14 @@ $basePath = $basePath ?? '';
                     <span class="stat-value" id="stat-toots">-</span>
                 </div>
             </div>
+
+            <!-- Botón Ir Arriba / Nuevos Toots en Sidebar -->
+            <div id="sidebar-scroll-top-container" class="sidebar-scroll-top-container" style="display: none;">
+                <button id="btn-sidebar-scroll-top" class="sidebar-scroll-top-btn" onclick="scrollToTopTimeline()" type="button">
+                    <span class="material-icons-outlined" style="font-size: 20px;">arrow_upward</span>
+                    <span id="sidebar-scroll-top-text"><?= __('timeline_scroll_to_top', 'Volver al principio') ?></span>
+                </button>
+            </div>
         </aside>
 
     </div>

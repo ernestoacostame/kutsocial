@@ -2657,55 +2657,71 @@ body.composer-zen-active {
 }
 
 /* ============================================================
-   Píldora flotante para nuevos toots y botón volver arriba
+   Botón Ir Arriba / Nuevos Toots en Sidebar Derecho y Móvil
    ============================================================ */
-.new-toots-pill-container {
-    position: sticky;
-    top: 85px;
-    z-index: 105;
-    display: flex;
-    justify-content: center;
-    pointer-events: none;
-    margin-bottom: 12px;
+.sidebar-scroll-top-container {
+    width: 100%;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
-.new-toots-pill {
-    pointer-events: auto;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 8px 18px;
-    background: var(--primary, #6366f1);
-    color: #ffffff;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 9999px;
-    font-size: 13.5px;
+.sidebar-scroll-top-container.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.sidebar-scroll-top-btn {
+    width: 100%;
+    padding: 12px 18px;
+    background: var(--card-bg, #1e293b);
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
+    border-radius: 14px;
+    color: var(--text-color, #f8fafc);
+    font-size: 14px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 12px rgba(99, 102, 241, 0.35);
-    transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s ease, box-shadow 0.2s ease;
-    animation: slideDownPill 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     user-select: none;
 }
 
-.new-toots-pill:hover {
-    background: var(--primary-hover, #4f46e5);
-    transform: translateY(-2px) scale(1.02);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5), 0 0 16px rgba(99, 102, 241, 0.5);
+.sidebar-scroll-top-btn:hover {
+    background: var(--primary, #6366f1);
+    border-color: var(--primary, #6366f1);
+    color: #ffffff;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(99, 102, 241, 0.4);
 }
 
-.new-toots-pill:active {
-    transform: translateY(0) scale(0.98);
+.sidebar-scroll-top-btn:active {
+    transform: translateY(0);
 }
 
-@keyframes slideDownPill {
-    from {
-        opacity: 0;
-        transform: translateY(-12px);
+/* Estado activo cuando hay toots nuevos */
+.sidebar-scroll-top-btn.has-new-toots {
+    background: linear-gradient(135deg, var(--primary, #6366f1) 0%, #4f46e5 100%);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: #ffffff;
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.45);
+    animation: pulseSidebarBtn 2.2s infinite ease-in-out;
+}
+
+.sidebar-scroll-top-btn.has-new-toots:hover {
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+    box-shadow: 0 6px 22px rgba(99, 102, 241, 0.6);
+}
+
+@keyframes pulseSidebarBtn {
+    0%, 100% {
+        box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
+    50% {
+        box-shadow: 0 4px 22px rgba(99, 102, 241, 0.7);
     }
 }
 
@@ -2724,6 +2740,7 @@ body.composer-zen-active {
     }
 }
 
+/* Botón flotante para móvil */
 .scroll-to-top-btn {
     position: fixed;
     bottom: 28px;
@@ -2736,7 +2753,7 @@ body.composer-zen-active {
     backdrop-filter: blur(8px);
     border: 1px solid var(--border-color, rgba(255, 255, 255, 0.12));
     color: var(--text-color, #f8fafc);
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
     cursor: pointer;
@@ -2761,14 +2778,33 @@ body.composer-zen-active {
     box-shadow: 0 6px 18px rgba(99, 102, 241, 0.35);
 }
 
+.scroll-to-top-btn.has-new-toots {
+    background: var(--primary, #6366f1);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: #ffffff;
+    box-shadow: 0 0 16px rgba(99, 102, 241, 0.6);
+}
+
 .scroll-to-top-btn:active {
     transform: translateY(0);
 }
 
-@media (max-width: 640px) {
-    .new-toots-pill-container {
-        top: 70px;
+@media (min-width: 901px) {
+    .scroll-to-top-btn {
+        display: none !important;
     }
+}
+
+@media (max-width: 900px) {
+    .sidebar-scroll-top-container {
+        display: none !important;
+    }
+    .scroll-to-top-btn {
+        display: flex;
+    }
+}
+
+@media (max-width: 640px) {
     .scroll-to-top-btn {
         bottom: 74px;
         right: 18px;
