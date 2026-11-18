@@ -6,12 +6,30 @@ if (!token && window.KUTSOCIAL_AUTO_TOKEN) {
 if (token || (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked)) {
     document.documentElement.classList.add('is-authenticated');
 }
-let currentTimeline = 'public';
+let currentTimeline = window.KUTSOCIAL_CURRENT_TIMELINE || (token ? 'home' : 'public');
 let lastRenderedTimeline = '';
 let lastLoadedProfile = null;
 let profilesCache = {};
 let currentProfileRelationship = null;
 let activeTootOptionsMenu = null;
+
+function renderRelationshipBadge(account) {
+    if (!account || !account.relationship) return '';
+    const rel = account.relationship;
+    if (rel.mutual) {
+        const title = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.rel_mutual) || 'Se siguen mutuamente';
+        return `<span class="account-rel-badge rel-mutual" title="${title}">⇄</span>`;
+    }
+    if (rel.following) {
+        const title = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.rel_following) || 'Siguiendo';
+        return `<span class="account-rel-badge rel-following" title="${title}">→</span>`;
+    }
+    if (rel.followed_by) {
+        const title = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.rel_follower) || 'Te sigue';
+        return `<span class="account-rel-badge rel-follower" title="${title}">←</span>`;
+    }
+    return '';
+}
 function proxyUrl(url) {
     if (!url) return '';
     if (url.startsWith('/') || url.startsWith(window.location.origin) || !url.startsWith('http')) {
@@ -599,7 +617,7 @@ async function initApp() {
 
     // 3. Cargar datos según la sección renderizada por el servidor
     const activeSection = window.KUTSOCIAL_ACTIVE_SECTION || 'feed';
-    const currentTimelineVal = window.KUTSOCIAL_CURRENT_TIMELINE || 'public';
+    const currentTimelineVal = window.KUTSOCIAL_CURRENT_TIMELINE || (token ? 'home' : 'public');
     const activeProfileId = window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID;
     const activeThreadId = window.KUTSOCIAL_ACTIVE_THREAD_ID;
     
@@ -1300,6 +1318,7 @@ function createThreadTootElement(toot, isMain = false) {
                     <a href="/@${toot.account.acct}" class="toot-author-details clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" style="text-decoration: none; color: inherit;">
                         <span class="toot-author-name">${displayNameHTML}</span>
                         <span class="toot-author-handle">@${toot.account.acct}</span>
+                        ${renderRelationshipBadge(toot.account)}
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
                     </a>
@@ -1596,7 +1615,7 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
                     <span class="quote-toot-author-name">${quoteAuthorHTML}</span>
                     <span class="quote-toot-time" title="${absoluteDate}">${relativeTime}</span>
                 </div>
-                <div class="quote-toot-author-handle">@${quotedToot.account.acct}</div>
+                <div class="quote-toot-author-handle">@${quotedToot.account.acct} ${renderRelationshipBadge(quotedToot.account)}</div>
             </div>
         </div>
         <div class="quote-toot-content">${cleanContent}</div>

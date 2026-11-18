@@ -140,11 +140,11 @@ $renderFrontend = function() {
     $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
     $uri = rtrim($uri, '/');
     if (empty($uri)) {
-        $uri = '/public';
+        $uri = '/home';
     }
     
     $section = 'feed';
-    $currentTimeline = 'public';
+    $currentTimeline = 'home';
     $activeProfileViewId = null;
     $activeThreadId = null;
     

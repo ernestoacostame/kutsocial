@@ -170,6 +170,23 @@ class Database {
                     $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_in_reply_to_account_id ON statuses(in_reply_to_account_id)");
                     $db->exec("UPDATE statuses SET in_reply_to_account_id = (SELECT account_id FROM statuses p WHERE p.id = statuses.in_reply_to_id) WHERE in_reply_to_id IS NOT NULL AND in_reply_to_account_id IS NULL");
                 }
+                $hasIsProfileFetch = false;
+                foreach ($cols as $col) {
+                    if (strcasecmp($col['name'], 'is_profile_fetch') === 0) {
+                        $hasIsProfileFetch = true;
+                        break;
+                    }
+                }
+                if (!$hasIsProfileFetch) {
+                    $db->exec("ALTER TABLE statuses ADD COLUMN is_profile_fetch INTEGER NOT NULL DEFAULT 0");
+                    $db->exec("CREATE INDEX IF NOT EXISTS idx_statuses_is_profile_fetch ON statuses(is_profile_fetch)");
+                    // Marcar estados remotos de cuentas no seguidas como consultas de perfil
+                    $db->exec("UPDATE statuses SET is_profile_fetch = 1 WHERE account_id IN (
+                        SELECT a.id FROM accounts a 
+                        WHERE a.domain IS NOT NULL AND a.domain != '' 
+                          AND a.id NOT IN (SELECT target_account_id FROM follows)
+                    )");
+                }
 
                 // Asegurar columnas en follows
                 $followCols = $db->query("PRAGMA table_info(follows)")->fetchAll(\PDO::FETCH_ASSOC);
@@ -593,6 +610,15 @@ class Database {
             ],
             23 => [
                 "ALTER TABLE accounts ADD COLUMN statuses_last_fetched_at TEXT NULL"
+            ],
+            24 => [
+                "ALTER TABLE statuses ADD COLUMN is_profile_fetch INTEGER NOT NULL DEFAULT 0",
+                "CREATE INDEX IF NOT EXISTS idx_statuses_is_profile_fetch ON statuses(is_profile_fetch)",
+                "UPDATE statuses SET is_profile_fetch = 1 WHERE account_id IN (
+                    SELECT a.id FROM accounts a 
+                    WHERE a.domain IS NOT NULL AND a.domain != '' 
+                      AND a.id NOT IN (SELECT target_account_id FROM follows)
+                )"
             ]
         ];
     }

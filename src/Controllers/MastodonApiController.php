@@ -2885,9 +2885,30 @@ HTML;
 
                 $mediaJson = !empty($attachments) ? json_encode($attachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
 
+                $inReplyToRaw = $object['inReplyTo'] ?? $object['in_reply_to'] ?? null;
+                $inReplyToUri = null;
+                if (!empty($inReplyToRaw)) {
+                    if (is_string($inReplyToRaw)) {
+                        $inReplyToUri = $inReplyToRaw;
+                    } elseif (is_array($inReplyToRaw)) {
+                        $inReplyToUri = $inReplyToRaw['id'] ?? $inReplyToRaw['url'] ?? null;
+                    }
+                }
+                
+                $inReplyToId = null;
+                $inReplyToAccountId = null;
+                if ($inReplyToUri) {
+                    $stmtParent = $db->prepare("SELECT id, account_id FROM statuses WHERE uri = ? LIMIT 1");
+                    $stmtParent->execute([$inReplyToUri]);
+                    if ($pRow = $stmtParent->fetch()) {
+                        $inReplyToId = (int)$pRow['id'];
+                        $inReplyToAccountId = (int)$pRow['account_id'];
+                    }
+                }
+
                 $stmtIns = $db->prepare("
-                    INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, in_reply_to_url, in_reply_to_account_id, is_profile_fetch)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
                 ");
                 $stmtIns->execute([
                     $account['id'],
@@ -2895,7 +2916,10 @@ HTML;
                     $content,
                     $visibility,
                     date('Y-m-d H:i:s', strtotime($createdAt)),
-                    $mediaJson
+                    $mediaJson,
+                    $inReplyToId,
+                    $inReplyToUri,
+                    $inReplyToAccountId
                 ]);
 
                 $newStatusId = (int)$db->lastInsertId();
@@ -3390,11 +3414,18 @@ HTML;
             // 1. Cuentas locales
             // 2. Cuentas remotas seguidas por algún usuario local
             // 3. Reblogs / retoots hechos por cuentas locales o seguidas
-            // 4. Si la instancia tiene suscripciones a relays de ActivityPub
+            // 4. Si la instancia tiene suscripciones a relays de ActivityPub (excluyendo consultas ad-hoc de perfiles no seguidos)
             $hasActiveRelays = (int)$db->query("SELECT COUNT(*) FROM relays WHERE status = 'accepted'")->fetchColumn() > 0;
             if (!$hasActiveRelays) {
                 $whereClauses[] = "(
                     (a.domain IS NULL OR a.domain = '')
+                    OR s.account_id IN (SELECT target_account_id FROM follows WHERE status = 'accepted' OR status = 'pending')
+                    OR s.reblog_of_id IS NOT NULL
+                )";
+            } else {
+                $whereClauses[] = "(
+                    s.is_profile_fetch = 0 
+                    OR (a.domain IS NULL OR a.domain = '')
                     OR s.account_id IN (SELECT target_account_id FROM follows WHERE status = 'accepted' OR status = 'pending')
                     OR s.reblog_of_id IS NOT NULL
                 )";
@@ -3403,6 +3434,13 @@ HTML;
 
         // Excluir respuestas a terceros de la vista federada pública (estándar de Mastodon: solo toots raíz o retoots)
         $whereClauses[] = "(s.in_reply_to_id IS NULL AND (s.in_reply_to_url IS NULL OR s.in_reply_to_url = ''))";
+        $whereClauses[] = "NOT (
+            s.content LIKE '@%' 
+            OR s.content LIKE '<p>@%' 
+            OR s.content LIKE '<p><span class=\"h-card\"><a%' 
+            OR s.content LIKE '<p><a% class=\"u-url mention\"%'
+            OR s.content LIKE '<p><a% class=\"mention\"%'
+        )";
 
         if ($maxId !== null) {
             $whereClauses[] = "s.id < ?";
@@ -4015,6 +4053,30 @@ HTML;
             $queryParams[] = $listId;
         } else {
             $whereClauses[] = "s.visibility = 'public'";
+            $dbRelays = Database::connect();
+            $hasActiveRelays = (int)$dbRelays->query("SELECT COUNT(*) FROM relays WHERE status = 'accepted'")->fetchColumn() > 0;
+            if (!$hasActiveRelays) {
+                $whereClauses[] = "(
+                    (a.domain IS NULL OR a.domain = '')
+                    OR s.account_id IN (SELECT target_account_id FROM follows WHERE status = 'accepted' OR status = 'pending')
+                    OR s.reblog_of_id IS NOT NULL
+                )";
+            } else {
+                $whereClauses[] = "(
+                    s.is_profile_fetch = 0 
+                    OR (a.domain IS NULL OR a.domain = '')
+                    OR s.account_id IN (SELECT target_account_id FROM follows WHERE status = 'accepted' OR status = 'pending')
+                    OR s.reblog_of_id IS NOT NULL
+                )";
+            }
+            $whereClauses[] = "(s.in_reply_to_id IS NULL AND (s.in_reply_to_url IS NULL OR s.in_reply_to_url = ''))";
+            $whereClauses[] = "NOT (
+                s.content LIKE '@%' 
+                OR s.content LIKE '<p>@%' 
+                OR s.content LIKE '<p><span class=\"h-card\"><a%' 
+                OR s.content LIKE '<p><a% class=\"u-url mention\"%'
+                OR s.content LIKE '<p><a% class=\"mention\"%'
+            )";
         }
 
         $whereSql = implode(" AND ", $whereClauses);
@@ -4654,7 +4716,40 @@ HTML;
         return gmdate('Y-m-d\TH:i:s\Z', $ts !== false ? $ts : time());
     }
 
+    private static ?array $userFollowingIdsCache = null;
+    private static ?array $userFollowerIdsCache = null;
+    private static ?int $cachedForAccountId = null;
+
+    private static function getUserFollowingIds(\PDO $db, int $accountId): array {
+        if (self::$cachedForAccountId !== $accountId || self::$userFollowingIdsCache === null) {
+            self::$cachedForAccountId = $accountId;
+            $stmt = $db->prepare("SELECT target_account_id FROM follows WHERE account_id = ? AND (status = 'accepted' OR status = 'pending')");
+            $stmt->execute([$accountId]);
+            self::$userFollowingIdsCache = array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+        }
+        return self::$userFollowingIdsCache;
+    }
+
+    private static function getUserFollowerIds(\PDO $db, int $accountId): array {
+        if (self::$cachedForAccountId !== $accountId || self::$userFollowerIdsCache === null) {
+            self::$cachedForAccountId = $accountId;
+            $stmt = $db->prepare("SELECT account_id FROM follows WHERE target_account_id = ? AND (status = 'accepted' OR status = 'pending')");
+            $stmt->execute([$accountId]);
+            self::$userFollowerIdsCache = array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+        }
+        return self::$userFollowerIdsCache;
+    }
+
     public static function formatStatus(array $row, ?int $currentAccountId = null): array {
+        $db = Database::connect();
+
+        if ($currentAccountId === null) {
+            $currUser = self::getAuthenticatedAccount();
+            if ($currUser) {
+                $currentAccountId = (int)$currUser['id'];
+            }
+        }
+
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
   
@@ -4686,8 +4781,21 @@ HTML;
             'url' => $row['account_url'] ?? null
         ];
         $account = self::formatAccount($accountData);
- 
-        $db = Database::connect();
+
+        $authorId = (int)$row['account_id'];
+        $relationship = null;
+        if ($currentAccountId !== null && $authorId !== $currentAccountId) {
+            $isFollowing = in_array($authorId, self::getUserFollowingIds($db, $currentAccountId), true);
+            $isFollowedBy = in_array($authorId, self::getUserFollowerIds($db, $currentAccountId), true);
+            if ($isFollowing || $isFollowedBy) {
+                $relationship = [
+                    'following' => $isFollowing,
+                    'followed_by' => $isFollowedBy,
+                    'mutual' => ($isFollowing && $isFollowedBy)
+                ];
+            }
+        }
+        $account['relationship'] = $relationship;
  
         $showSource = true;
         try {
