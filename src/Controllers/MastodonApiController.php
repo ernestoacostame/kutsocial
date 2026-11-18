@@ -702,7 +702,7 @@ HTML;
         // Verificar 2FA si está activo
         if (!empty($account['otp_secret'])) {
             $otpCode = trim($_POST['otp_code'] ?? '');
-            \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: 2FA is active, otpCode received=" . $otpCode);
+            \KutSocial\Controllers\ActivityPubController::debugLog("handleAuthorize: 2FA is active");
             if (empty($otpCode)) {
                 \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: otpCode is empty, showing OTP page");
                 self::showOtpAuthorize($account, $_POST);
@@ -717,7 +717,7 @@ HTML;
         }
 
         $code = self::generateCodeForUser((int)$account['id']);
-        \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: auth code generated=" . $code);
+        \KutSocial\Controllers\ActivityPubController::debugLog("handleAuthorize: auth code generated");
 
         if ($redirectUri === 'urn:ietf:wg:oauth:2.0:oob') {
             $html = <<<HTML
@@ -790,7 +790,7 @@ HTML;
             } else {
                 $redirectUrl .= '?code=' . urlencode($code);
             }
-            \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: redirecting browser to " . $redirectUrl);
+            \KutSocial\Controllers\ActivityPubController::debugLog("handleAuthorize: redirecting browser");
             header("Location: " . $redirectUrl);
             exit;
         }
@@ -803,12 +803,12 @@ HTML;
         $body = Router::getRequestBody();
         $grantType = $body['grant_type'] ?? '';
 
-        \KutSocial\Controllers\ActivityPubController::log("postToken: request body=" . json_encode($body));
+        \KutSocial\Controllers\ActivityPubController::debugLog("postToken: grant_type=" . $grantType);
 
         if ($grantType === 'authorization_code') {
             $code = $body['code'] ?? '';
             $userId = self::verifyCodeAndGetUserId($code);
-            \KutSocial\Controllers\ActivityPubController::log("postToken: code received=" . $code . ", resolved userId=" . ($userId ?: 'null'));
+            \KutSocial\Controllers\ActivityPubController::debugLog("postToken: authorization_code resolved userId=" . ($userId ?: 'null'));
             if (!$userId) {
                 Router::json(['error' => 'invalid_grant', 'error_description' => 'Código de autorización inválido o expirado'], 400);
             }
@@ -864,7 +864,7 @@ HTML;
      * Endpoint GET /api/v1/accounts/verify_credentials
      */
     public static function verifyCredentials(): void {
-        \KutSocial\Controllers\ActivityPubController::log("verifyCredentials: request received. Headers=" . json_encode(Router::getAllHeaders()));
+        \KutSocial\Controllers\ActivityPubController::debugLog("verifyCredentials: request received");
         $account = self::getAuthenticatedAccount();
         if (!$account) {
             \KutSocial\Controllers\ActivityPubController::log("verifyCredentials: Unauthorized");
@@ -1766,9 +1766,33 @@ HTML;
         return "token_" . $userId . "_" . $hash;
     }
 
+    /** @var array<string, ?array> Caché por petición de cuentas autenticadas (clave: hash del token) */
+    private static array $authAccountCache = [];
+
+    /**
+     * Invalida la caché por petición de getAuthenticatedAccount().
+     * Llamar tras cambios de estado de sesión/token/cuenta dentro de una misma petición.
+     */
+    public static function clearAuthenticatedAccountCache(): void {
+        self::$authAccountCache = [];
+    }
+
     public static function getAuthenticatedAccount(): ?array {
         $token = Router::getBearerToken();
-        \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: token received=" . ($token ?: 'null') . " for URI=" . ($_SERVER['REQUEST_URI'] ?? 'unknown'));
+        // La clave nunca almacena el token en claro
+        $cacheKey = $token ? 't:' . hash('sha256', $token) : 's:' . (session_status() === PHP_SESSION_ACTIVE ? session_id() : 'none');
+        if (array_key_exists($cacheKey, self::$authAccountCache)) {
+            return self::$authAccountCache[$cacheKey];
+        }
+        $account = self::resolveAuthenticatedAccount($token);
+        // En el caso sin token, la sesión puede iniciarse dentro de resolve: recalcular clave
+        $cacheKey = $token ? $cacheKey : 's:' . (session_status() === PHP_SESSION_ACTIVE ? session_id() : 'none');
+        self::$authAccountCache[$cacheKey] = $account;
+        return $account;
+    }
+
+    private static function resolveAuthenticatedAccount(?string $token): ?array {
+        \KutSocial\Controllers\ActivityPubController::debugLog("getAuthenticatedAccount: " . ($token ? 'token present' : 'no token') . " for URI=" . ($_SERVER['REQUEST_URI'] ?? 'unknown'));
         if (!$token) {
             // Fallback a sesión activa de administrador si existe
             if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
@@ -1788,7 +1812,7 @@ HTML;
 
         $parts = explode('_', $token);
         if (count($parts) !== 3 || $parts[0] !== 'token') {
-            \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: token format invalid");
+            \KutSocial\Controllers\ActivityPubController::debugLog("getAuthenticatedAccount: token format invalid");
             return null;
         }
 
@@ -1799,7 +1823,7 @@ HTML;
         $expectedHash = hash_hmac('sha256', $userId, $secret);
 
         if (!hash_equals($expectedHash, $hash)) {
-            \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: token hash mismatch");
+            \KutSocial\Controllers\ActivityPubController::debugLog("getAuthenticatedAccount: token hash mismatch");
             return null;
         }
 
@@ -1808,7 +1832,7 @@ HTML;
         $stmt->execute([$userId]);
         $account = $stmt->fetch();
 
-        \KutSocial\Controllers\ActivityPubController::log("getAuthenticatedAccount: resolved account=" . ($account ? $account['username'] : 'null'));
+        \KutSocial\Controllers\ActivityPubController::debugLog("getAuthenticatedAccount: resolved account=" . ($account ? $account['username'] : 'null'));
         return $account ?: null;
     }
 
@@ -2235,7 +2259,7 @@ HTML;
             Router::json(['error' => 'Unauthorized'], 401);
         }
 
-        \KutSocial\Controllers\ActivityPubController::log("updateCredentials: Method=" . ($_SERVER['REQUEST_METHOD'] ?? 'unknown') . ", POST=" . json_encode($_POST) . ", FILES=" . json_encode(array_keys($_FILES)));
+        \KutSocial\Controllers\ActivityPubController::debugLog("updateCredentials: Method=" . ($_SERVER['REQUEST_METHOD'] ?? 'unknown') . ", POST keys=" . json_encode(array_keys($_POST)) . ", FILES=" . json_encode(array_keys($_FILES)));
 
         $body = Router::getRequestBody();
 

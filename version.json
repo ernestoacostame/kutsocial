@@ -1,5 +1,5 @@
 {
-  "version": "2.0.87",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.87/kutsocial-v2.0.87.zip",
-  "changelog": "Bugfixes KutSocial"
+  "version": "2.0.88",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.88/kutsocial-v2.0.88.zip",
+  "changelog": "Perf: optimizaciones fase 1 (índices, cachés, config memoizada, gzip/expires, logs seguros)"
 }

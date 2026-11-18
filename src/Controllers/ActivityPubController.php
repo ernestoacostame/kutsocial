@@ -266,7 +266,12 @@ XML;
             self::log("postInbox: Actividad recibida de tipo '" . ($activity['type'] ?? 'unknown') . "'");
 
             // Verificar firma HTTP
-            if (!self::verifyHttpSignature($body)) {
+            $sigOk = self::verifyHttpSignature($body);
+            if (!$sigOk) {
+                // Reintento una sola vez con la clave del actor refrescada (posible rotación de clave)
+                $sigOk = self::retryVerifyWithFreshKey($body);
+            }
+            if (!$sigOk) {
                 self::log("postInbox: Error de verificación de firma HTTP para el actor local '$username'");
                 Router::json(['error' => 'Firma HTTP inválida'], 401);
             }
@@ -578,9 +583,6 @@ XML;
         if (is_string($object)) {
             self::log("handleCreate: Objeto es una URI ('$object'), resolviendo vía GET...");
             $objectJson = self::executeSignedGet($object);
-            if (!$objectJson) {
-                $objectJson = self::executeSimpleGet($object);
-            }
             if ($objectJson) {
                 $decoded = json_decode($objectJson, true);
                 if (is_array($decoded)) {
@@ -1126,7 +1128,7 @@ XML;
         }
     }
 
-    public static function getOrRegisterRemoteActor(string $actorUrl): ?array {
+    public static function getOrRegisterRemoteActor(string $actorUrl, bool $forceRefresh = false): ?array {
         $db = Database::connect();
 
         $parsed = parse_url($actorUrl);
@@ -1176,7 +1178,8 @@ XML;
 
         if ($account) {
             $lastUpdated = strtotime($account['updated_at'] ?? '2000-01-01');
-            if (time() - $lastUpdated < 300) {
+            $freshWindow = $forceRefresh ? 60 : 21600; // forzar refresco, pero no más de 1 vez por minuto por actor
+            if (time() - $lastUpdated < $freshWindow) {
                 self::log("getOrRegisterRemoteActor: Actor remoto '{$account['username']}@$host' ya existe en DB local y está fresco");
                 return $account;
             }
@@ -1187,9 +1190,6 @@ XML;
         self::log("getOrRegisterRemoteActor: Resolviendo actor remoto vía petición HTTP: $actorUrl");
         try {
             $resp = self::executeSignedGet($actorUrl);
-            if (!$resp) {
-                $resp = self::executeSimpleGet($actorUrl);
-            }
             if ($resp === false || !$resp) {
                 self::log("getOrRegisterRemoteActor: Falló la petición HTTP para $actorUrl");
                 return $account ?: null;
@@ -1347,6 +1347,31 @@ XML;
     /**
      * Verifica la firma HTTP Signature de la petición entrante.
      */
+    private static function retryVerifyWithFreshKey(string $body): bool {
+        $headers = \KutSocial\Router::getAllHeaders();
+        $sigHeader = $headers['Signature'] ?? $headers['signature'] ?? '';
+        if (empty($sigHeader)) {
+            $authHeader = $headers['Authorization'] ?? $headers['authorization'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+            if (stripos($authHeader, 'Signature ') === 0) {
+                $sigHeader = substr($authHeader, 10);
+            }
+        }
+        if (!preg_match('/keyId="([^"]+)"/', $sigHeader, $m)) {
+            return false;
+        }
+        $actorUrl = explode('#', $m[1])[0];
+        try {
+            $acc = self::getOrRegisterRemoteActor($actorUrl, true);
+        } catch (\Throwable $e) {
+            return false;
+        }
+        if (!$acc) {
+            return false;
+        }
+        self::log("postInbox: Reintentando verificación de firma con clave refrescada para $actorUrl");
+        return self::verifyHttpSignature($body);
+    }
+
     private static function verifyHttpSignature(string $body): bool {
         $headers = \KutSocial\Router::getAllHeaders();
         $sigHeader = $headers['Signature'] ?? $headers['signature'] ?? '';
@@ -1363,7 +1388,7 @@ XML;
             return false;
         }
 
-        self::log("verifyHttpSignature: Analizando encabezado: $sigHeader");
+        self::debugLog("verifyHttpSignature: Analizando encabezado Signature");
 
         // Parsear cabecera Signature: keyId="...",algorithm="...",headers="...",signature="..."
         $parts = [];
@@ -1435,7 +1460,7 @@ XML;
         $signingString = implode("\n", $signedLines);
         $signatureVal = base64_decode($parts['signature']);
 
-        self::log("verifyHttpSignature: Cadena firmada construida:\n" . $signingString);
+        self::debugLog("verifyHttpSignature: Cadena firmada construida:\n" . $signingString);
 
         $keyRes = @openssl_pkey_get_public($publicKey);
         if (!$keyRes) {
@@ -1522,6 +1547,7 @@ XML;
                     "Accept: application/activity+json, application/ld+json",
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
                 ],
+                CURLOPT_CONNECTTIMEOUT => 3,
                 CURLOPT_TIMEOUT => 8,
                 CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
                 CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
@@ -1587,6 +1613,7 @@ XML;
                     "Accept: application/jrd+json, application/json",
                     "User-Agent: KutSocial/1.0; (+https://$localDomain)"
                 ],
+                CURLOPT_CONNECTTIMEOUT => 3,
                 CURLOPT_TIMEOUT => 15,
                 CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
                 CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
@@ -1689,6 +1716,7 @@ XML;
                     "Accept: application/activity+json, application/ld+json",
                     "User-Agent: KutSocial/1.0; (+https://$localDomain)"
                 ],
+                CURLOPT_CONNECTTIMEOUT => 3,
                 CURLOPT_TIMEOUT => 4,
                 CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
                 CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
@@ -2211,6 +2239,7 @@ XML;
                 "Accept: application/activity+json, application/ld+json",
                 "User-Agent: KutSocial/1.0; (+https://$domain)"
             ],
+            CURLOPT_CONNECTTIMEOUT => 3,
             CURLOPT_TIMEOUT => 10,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_MAXREDIRS => 4,
@@ -2290,6 +2319,7 @@ XML;
             ],
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HEADER => true,
+            CURLOPT_CONNECTTIMEOUT => 3,
             CURLOPT_TIMEOUT => 8,
             CURLOPT_FOLLOWLOCATION => false, // Gestionamos redirección manualmente para re-firmar correctamente
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
@@ -2525,6 +2555,26 @@ XML;
     /**
      * Escribe un mensaje en el archivo de registro de ActivityPub
      */
+    /**
+     * Log de depuración: solo escribe si la opción 'debug_log' = '1' (por defecto desactivado).
+     */
+    public static function debugLog(string $message): void {
+        static $enabled = null;
+        if ($enabled === null) {
+            $enabled = false;
+            try {
+                $st = Database::connect()->prepare("SELECT value FROM options WHERE key = 'debug_log' LIMIT 1");
+                $st->execute();
+                $enabled = ($st->fetchColumn() === '1');
+            } catch (\Throwable $e) {
+                $enabled = false;
+            }
+        }
+        if ($enabled) {
+            self::log($message);
+        }
+    }
+
     public static function log(string $message): void {
         $logFile = dirname(Database::getDbPath()) . '/activitypub.log';
         $timestamp = date('Y-m-d H:i:s');

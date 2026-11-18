@@ -106,12 +106,22 @@ class Queue {
                 });
             } catch (\Exception $e) {}
             
+            // Purga periódica (1 de cada 50 ejecuciones) de tareas completadas con más de 1 día
+            if (mt_rand(1, 50) === 1) {
+                try {
+                    Database::executeWithRetry(function() use ($db) {
+                        $db->exec("DELETE FROM jobs WHERE status = 'completed' AND created_at < datetime('now', '-1 day')");
+                    });
+                } catch (\Exception $e) {}
+            }
+
             // Obtener tareas pendientes o fallidas con intentos menores a 5
             $stmt = $db->prepare("
                 SELECT * FROM jobs 
                 WHERE (status = 'pending' OR status = 'failed') 
                   AND attempts < 5 
                   AND next_attempt <= datetime('now') 
+                ORDER BY next_attempt, id
                 LIMIT ?
             ");
             $stmt->bindValue(1, $limit, PDO::PARAM_INT);
@@ -124,7 +134,7 @@ class Queue {
                 // Marcar como en proceso
                 try {
                     Database::executeWithRetry(function() use ($db, $job) {
-                        $upd = $db->prepare("UPDATE jobs SET status = 'processing', attempts = attempts + 1 WHERE id = ?");
+                        $upd = $db->prepare("UPDATE jobs SET status = 'processing', attempts = attempts + 1, next_attempt = datetime('now') WHERE id = ?");
                         $upd->execute([$job['id']]);
                     });
                 } catch (\Exception $e) {
@@ -271,6 +281,7 @@ class Queue {
             ],
             CURLOPT_USERAGENT => 'KutSocial/1.0 (+' . (($keyId) ? explode('#', $keyId)[0] : 'https://' . ($u['host'])) . ')',
             CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 3,
             CURLOPT_TIMEOUT => 15,
             CURLOPT_FAILONERROR => true,
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),

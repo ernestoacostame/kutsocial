@@ -17,14 +17,18 @@ class Database {
     }
 
     public static function getVersion(): string {
+        static $cached = null;
+        if ($cached !== null) {
+            return $cached;
+        }
         $versionFile = __DIR__ . '/../version.php';
         if (file_exists($versionFile)) {
             $content = file_get_contents($versionFile);
             if (preg_match("/define\('KUTSOCIAL_VERSION',\s*'([^']+)'\)/", $content, $matches)) {
-                return $matches[1];
+                return $cached = $matches[1];
             }
         }
-        return defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0';
+        return $cached = (defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0');
     }
 
     public static function connect(): PDO {
@@ -50,7 +54,8 @@ class Database {
             $pdo->exec("PRAGMA synchronous=NORMAL;");
             $pdo->exec("PRAGMA foreign_keys=ON;");
             $pdo->exec("PRAGMA busy_timeout=30000;");
-            $pdo->exec("PRAGMA cache_size=-20000;");
+            $pdo->exec("PRAGMA cache_size=-65536;");
+            $pdo->exec("PRAGMA mmap_size=268435456;");
             $pdo->exec("PRAGMA temp_store=MEMORY;");
 
             self::$instance = $pdo;
@@ -400,14 +405,14 @@ class Database {
                 "CREATE TRIGGER trg_statuses_ad AFTER DELETE ON statuses BEGIN
                     DELETE FROM statuses_fts WHERE rowid = old.id;
                 END",
-                "CREATE TRIGGER trg_statuses_au AFTER UPDATE ON statuses BEGIN
+                "CREATE TRIGGER trg_statuses_au AFTER UPDATE OF content ON statuses BEGIN
                     DELETE FROM statuses_fts WHERE rowid = old.id;
                     INSERT INTO statuses_fts(rowid, content) VALUES (new.id, new.content);
                 END",
                 "CREATE TRIGGER trg_accounts_ad AFTER DELETE ON accounts BEGIN
                     DELETE FROM accounts_fts WHERE rowid = old.id;
                 END",
-                "CREATE TRIGGER trg_accounts_au AFTER UPDATE ON accounts BEGIN
+                "CREATE TRIGGER trg_accounts_au AFTER UPDATE OF username, display_name, note ON accounts BEGIN
                     DELETE FROM accounts_fts WHERE rowid = old.id;
                     INSERT INTO accounts_fts(rowid, username, display_name, note) VALUES (new.id, new.username, new.display_name, new.note);
                 END"
@@ -619,6 +624,31 @@ class Database {
                     WHERE a.domain IS NOT NULL AND a.domain != '' 
                       AND a.id NOT IN (SELECT target_account_id FROM follows)
                 )"
+            ],
+            25 => [
+                // Índices de rendimiento (todas las tablas/columnas verificadas en el esquema)
+                "CREATE INDEX IF NOT EXISTS idx_jobs_status_next_attempt ON jobs(status, next_attempt)",
+                "CREATE INDEX IF NOT EXISTS idx_follows_account_status_target ON follows(account_id, status, target_account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_follows_target_status_account ON follows(target_account_id, status, account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_statuses_account_id_id_desc ON statuses(account_id, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_statuses_created_at ON statuses(created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_statuses_visibility_id_desc ON statuses(visibility, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_accounts_url ON accounts(url)",
+                "CREATE INDEX IF NOT EXISTS idx_accounts_inbox_url ON accounts(inbox_url)",
+                "CREATE INDEX IF NOT EXISTS idx_poll_votes_poll_id ON poll_votes(poll_id)"
+            ],
+            26 => [
+                // Los triggers FTS de UPDATE solo se disparan al cambiar las columnas indexadas
+                "DROP TRIGGER IF EXISTS trg_statuses_au",
+                "DROP TRIGGER IF EXISTS trg_accounts_au",
+                "CREATE TRIGGER trg_statuses_au AFTER UPDATE OF content ON statuses BEGIN
+                    DELETE FROM statuses_fts WHERE rowid = old.id;
+                    INSERT INTO statuses_fts(rowid, content) VALUES (new.id, new.content);
+                END",
+                "CREATE TRIGGER trg_accounts_au AFTER UPDATE OF username, display_name, note ON accounts BEGIN
+                    DELETE FROM accounts_fts WHERE rowid = old.id;
+                    INSERT INTO accounts_fts(rowid, username, display_name, note) VALUES (new.id, new.username, new.display_name, new.note);
+                END"
             ]
         ];
     }
