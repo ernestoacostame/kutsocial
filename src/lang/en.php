@@ -9,6 +9,8 @@ return [
     'close' => 'Close',
     'search' => 'Search',
     'loading' => 'Loading...',
+    'no_toots' => 'No posts to display.',
+    'no_media_toots' => 'No media posts to display.',
     'yes' => 'Yes',
     'no' => 'No',
     'success' => 'Success',

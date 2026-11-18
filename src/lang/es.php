@@ -9,6 +9,8 @@ return [
     'close' => 'Cerrar',
     'search' => 'Buscar',
     'loading' => 'Cargando...',
+    'no_toots' => 'No hay publicaciones para mostrar.',
+    'no_media_toots' => 'No hay publicaciones multimedia para mostrar.',
     'yes' => 'Sí',
     'no' => 'No',
     'success' => 'Éxito',

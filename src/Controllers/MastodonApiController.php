@@ -47,7 +47,7 @@ class MastodonApiController {
             ],
             'stats' => [
                 'user_count' => self::getTableRowCount('accounts', "(domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != ''"),
-                'status_count' => self::getTableRowCount('statuses'),
+                'status_count' => self::getTableRowCount('statuses', "account_id IN (SELECT id FROM accounts WHERE domain IS NULL OR domain = '')"),
                 'domain_count' => self::getTableRowCount('accounts', "domain IS NOT NULL AND domain != ''")
             ],
             'thumbnail' => $base . '/assets/thumbnail.png',

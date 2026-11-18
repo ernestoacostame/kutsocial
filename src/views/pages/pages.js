@@ -270,7 +270,12 @@ window.addEventListener('scroll', () => {
 
     const scrollHeight = Math.max(document.body.offsetHeight, document.documentElement.scrollHeight);
     if ((window.innerHeight + scrollY) >= scrollHeight - 600) {
-        if (!isLoadingToots && hasMoreToots && currentTimeline !== 'bookmarks') {
+        const tabProfile = document.getElementById('tab-profile-view');
+        if (tabProfile && tabProfile.style.display === 'block') {
+            if (!isLoadingProfileStatuses && profileHasMore && activeProfileViewId && activeProfileSubtab !== 'favourites') {
+                loadProfileStatuses(activeProfileViewId, true, activeProfileSubtab);
+            }
+        } else if (!isLoadingToots && hasMoreToots && currentTimeline !== 'bookmarks') {
             loadTimeline(true);
         }
     }
@@ -835,8 +840,13 @@ function startStreaming() {
         }
         prependToot(toot, true);
         
-        const tootStat = document.getElementById('stat-toots');
-        tootStat.innerText = parseInt(tootStat.innerText || 0) + 1;
+        const isLocalToot = toot.account && (!toot.account.acct.includes('@') || (currentProfileData && String(toot.account.id) === String(currentProfileData.id)));
+        if (isLocalToot) {
+            const tootStat = document.getElementById('stat-toots');
+            if (tootStat) {
+                tootStat.innerText = parseInt(tootStat.innerText || 0) + 1;
+            }
+        }
     });
 
     eventSource.onerror = (e) => {
@@ -1151,7 +1161,7 @@ function createThreadTootElement(toot, isMain = false) {
 
                 const mediaTag = isVideo 
                     ? `<video src="${media.url}" poster="${proxyUrl(media.preview_url || '')}" controls loop playsinline style="${videoStyle}"></video>`
-                    : `<img src="${url}" alt="${altText}" title="${altText}" style="${imgStyle}" onclick="event.stopPropagation(); openImageViewerModal(this.src)">`;
+                    : `<img src="${url}" alt="${altText}" title="${altText}" class="toot-gallery-img" style="${imgStyle}" onclick="event.stopPropagation(); handleGalleryImageClick(event, this)">`;
 
                 const cardStyle = isMultiMedia
                     ? 'position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; aspect-ratio: 1.5; display: flex; flex-direction: column;'
@@ -1589,7 +1599,7 @@ function renderEmbeddedQuote(placeholderId, quotedToot) {
                 if (isVideo) {
                     mediaHTML += `<video src="${rawUrl}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; background:#000;" onerror="this.style.display='none'" muted playsinline loop onmouseover="this.play()" onmouseout="this.pause()" onclick="event.stopPropagation(); window.open('${rawUrl}', '_blank')"></video>`;
                 } else {
-                    mediaHTML += `<img src="${url}" style="width:50px; height:50px; object-fit:cover; border-radius:6px;" onerror="this.style.display='none'" onclick="event.stopPropagation(); openImageViewerModal(this.src)">`;
+                    mediaHTML += `<img src="${url}" class="toot-gallery-img" style="width:50px; height:50px; object-fit:cover; border-radius:6px; cursor:pointer;" onerror="this.style.display='none'" onclick="event.stopPropagation(); handleGalleryImageClick(event, this)">`;
                 }
             }
         });
@@ -4731,47 +4741,94 @@ function setupMenuBtn(btn, onClick) {
     btn.onclick = onClick;
 }
 
-async function loadProfileStatuses(accountId) {
+let profileOldestId = null;
+let profileHasMore = true;
+let isLoadingProfileStatuses = false;
+
+async function loadProfileStatuses(accountId, loadMore = false, tab = null) {
+    const targetTab = tab || activeProfileSubtab || 'activity';
+    const feedContainer = document.getElementById('profile-feed');
+    if (!feedContainer) return;
+
+    if (loadMore) {
+        if (!profileHasMore || isLoadingProfileStatuses) return;
+    } else {
+        profileOldestId = null;
+        profileHasMore = true;
+        activeProfileFeedToots = [];
+        feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">' + (typeof __ === 'function' ? __('loading', 'Cargando toots...') : 'Cargando toots...') + '</div>';
+    }
+
+    isLoadingProfileStatuses = true;
     try {
         const headers = { 'Accept': 'application/json' };
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
-        const res = await fetch(`/api/v1/accounts/${accountId}/statuses`, {
-            headers: headers
-        });
+        let url = `/api/v1/accounts/${accountId}/statuses?limit=30`;
+        if (targetTab === 'media') {
+            url += '&only_media=true';
+        }
+        if (loadMore && profileOldestId) {
+            url += `&max_id=${profileOldestId}`;
+        }
+        const res = await fetch(url, { headers: headers });
         if (!res.ok) throw new Error("Error al obtener toots");
-        activeProfileFeedToots = await res.json();
-        renderProfileFeed();
+        const toots = await res.json();
+
+        if (!loadMore) {
+            feedContainer.innerHTML = '';
+            activeProfileFeedToots = Array.isArray(toots) ? toots : [];
+        } else if (Array.isArray(toots)) {
+            activeProfileFeedToots = activeProfileFeedToots.concat(toots);
+        }
+
+        if (Array.isArray(toots) && toots.length > 0) {
+            profileOldestId = toots[toots.length - 1].id;
+            if (toots.length < 30) {
+                profileHasMore = false;
+            }
+            toots.forEach(toot => {
+                feedContainer.appendChild(createThreadTootElement(toot, false));
+            });
+        } else {
+            profileHasMore = false;
+            if (!loadMore) {
+                const emptyMsg = targetTab === 'media'
+                    ? (typeof __ === 'function' ? __('no_media_toots', 'No hay publicaciones multimedia para mostrar.') : 'No hay publicaciones multimedia para mostrar.')
+                    : (typeof __ === 'function' ? __('no_toots', 'No hay publicaciones para mostrar.') : 'No hay publicaciones para mostrar.');
+                feedContainer.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size:14px;">${emptyMsg}</div>`;
+            }
+        }
     } catch (err) {
         console.error(err);
-        document.getElementById('profile-feed').innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar toots del perfil.</div>';
+        if (!loadMore) {
+            feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar toots del perfil.</div>';
+        }
+    } finally {
+        isLoadingProfileStatuses = false;
     }
 }
 
 function renderProfileFeed() {
     const feedContainer = document.getElementById('profile-feed');
+    if (!feedContainer) return;
     feedContainer.innerHTML = '';
 
-    let filteredToots = activeProfileFeedToots;
-    if (activeProfileSubtab === 'media') {
-        filteredToots = activeProfileFeedToots.filter(toot => {
-            return toot.media_attachments && toot.media_attachments.length > 0;
-        });
-    }
-
-    if (filteredToots.length === 0) {
-        feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size:14px;">No hay publicaciones para mostrar.</div>';
+    if (activeProfileFeedToots.length === 0) {
+        const emptyMsg = activeProfileSubtab === 'media'
+            ? (typeof __ === 'function' ? __('no_media_toots', 'No hay publicaciones multimedia para mostrar.') : 'No hay publicaciones multimedia para mostrar.')
+            : (typeof __ === 'function' ? __('no_toots', 'No hay publicaciones para mostrar.') : 'No hay publicaciones para mostrar.');
+        feedContainer.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size:14px;">${emptyMsg}</div>`;
         return;
     }
 
-    filteredToots.forEach(toot => {
+    activeProfileFeedToots.forEach(toot => {
         feedContainer.appendChild(createThreadTootElement(toot, false));
     });
 }
 
 async function switchProfileSubtab(tabName) {
-    const previousSubtab = activeProfileSubtab;
     activeProfileSubtab = tabName;
     
     document.getElementById('profile-subtab-activity').classList.remove('active');
@@ -4781,18 +4838,10 @@ async function switchProfileSubtab(tabName) {
 
     if (tabName === 'activity') {
         document.getElementById('profile-subtab-activity').classList.add('active');
-        if (previousSubtab === 'favourites') {
-            await loadProfileStatuses(activeProfileViewId);
-        } else {
-            renderProfileFeed();
-        }
+        await loadProfileStatuses(activeProfileViewId, false, 'activity');
     } else if (tabName === 'media') {
         document.getElementById('profile-subtab-media').classList.add('active');
-        if (previousSubtab === 'favourites') {
-            await loadProfileStatuses(activeProfileViewId);
-        } else {
-            renderProfileFeed();
-        }
+        await loadProfileStatuses(activeProfileViewId, false, 'media');
     } else if (tabName === 'favourites') {
         if (favSubtab) favSubtab.classList.add('active');
         
@@ -6968,13 +7017,89 @@ document.addEventListener('click', function(e) {
     }
 });
 
-// --- VISOR DE IMÁGENES EN POPUP (MODAL) ---
-function openImageViewerModal(url) {
+// --- VISOR DE IMÁGENES EN POPUP (MODAL / LIGHTBOX CON GALERÍA) ---
+let currentLightboxImages = [];
+let currentLightboxIndex = 0;
+
+function handleGalleryImageClick(e, imgElem) {
+    if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+    const container = imgElem.closest('.toot-card, .quote-toot-embed-container') || imgElem.parentElement;
+    const gallery = container ? Array.from(container.querySelectorAll('img.toot-gallery-img')) : [imgElem];
+    const urls = gallery.map(i => i.src);
+    const index = Math.max(0, gallery.indexOf(imgElem));
+    openImageViewerModal(urls, index);
+}
+
+function updateImageViewer() {
     const modal = document.getElementById('modal-image-viewer');
     const img = document.getElementById('image-viewer-img');
-    if (modal && img) {
-        img.src = url;
-        modal.style.display = 'flex';
+    const prevBtn = document.getElementById('image-viewer-prev');
+    const nextBtn = document.getElementById('image-viewer-next');
+    const counter = document.getElementById('image-viewer-counter');
+
+    if (!modal || !img) return;
+    if (currentLightboxImages.length === 0) return;
+
+    if (currentLightboxIndex < 0) currentLightboxIndex = currentLightboxImages.length - 1;
+    if (currentLightboxIndex >= currentLightboxImages.length) currentLightboxIndex = 0;
+
+    img.src = currentLightboxImages[currentLightboxIndex];
+
+    if (currentLightboxImages.length > 1) {
+        if (prevBtn) prevBtn.style.display = 'flex';
+        if (nextBtn) nextBtn.style.display = 'flex';
+        if (counter) {
+            counter.style.display = 'block';
+            counter.innerText = `${currentLightboxIndex + 1} / ${currentLightboxImages.length}`;
+        }
+    } else {
+        if (prevBtn) prevBtn.style.display = 'none';
+        if (nextBtn) nextBtn.style.display = 'none';
+        if (counter) counter.style.display = 'none';
+    }
+}
+
+function openImageViewerModal(urlOrImages, index = 0) {
+    const modal = document.getElementById('modal-image-viewer');
+    if (!modal) return;
+
+    if (Array.isArray(urlOrImages)) {
+        currentLightboxImages = urlOrImages;
+        currentLightboxIndex = index;
+    } else if (typeof urlOrImages === 'string') {
+        currentLightboxImages = [urlOrImages];
+        currentLightboxIndex = 0;
+    } else {
+        currentLightboxImages = [];
+        currentLightboxIndex = 0;
+    }
+
+    updateImageViewer();
+    modal.style.display = 'flex';
+}
+
+function prevImageViewerModal(e) {
+    if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+    if (currentLightboxImages.length > 1) {
+        currentLightboxIndex--;
+        updateImageViewer();
+    }
+}
+
+function nextImageViewerModal(e) {
+    if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+    if (currentLightboxImages.length > 1) {
+        currentLightboxIndex++;
+        updateImageViewer();
     }
 }
 
@@ -6985,20 +7110,33 @@ function closeImageViewerModal(event) {
         if (!event || event.target === modal || event.target.id === 'image-viewer-close') {
             modal.style.display = 'none';
             img.src = '';
+            currentLightboxImages = [];
+            currentLightboxIndex = 0;
         }
     }
 }
 
-// Cerrar visor o salir de modo sin distracción con la tecla Escape
+// Navegación con teclado en visor de imágenes (Flechas izquierda/derecha, Escape)
 document.addEventListener('keydown', function(e) {
+    const modal = document.getElementById('modal-image-viewer');
+    if (modal && modal.style.display === 'flex') {
+        if (e.key === 'Escape') {
+            closeImageViewerModal();
+            return;
+        }
+        if (e.key === 'ArrowLeft') {
+            prevImageViewerModal(e);
+            return;
+        }
+        if (e.key === 'ArrowRight') {
+            nextImageViewerModal(e);
+            return;
+        }
+    }
     if (e.key === 'Escape') {
         if (isComposerZenActive()) {
             toggleComposerZen(false);
             return;
-        }
-        const modal = document.getElementById('modal-image-viewer');
-        if (modal && modal.style.display === 'flex') {
-            closeImageViewerModal();
         }
     }
 });

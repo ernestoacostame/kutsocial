@@ -553,11 +553,22 @@ $basePath = $basePath ?? '';
     </div>
 
     <!-- Modal: Visor de Imágenes -->
-    <div id="modal-image-viewer" class="modal-overlay" style="display: none; background: rgba(0, 0, 0, 0.85); z-index: 3000; padding: 20px;" onclick="closeImageViewerModal(event)">
+    <div id="modal-image-viewer" class="modal-overlay" style="display: none; background: rgba(0, 0, 0, 0.88); z-index: 3000; padding: 20px;" onclick="closeImageViewerModal(event)">
+        <!-- Botón anterior -->
+        <button id="image-viewer-prev" type="button" onclick="prevImageViewerModal(event)" style="display: none; position: fixed; left: 24px; top: 50%; transform: translateY(-50%); background: rgba(20, 22, 28, 0.75); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 50px; height: 50px; cursor: pointer; align-items: center; justify-content: center; z-index: 3010; backdrop-filter: blur(8px); transition: all 0.2s;" onmouseover="this.style.background='var(--primary)'; this.style.transform='translateY(-50%) scale(1.1)';" onmouseout="this.style.background='rgba(20, 22, 28, 0.75)'; this.style.transform='translateY(-50%) scale(1)';">
+            <span class="material-icons-outlined" style="font-size: 32px; pointer-events: none;">chevron_left</span>
+        </button>
+
         <div style="position: relative; max-width: 90vw; max-height: 90vh; display: flex; justify-content: center; align-items: center;">
+            <div id="image-viewer-counter" style="display: none; position: absolute; top: -42px; left: 0; color: #fff; font-size: 13px; font-weight: 600; background: rgba(20, 22, 28, 0.8); padding: 4px 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.15); user-select: none;"></div>
             <span id="image-viewer-close" style="position: absolute; top: -45px; right: 0; font-size: 35px; color: #fff; cursor: pointer; user-select: none; transition: color 0.2s;" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='#fff'">&times;</span>
             <img id="image-viewer-img" src="" style="max-width: 90vw; max-height: 90vh; object-fit: contain; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);" onclick="event.stopPropagation()">
         </div>
+
+        <!-- Botón siguiente -->
+        <button id="image-viewer-next" type="button" onclick="nextImageViewerModal(event)" style="display: none; position: fixed; right: 24px; top: 50%; transform: translateY(-50%); background: rgba(20, 22, 28, 0.75); color: #fff; border: 1px solid rgba(255,255,255,0.2); border-radius: 50%; width: 50px; height: 50px; cursor: pointer; align-items: center; justify-content: center; z-index: 3010; backdrop-filter: blur(8px); transition: all 0.2s;" onmouseover="this.style.background='var(--primary)'; this.style.transform='translateY(-50%) scale(1.1)';" onmouseout="this.style.background='rgba(20, 22, 28, 0.75)'; this.style.transform='translateY(-50%) scale(1)';">
+            <span class="material-icons-outlined" style="font-size: 32px; pointer-events: none;">chevron_right</span>
+        </button>
     </div>
 
     <!-- Modal: Reportar Usuario o Publicación -->
