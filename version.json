@@ -1,5 +1,5 @@
 {
-  "version": "2.1.15",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.15/kutsocial-v2.1.15.zip",
-  "changelog": "Aumenta el área táctil y padding de los botones de acción del toot"
+  "version": "2.1.16",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.16/kutsocial-v2.1.16.zip",
+  "changelog": "Acelera getNotifications() usando índices GIN/FULLTEXT para menciones y formatStatusesBatch()"
 }

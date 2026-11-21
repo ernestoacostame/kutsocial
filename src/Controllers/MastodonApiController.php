@@ -1167,82 +1167,68 @@ HTML;
         ");
         $stmtFavs->execute([$currUserId]);
         $favRows = $stmtFavs->fetchAll();
-        foreach ($favRows as $row) {
-            $nid = 'favourite_' . $row['id'];
-            if (isset($dismissedMap[$nid])) continue;
-            $sid = (int)$row['status_id'];
-            if (!array_key_exists($sid, $statusRowCache)) {
-                $statusRowCache[$sid] = self::fetchStatusRow($db, $sid);
-            }
-            $statusRow = $statusRowCache[$sid];
-            $notifications[] = [
-                'id' => $nid,
-                'type' => 'favourite',
-                'created_at' => date('c', strtotime($row['created_at'])),
-                'account' => self::formatAccount($row),
-                'status' => $statusRow ? self::formatStatus($statusRow, $currUserId) : null
-            ];
-        }
 
-        // 3. Obtener notificaciones de Menciones y Respuestas (Mentions)
-        $stmtMentions = $db->prepare("
+        // 3. Obtener notificaciones de Menciones y Respuestas (Mentions) usando índices
+        $mentionSelect = "
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
                    s.visibility as status_visibility, s.created_at as status_created_at, 
                    s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
-                   CASE WHEN s.in_reply_to_id IS NOT NULL AND EXISTS (
-                       SELECT 1 FROM statuses p WHERE p.id = s.in_reply_to_id AND p.account_id = ?
-                   ) THEN 1 ELSE 0 END as is_reply_to_me,
                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
                    a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
                    a.locked, a.discoverable, a.fields
             FROM statuses s
             JOIN accounts a ON s.account_id = a.id
-            WHERE s.account_id != ?
-              AND (
-                  s.content LIKE ? 
-                  OR s.content LIKE ? 
-                  OR EXISTS (SELECT 1 FROM statuses p2 WHERE p2.id = s.in_reply_to_id AND p2.account_id = ?)
-              )
+        ";
+
+        // 3a. Respuestas directas a mis posts (usa índice en in_reply_to_id + account_id)
+        $stmtReplies = $db->prepare($mentionSelect . "
+            JOIN statuses p ON s.in_reply_to_id = p.id
+            WHERE p.account_id = ? AND s.account_id != ?
             ORDER BY s.id DESC LIMIT 40
         ");
-        $stmtMentions->execute([
-            $currUserId,
-            $currUserId, 
-            '%@' . $account['username'] . '%', 
-            '%/users/' . $account['username'] . '%', 
-            $currUserId
-        ]);
-        $mentionRows = $stmtMentions->fetchAll();
-        foreach ($mentionRows as $row) {
-            $nid = 'mention_' . $row['status_id'];
-            if (isset($dismissedMap[$nid])) continue;
+        $stmtReplies->execute([$currUserId, $currUserId]);
+        $replyRows = $stmtReplies->fetchAll();
 
-            // Validar que sea mención real (evitar falsos positivos de substrings como @iam vs @iamdavidobrien)
-            $isRealMention = !empty($row['is_reply_to_me']);
-            
-            // Si contiene mención real en el texto
-            if (!$isRealMention) {
-                $username = $account['username'];
-                $content = $row['status_content'];
-                $mentionPattern = '/@' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
-                $urlPattern = '/\/users\/' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
-                if (preg_match($mentionPattern, $content) || preg_match($urlPattern, $content)) {
-                    $isRealMention = true;
-                }
-            }
-
-            if (!$isRealMention) {
-                continue; // Falso positivo, ignorar
-            }
-
-            $notifications[] = [
-                'id' => $nid,
-                'type' => 'mention',
-                'created_at' => date('c', strtotime($row['status_created_at'])),
-                'account' => self::formatAccount($row),
-                'status' => self::formatStatus($row, $currUserId)
-            ];
+        // 3b. Menciones en texto (usa índice GIN en pgsql, FULLTEXT en mysql, LIKE en sqlite)
+        $driver = Database::getDriver();
+        if ($driver === 'pgsql') {
+            $stmtTextMentions = $db->prepare($mentionSelect . "
+                WHERE s.account_id != ?
+                  AND to_tsvector('simple', s.content) @@ plainto_tsquery('simple', ?)
+                ORDER BY s.id DESC LIMIT 40
+            ");
+            $stmtTextMentions->execute([$currUserId, $account['username']]);
+        } elseif ($driver === 'mysql') {
+            $stmtTextMentions = $db->prepare($mentionSelect . "
+                WHERE s.account_id != ?
+                  AND MATCH(s.content) AGAINST(? IN BOOLEAN MODE)
+                ORDER BY s.id DESC LIMIT 40
+            ");
+            $stmtTextMentions->execute([$currUserId, '+' . $account['username']]);
+        } else {
+            $stmtTextMentions = $db->prepare($mentionSelect . "
+                WHERE s.account_id != ?
+                  AND (s.content LIKE ? OR s.content LIKE ?)
+                ORDER BY s.id DESC LIMIT 40
+            ");
+            $stmtTextMentions->execute([$currUserId, '%@' . $account['username'] . '%', '%/users/' . $account['username'] . '%']);
         }
+        $textMentionRows = $stmtTextMentions->fetchAll();
+
+        $mentionRowsById = [];
+        foreach ($replyRows as $r) {
+            $r['is_reply_to_me'] = 1;
+            $mentionRowsById[(int)$r['status_id']] = $r;
+        }
+        foreach ($textMentionRows as $r) {
+            $sid = (int)$r['status_id'];
+            if (!isset($mentionRowsById[$sid])) {
+                $r['is_reply_to_me'] = 0;
+                $mentionRowsById[$sid] = $r;
+            }
+        }
+        krsort($mentionRowsById);
+        $mentionRows = array_slice(array_values($mentionRowsById), 0, 40);
 
         // 4. Obtener notificaciones de Re-toots (Reblogs)
         $stmtReblogs = $db->prepare("
@@ -1260,22 +1246,118 @@ HTML;
         ");
         $stmtReblogs->execute([$currUserId]);
         $reblogRows = $stmtReblogs->fetchAll();
+
+        // Precargar en lote todos los estados referenciados por favoritos y reblogs
+        $neededStatusIds = [];
+        foreach ($favRows as $row) {
+            if (!isset($dismissedMap['favourite_' . $row['id']])) {
+                $neededStatusIds[(int)$row['status_id']] = true;
+            }
+        }
+        foreach ($reblogRows as $row) {
+            if (!isset($dismissedMap['reblog_' . $row['status_id']])) {
+                $neededStatusIds[(int)$row['orig_status_id']] = true;
+            }
+        }
+        if (!empty($neededStatusIds)) {
+            $idList = array_keys($neededStatusIds);
+            $ph = implode(',', array_fill(0, count($idList), '?'));
+            $stmtBatchStatuses = $db->prepare("
+                SELECT s.id as status_id, s.uri as status_uri, s.content as status_content,
+                       s.visibility as status_visibility, s.created_at as status_created_at,
+                       s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                       a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
+                       a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
+                       a.locked, a.discoverable, a.fields
+                FROM statuses s
+                JOIN accounts a ON s.account_id = a.id
+                WHERE s.id IN ($ph)
+            ");
+            $stmtBatchStatuses->execute($idList);
+            foreach ($stmtBatchStatuses->fetchAll() as $sr) {
+                $statusRowCache[(int)$sr['status_id']] = $sr;
+            }
+        }
+
+        // Recolectar todas las filas de estados para formatearlas en un solo lote
+        $rawStatusRowsToFormat = [];
+        foreach ($favRows as $row) {
+            if (isset($dismissedMap['favourite_' . $row['id']])) continue;
+            $sid = (int)$row['status_id'];
+            if (isset($statusRowCache[$sid])) {
+                $rawStatusRowsToFormat[$sid] = $statusRowCache[$sid];
+            }
+        }
+        foreach ($reblogRows as $row) {
+            if (isset($dismissedMap['reblog_' . $row['status_id']])) continue;
+            $origSid = (int)$row['orig_status_id'];
+            if (isset($statusRowCache[$origSid])) {
+                $rawStatusRowsToFormat[$origSid] = $statusRowCache[$origSid];
+            }
+        }
+        $validMentions = [];
+        foreach ($mentionRows as $row) {
+            $nid = 'mention_' . $row['status_id'];
+            if (isset($dismissedMap[$nid])) continue;
+            $isRealMention = !empty($row['is_reply_to_me']);
+            if (!$isRealMention) {
+                $username = $account['username'];
+                $content = $row['status_content'];
+                $mentionPattern = '/@' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
+                $urlPattern = '/\/users\/' . preg_quote($username, '/') . '(?![a-zA-Z0-9_\-])/i';
+                if (preg_match($mentionPattern, $content) || preg_match($urlPattern, $content)) {
+                    $isRealMention = true;
+                }
+            }
+            if (!$isRealMention) continue;
+            $validMentions[] = $row;
+            $rawStatusRowsToFormat[(int)$row['status_id']] = $row;
+        }
+
+        $formattedStatusesMap = [];
+        if (!empty($rawStatusRowsToFormat)) {
+            $batchFormatted = self::formatStatusesBatch(array_values($rawStatusRowsToFormat), $currUserId);
+            foreach ($batchFormatted as $fs) {
+                $formattedStatusesMap[(int)$fs['id']] = $fs;
+            }
+        }
+
+        foreach ($favRows as $row) {
+            $nid = 'favourite_' . $row['id'];
+            if (isset($dismissedMap[$nid])) continue;
+            $sid = (int)$row['status_id'];
+            $notifications[] = [
+                'id' => $nid,
+                'type' => 'favourite',
+                'created_at' => date('c', strtotime($row['created_at'])),
+                'account' => self::formatAccount($row),
+                'status' => $formattedStatusesMap[$sid] ?? null
+            ];
+        }
+
+        foreach ($validMentions as $row) {
+            $sid = (int)$row['status_id'];
+            $notifications[] = [
+                'id' => 'mention_' . $sid,
+                'type' => 'mention',
+                'created_at' => date('c', strtotime($row['status_created_at'])),
+                'account' => self::formatAccount($row),
+                'status' => $formattedStatusesMap[$sid] ?? null
+            ];
+        }
+
         foreach ($reblogRows as $row) {
             $nid = 'reblog_' . $row['status_id'];
             if (isset($dismissedMap[$nid])) continue;
             $origStatusId = (int)$row['orig_status_id'];
-            if (!array_key_exists($origStatusId, $statusRowCache)) {
-                $statusRowCache[$origStatusId] = self::fetchStatusRow($db, $origStatusId);
-            }
-            $origRow = $statusRowCache[$origStatusId];
-            if (!$origRow) continue;
+            if (!isset($formattedStatusesMap[$origStatusId])) continue;
 
             $notifications[] = [
                 'id' => $nid,
                 'type' => 'reblog',
                 'created_at' => date('c', strtotime($row['status_created_at'])),
                 'account' => self::formatAccount($row),
-                'status' => self::formatStatus($origRow, $currUserId)
+                'status' => $formattedStatusesMap[$origStatusId]
             ];
         }
 
