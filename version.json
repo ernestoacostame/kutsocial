@@ -1,5 +1,5 @@
 {
-  "version": "2.0.90",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.90/kutsocial-v2.0.90.zip",
-  "changelog": "Fix: publica assets/pages.css y assets/pages.js como archivos estáticos reales para cargar el diseño sin cambiar Nginx"
+  "version": "2.0.91",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.91/kutsocial-v2.0.91.zip",
+  "changelog": "Hotfix: corrige columna inexistente last_status_at en preloadStatusesContext y restaura sesión/Authorization en login web"
 }

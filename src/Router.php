@@ -250,7 +250,7 @@ class Router {
 
     public static function getBearerToken(): ?string {
         $headers = self::getAllHeaders();
-        $auth = $headers['Authorization'] ?? $headers['authorization'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+        $auth = $headers['Authorization'] ?? $headers['authorization'] ?? $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
         if (preg_match('/Bearer\s(\S+)/i', $auth, $matches)) {
             return $matches[1];
         }

@@ -929,6 +929,11 @@ HTML;
         $insTok = $db->prepare("INSERT INTO oauth_tokens (token_hash, client_id, account_id, scopes, expires_at) VALUES (?, ?, ?, ?, ?)");
         $insTok->execute([$tokenHash, $clientId ?: null, (int)$account['id'], $requestedScope, $expiresAt]);
 
+        if ($grantType === 'password' && $clientId === '' && session_status() === PHP_SESSION_ACTIVE && in_array($account['role'] ?? '', ['admin', 'owner'], true)) {
+            $_SESSION['admin_account_id'] = (int)$account['id'];
+            $_SESSION['kutsocial_auto_token'] = $token;
+        }
+
         Router::json([
             'access_token' => $token,
             'token_type' => 'Bearer',
@@ -5024,7 +5029,7 @@ HTML;
         // 8. Author metadata & counts
         if (!empty($authorIdList)) {
             $aph = implode(',', array_fill(0, count($authorIdList), '?'));
-            $stmtAcc = $db->prepare("SELECT id, show_source, statuses_count, followers_count, following_count, last_status_at, domain, password_hash FROM accounts WHERE id IN ($aph)");
+            $stmtAcc = $db->prepare("SELECT id, show_source, statuses_count, followers_count, following_count, domain, password_hash FROM accounts WHERE id IN ($aph)");
             $stmtAcc->execute($authorIdList);
             $localAuthors = [];
             $serverHost = strtolower(explode(':', $_SERVER['HTTP_HOST'] ?? 'localhost')[0]);
