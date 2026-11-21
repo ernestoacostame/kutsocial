@@ -1057,10 +1057,11 @@ button:hover {
 /* Barra de acciones del Toot */
 .toot-actions {
     display: flex;
-    gap: 24px;
-    margin-top: 10px;
+    gap: 10px;
+    margin-top: 8px;
     color: var(--text-muted);
     font-size: 13.5px;
+    flex-wrap: wrap;
 }
 
 .toot-action-btn {
@@ -1071,14 +1072,17 @@ button:hover {
     border: none;
     color: inherit;
     cursor: pointer;
-    display: flex;
+    display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     font-family: inherit;
     font-size: inherit;
-    transition: color 0.2s;
-    padding: 4px 8px;
-    border-radius: 6px;
+    transition: color 0.2s, background-color 0.15s;
+    padding: 8px 14px;
+    min-height: 36px;
+    min-width: 44px;
+    border-radius: 9999px;
 }
 
 .toot-action-btn:hover {
