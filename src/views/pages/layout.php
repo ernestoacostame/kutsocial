@@ -789,14 +789,21 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                 var ta = modal.querySelector('textarea');
                 if (ta) ta.focus();
             }, 60);
-        } else {
-            var feedComposer = document.querySelector('#tab-feed > .composer-card #composer-textarea');
-            if (feedComposer) {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-                setTimeout(function() { feedComposer.focus(); }, 180);
+            return;
+        }
+        var feedCard = document.querySelector('#tab-feed > .composer-card');
+        if (feedCard) {
+            if (typeof toggleComposerZen === 'function' && !feedCard.classList.contains('zen-mode')) {
+                toggleComposerZen(true);
             } else {
-                window.location.href = '<?= $basePath ?>/home';
+                window.scrollTo({ top: 0, behavior: 'smooth' });
             }
+            setTimeout(function() {
+                var ta = feedCard.querySelector('#composer-textarea, textarea');
+                if (ta) ta.focus();
+            }, 80);
+        } else {
+            window.location.href = '<?= $basePath ?>/home';
         }
     }
     document.addEventListener('click', function(e) {

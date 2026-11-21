@@ -1,5 +1,5 @@
 {
-  "version": "2.1.7",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.7/kutsocial-v2.1.7.zip",
-  "changelog": "Corrige z-index y alineación del menú desplegable de cuenta en el tema Mastodon 5.0"
+  "version": "2.1.8",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.8/kutsocial-v2.1.8.zip",
+  "changelog": "Botón Publicar del tema Mastodon 5.0 abre el editor en pop-up (Zen/Modal) en todas las páginas"
 }
