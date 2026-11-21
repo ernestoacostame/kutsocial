@@ -4167,7 +4167,7 @@ HTML;
                     foreach ($mediaAttachments as $att) {
                         $attachmentsList[] = [
                             'type' => 'Document',
-                            'mediaType' => 'image/' . pathinfo($att['url'], PATHINFO_EXTENSION),
+                            'mediaType' => ActivityPubController::getMimeTypeFromUrl($att['url']),
                             'url' => $att['url'],
                             'name' => !empty($att['description']) ? $att['description'] : null
                         ];
@@ -6263,16 +6263,16 @@ HTML;
 
         $db = Database::connect();
         
-        $stmtCheck = $db->prepare("SELECT account_id FROM statuses WHERE id = ? LIMIT 1");
+        $stmtCheck = $db->prepare("SELECT account_id, uri, visibility, created_at FROM statuses WHERE id = ? LIMIT 1");
         $stmtCheck->execute([$id]);
-        $ownerId = $stmtCheck->fetchColumn();
+        $existingStatus = $stmtCheck->fetch();
 
-        if (!$ownerId) {
+        if (!$existingStatus) {
             Router::json(['error' => 'Status no encontrado'], 404);
             return;
         }
 
-        if ((int)$ownerId !== (int)$account['id']) {
+        if ((int)$existingStatus['account_id'] !== (int)$account['id']) {
             Router::json(['error' => 'No tienes permiso para editar este status'], 403);
             return;
         }
@@ -6346,7 +6346,7 @@ HTML;
         $stmtFetch = $db->prepare("
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
                    s.visibility as status_visibility, s.created_at as status_created_at, 
-                   s.in_reply_to_id, s.sensitive, s.spoiler_text,
+                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
                    a.avatar_description, a.header_description, a.note, a.created_at as account_created_at
             FROM statuses s
@@ -6356,6 +6356,83 @@ HTML;
         ");
         $stmtFetch->execute([$id]);
         $row = $stmtFetch->fetch();
+
+        // Federar actividad Update a seguidores remotos
+        try {
+            $statusUri = $existingStatus['uri'] ?? '';
+            $visibility = $existingStatus['visibility'] ?? 'public';
+            if ($statusUri !== '' && $visibility !== 'direct') {
+                $actorUrl = "$proto://$domain/users/{$account['username']}";
+                $to = [];
+                $cc = [];
+                if ($visibility === 'public') {
+                    $to[] = 'https://www.w3.org/ns/activitystreams#Public';
+                    $cc[] = "$actorUrl/followers";
+                } elseif ($visibility === 'unlisted') {
+                    $to[] = "$actorUrl/followers";
+                    $cc[] = 'https://www.w3.org/ns/activitystreams#Public';
+                } else {
+                    $to[] = "$actorUrl/followers";
+                }
+
+                $followersStmt = $db->prepare("
+                    SELECT DISTINCT a.inbox_url FROM follows f
+                    JOIN accounts a ON f.account_id = a.id
+                    WHERE f.target_account_id = ? AND f.status = 'accepted' AND a.domain IS NOT NULL AND a.inbox_url IS NOT NULL AND a.inbox_url != ''
+                ");
+                $followersStmt->execute([$account['id']]);
+                $targetInboxes = array_values(array_filter(array_map('trim', $followersStmt->fetchAll(PDO::FETCH_COLUMN))));
+
+                if (!empty($targetInboxes)) {
+                    $htmlContent = self::formatLocalContentToHtml($content, $domain, $db, $proto);
+                    $publishedTs = !empty($existingStatus['created_at']) ? strtotime($existingStatus['created_at'] . ' UTC') : time();
+                    $noteObject = [
+                        'id' => $statusUri,
+                        'type' => 'Note',
+                        'published' => date('c', $publishedTs ?: time()),
+                        'updated' => date('c'),
+                        'attributedTo' => $actorUrl,
+                        'content' => $htmlContent,
+                        'sensitive' => (bool)$sensitive,
+                        'to' => $to,
+                        'cc' => $cc
+                    ];
+                    if ($spoilerText !== '') {
+                        $noteObject['summary'] = $spoilerText;
+                    }
+                    if (!empty($mediaAttachments)) {
+                        $attachmentsList = [];
+                        foreach ($mediaAttachments as $att) {
+                            $attachmentsList[] = [
+                                'type' => 'Document',
+                                'mediaType' => ActivityPubController::getMimeTypeFromUrl($att['url']),
+                                'url' => $att['url'],
+                                'name' => !empty($att['description']) ? $att['description'] : null
+                            ];
+                        }
+                        $noteObject['attachment'] = $attachmentsList;
+                    }
+
+                    $updateActivity = [
+                        '@context' => 'https://www.w3.org/ns/activitystreams',
+                        'id' => $statusUri . '#update-' . time(),
+                        'type' => 'Update',
+                        'actor' => $actorUrl,
+                        'published' => date('c'),
+                        'to' => $to,
+                        'cc' => $cc,
+                        'object' => $noteObject
+                    ];
+
+                    foreach ($targetInboxes as $inboxUrl) {
+                        \KutSocial\Queue::enqueue('Update', $updateActivity, $inboxUrl);
+                    }
+                    \KutSocial\Queue::triggerAsync($domain);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log("KutSocial update federation error: " . $e->getMessage());
+        }
 
         Router::json(self::formatStatus($row, (int)$account['id']));
     }

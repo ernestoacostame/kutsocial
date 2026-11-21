@@ -1,5 +1,5 @@
 {
-  "version": "2.1.0",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.0/kutsocial-v2.1.0.zip",
-  "changelog": "Soporte multi-motor (SQLite, PostgreSQL, MariaDB/MySQL), instalador multi-BD, sección de backups en admin y asistente gráfico cli/migrate-db.sh"
+  "version": "2.1.1",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.1/kutsocial-v2.1.1.zip",
+  "changelog": "Federa actividad Update al editar posts (con adjuntos) y corrige mediaType ActivityPub según MIME real"
 }
