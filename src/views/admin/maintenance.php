@@ -45,7 +45,21 @@
         </div>
     </div>
     
-    <!-- Opción 5: Optimizar Base de Datos (VACUUM) -->
+    <!-- Opción 5: Limpiar Caché de Proxy y Contextos -->
+    <div class="update-card" style="margin-bottom: 20px; display: flex; align-items: flex-start; gap: 15px;">
+        <input type="checkbox" name="clear_cache" id="clear_cache" value="1" checked style="width: auto; margin-top: 5px; cursor: pointer;">
+        <div>
+            <label for="clear_cache" style="font-weight: 600; display: block; cursor: pointer; font-size: 15px; margin-bottom: 4px;"><?= __('admin_maint_opt_cache_title') ?></label>
+            <span class="help-text" style="display: block; margin-bottom: 10px;"><?= __('admin_maint_opt_cache_desc') ?></span>
+            <div class="form-group" style="margin-bottom: 0; display: inline-flex; align-items: center; gap: 10px;">
+                <label for="cache_days" style="font-size: 13px; font-weight: normal; margin-bottom: 0;"><?= __('admin_maint_opt_cache_age') ?></label>
+                <input type="number" name="cache_days" id="cache_days" value="0" min="0" max="365" style="width: 80px; padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: white;">
+                <span style="font-size: 13px; color: var(--text-muted);"><?= __('admin_maint_opt_cache_days_hint') ?></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Opción 6: Optimizar Base de Datos -->
     <div class="update-card" style="margin-bottom: 25px; display: flex; align-items: flex-start; gap: 15px;">
         <input type="checkbox" name="vacuum_db" id="vacuum_db" value="1" checked style="width: auto; margin-top: 5px; cursor: pointer;">
         <div>

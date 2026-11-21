@@ -1266,8 +1266,10 @@ class AdminController {
         $pruneAccounts = isset($_POST['prune_accounts']) && $_POST['prune_accounts'] == '1';
         $removeStatuses = isset($_POST['remove_statuses']) && $_POST['remove_statuses'] == '1';
         $clearJobs = isset($_POST['clear_jobs']) && $_POST['clear_jobs'] == '1';
+        $clearCache = isset($_POST['clear_cache']) && $_POST['clear_cache'] == '1';
         $vacuumDb = isset($_POST['vacuum_db']) && $_POST['vacuum_db'] == '1';
         $statusesDays = isset($_POST['statuses_days']) ? intval($_POST['statuses_days']) : 4;
+        $cacheDays = isset($_POST['cache_days']) ? max(0, intval($_POST['cache_days'])) : 0;
 
         if ($statusesDays < 1) {
             $statusesDays = 4;
@@ -1435,7 +1437,50 @@ class AdminController {
             }
         }
 
-        // 5. Optimizar Base de Datos
+        // 5. Limpiar Caché de Proxy y Contextos (data/cache/)
+        if ($clearCache) {
+            @set_time_limit(0);
+            $cacheDir = defined('KUTSOCIAL_ROOT')
+                ? KUTSOCIAL_ROOT . '/data/cache'
+                : dirname(Database::getDbPath()) . '/cache';
+
+            if (is_dir($cacheDir)) {
+                $deletedCache = 0;
+                $freedBytes = 0;
+                $cutoffTs = $cacheDays > 0 ? (time() - ($cacheDays * 86400)) : null;
+
+                try {
+                    $iterator = new \RecursiveIteratorIterator(
+                        new \RecursiveDirectoryIterator($cacheDir, \FilesystemIterator::SKIP_DOTS),
+                        \RecursiveIteratorIterator::CHILD_FIRST
+                    );
+                    foreach ($iterator as $item) {
+                        if ($item->isFile() || $item->isLink()) {
+                            if ($cutoffTs !== null && $item->getMTime() >= $cutoffTs) {
+                                continue;
+                            }
+                            $size = $item->isFile() ? (int)$item->getSize() : 0;
+                            if (@unlink($item->getPathname())) {
+                                $deletedCache++;
+                                $freedBytes += $size;
+                            }
+                        } elseif ($item->isDir()) {
+                            @rmdir($item->getPathname());
+                        }
+                    }
+                    $freedFormatted = $freedBytes >= (1024 * 1024 * 1024)
+                        ? round($freedBytes / (1024 * 1024 * 1024), 2) . ' GB'
+                        : round($freedBytes / (1024 * 1024), 2) . ' MB';
+                    $messages[] = "Se eliminaron $deletedCache archivos de caché ($freedFormatted liberados).";
+                } catch (\Throwable $e) {
+                    $messages[] = "Error al limpiar la caché: " . $e->getMessage();
+                }
+            } else {
+                $messages[] = "El directorio de caché no existe o ya está vacío.";
+            }
+        }
+
+        // 6. Optimizar Base de Datos
         if ($vacuumDb) {
             try {
                 $messages[] = Database::optimizeDb($db);

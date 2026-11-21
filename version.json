@@ -1,5 +1,5 @@
 {
-  "version": "2.1.1",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.1/kutsocial-v2.1.1.zip",
-  "changelog": "Federa actividad Update al editar posts (con adjuntos) y corrige mediaType ActivityPub según MIME real"
+  "version": "2.1.2",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.2/kutsocial-v2.1.2.zip",
+  "changelog": "Añade limpieza de caché (data/cache/) con filtro por antigüedad en Mantenimiento"
 }
