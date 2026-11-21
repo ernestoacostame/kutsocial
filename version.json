@@ -1,5 +1,5 @@
 {
-  "version": "2.1.9",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.9/kutsocial-v2.1.9.zip",
-  "changelog": "Fallback seguro en sanitizeRemoteHtml si falta php-xml (DOMDocument) y rotación automática de activitypub.log"
+  "version": "2.1.10",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.10/kutsocial-v2.1.10.zip",
+  "changelog": "Optimiza getNotifications() e isBlockedOrMuted() eliminando cientos de consultas N+1 por petición"
 }

@@ -1118,6 +1118,16 @@ HTML;
         $db = Database::connect();
         $currUserId = (int)$account['id'];
         $notifications = [];
+        $statusRowCache = [];
+
+        $dismissedMap = [];
+        try {
+            $stmtDismissed = $db->prepare("SELECT notification_id FROM dismissed_notifications WHERE account_id = ?");
+            $stmtDismissed->execute([$currUserId]);
+            foreach ($stmtDismissed->fetchAll(\PDO::FETCH_COLUMN) as $dnId) {
+                $dismissedMap[(string)$dnId] = true;
+            }
+        } catch (\Throwable $e) {}
 
         // 1. Obtener notificaciones de Seguimientos (Follows)
         $stmtFollows = $db->prepare("
@@ -1128,16 +1138,15 @@ HTML;
             FROM follows f
             JOIN accounts a ON f.account_id = a.id
             WHERE f.target_account_id = ?
-              AND ('follow_' || f.id) NOT IN (
-                  SELECT notification_id FROM dismissed_notifications WHERE account_id = ?
-              )
             ORDER BY f.id DESC LIMIT 40
         ");
-        $stmtFollows->execute([$currUserId, $currUserId]);
+        $stmtFollows->execute([$currUserId]);
         $followRows = $stmtFollows->fetchAll();
         foreach ($followRows as $row) {
+            $nid = 'follow_' . $row['id'];
+            if (isset($dismissedMap[$nid])) continue;
             $notifications[] = [
-                'id' => 'follow_' . $row['id'],
+                'id' => $nid,
                 'type' => 'follow',
                 'created_at' => date('c', strtotime($row['created_at'])),
                 'account' => self::formatAccount($row)
@@ -1146,28 +1155,28 @@ HTML;
 
         // 2. Obtener notificaciones de Favoritos (Favourites)
         $stmtFavs = $db->prepare("
-            SELECT fav.id, fav.created_at, 
+            SELECT fav.id, fav.created_at, fav.status_id,
                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
                    a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
-                   a.locked, a.discoverable, a.fields,
-                   s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                   s.visibility as status_visibility, s.created_at as status_created_at, 
-                   s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments
+                   a.locked, a.discoverable, a.fields
             FROM favourites fav
             JOIN accounts a ON fav.account_id = a.id
             JOIN statuses s ON fav.status_id = s.id
             WHERE s.account_id = ?
-              AND ('favourite_' || fav.id) NOT IN (
-                  SELECT notification_id FROM dismissed_notifications WHERE account_id = ?
-              )
             ORDER BY fav.id DESC LIMIT 40
         ");
-        $stmtFavs->execute([$currUserId, $currUserId]);
+        $stmtFavs->execute([$currUserId]);
         $favRows = $stmtFavs->fetchAll();
         foreach ($favRows as $row) {
-            $statusRow = self::fetchStatusRow($db, (int)$row['status_id']);
+            $nid = 'favourite_' . $row['id'];
+            if (isset($dismissedMap[$nid])) continue;
+            $sid = (int)$row['status_id'];
+            if (!array_key_exists($sid, $statusRowCache)) {
+                $statusRowCache[$sid] = self::fetchStatusRow($db, $sid);
+            }
+            $statusRow = $statusRowCache[$sid];
             $notifications[] = [
-                'id' => 'favourite_' . $row['id'],
+                'id' => $nid,
                 'type' => 'favourite',
                 'created_at' => date('c', strtotime($row['created_at'])),
                 'account' => self::formatAccount($row),
@@ -1180,6 +1189,9 @@ HTML;
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
                    s.visibility as status_visibility, s.created_at as status_created_at, 
                    s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
+                   CASE WHEN s.in_reply_to_id IS NOT NULL AND EXISTS (
+                       SELECT 1 FROM statuses p WHERE p.id = s.in_reply_to_id AND p.account_id = ?
+                   ) THEN 1 ELSE 0 END as is_reply_to_me,
                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
                    a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
                    a.locked, a.discoverable, a.fields
@@ -1189,35 +1201,26 @@ HTML;
               AND (
                   s.content LIKE ? 
                   OR s.content LIKE ? 
-                  OR s.in_reply_to_id IN (SELECT id FROM statuses WHERE account_id = ?)
-              )
-              AND ('mention_' || s.id) NOT IN (
-                  SELECT notification_id FROM dismissed_notifications WHERE account_id = ?
+                  OR EXISTS (SELECT 1 FROM statuses p2 WHERE p2.id = s.in_reply_to_id AND p2.account_id = ?)
               )
             ORDER BY s.id DESC LIMIT 40
         ");
         $stmtMentions->execute([
+            $currUserId,
             $currUserId, 
             '%@' . $account['username'] . '%', 
             '%/users/' . $account['username'] . '%', 
-            $currUserId, 
             $currUserId
         ]);
         $mentionRows = $stmtMentions->fetchAll();
         foreach ($mentionRows as $row) {
+            $nid = 'mention_' . $row['status_id'];
+            if (isset($dismissedMap[$nid])) continue;
+
             // Validar que sea mención real (evitar falsos positivos de substrings como @iam vs @iamdavidobrien)
-            $isRealMention = false;
+            $isRealMention = !empty($row['is_reply_to_me']);
             
-            // 1. Si es respuesta a un post del usuario
-            if ($row['in_reply_to_id']) {
-                $stmtCheckReply = $db->prepare("SELECT 1 FROM statuses WHERE id = ? AND account_id = ? LIMIT 1");
-                $stmtCheckReply->execute([$row['in_reply_to_id'], $currUserId]);
-                if ($stmtCheckReply->fetchColumn()) {
-                    $isRealMention = true;
-                }
-            }
-            
-            // 2. Si contiene mención real en el texto
+            // Si contiene mención real en el texto
             if (!$isRealMention) {
                 $username = $account['username'];
                 $content = $row['status_content'];
@@ -1233,7 +1236,7 @@ HTML;
             }
 
             $notifications[] = [
-                'id' => 'mention_' . $row['status_id'],
+                'id' => $nid,
                 'type' => 'mention',
                 'created_at' => date('c', strtotime($row['status_created_at'])),
                 'account' => self::formatAccount($row),
@@ -1247,29 +1250,28 @@ HTML;
                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
                    a.avatar_description, a.header_description, a.note, a.created_at as account_created_at,
                    a.locked, a.discoverable, a.fields,
-                   orig.id as orig_status_id, orig.uri as orig_status_uri, orig.content as orig_status_content,
-                   orig.visibility as orig_status_visibility, orig.created_at as orig_status_created_at,
-                   orig.in_reply_to_id as orig_in_reply_to_id, orig.sensitive as orig_sensitive,
-                   orig.spoiler_text as orig_spoiler_text, orig.media_attachments as orig_media_attachments
+                   orig.id as orig_status_id
             FROM statuses s
             JOIN accounts a ON s.account_id = a.id
             JOIN statuses orig ON s.reblog_of_id = orig.id
             WHERE orig.account_id = ?
               AND s.content = ''
-              AND ('reblog_' || s.id) NOT IN (
-                  SELECT notification_id FROM dismissed_notifications WHERE account_id = ?
-              )
             ORDER BY s.id DESC LIMIT 40
         ");
-        $stmtReblogs->execute([$currUserId, $currUserId]);
+        $stmtReblogs->execute([$currUserId]);
         $reblogRows = $stmtReblogs->fetchAll();
         foreach ($reblogRows as $row) {
+            $nid = 'reblog_' . $row['status_id'];
+            if (isset($dismissedMap[$nid])) continue;
             $origStatusId = (int)$row['orig_status_id'];
-            $origRow = self::fetchStatusRow($db, $origStatusId);
+            if (!array_key_exists($origStatusId, $statusRowCache)) {
+                $statusRowCache[$origStatusId] = self::fetchStatusRow($db, $origStatusId);
+            }
+            $origRow = $statusRowCache[$origStatusId];
             if (!$origRow) continue;
 
             $notifications[] = [
-                'id' => 'reblog_' . $row['status_id'],
+                'id' => $nid,
                 'type' => 'reblog',
                 'created_at' => date('c', strtotime($row['status_created_at'])),
                 'account' => self::formatAccount($row),
@@ -5728,26 +5730,33 @@ HTML;
     }
 
     private static function isBlockedOrMuted(\PDO $db, string $username, ?string $domain): bool {
+        static $cachedDomains = null;
+        static $cachedAccounts = null;
+
+        if ($cachedDomains === null) {
+            $cachedDomains = [];
+            $cachedAccounts = [];
+            try {
+                $rows = $db->query("SELECT type, LOWER(target) as target FROM moderation_blocks")->fetchAll();
+                foreach ($rows as $r) {
+                    if (($r['type'] ?? '') === 'domain') {
+                        $cachedDomains[$r['target']] = true;
+                    } else {
+                        $cachedAccounts[$r['target']] = true;
+                    }
+                }
+            } catch (\Throwable $e) {}
+        }
+
         $acct = $domain ? $username . '@' . $domain : $username;
         $username = strtolower($username);
         $acct = strtolower($acct);
         $domain = $domain ? strtolower($domain) : '';
 
-        if (!empty($domain)) {
-            $stmt = $db->prepare("SELECT 1 FROM moderation_blocks WHERE type = 'domain' AND LOWER(target) = ? LIMIT 1");
-            $stmt->execute([$domain]);
-            if ($stmt->fetchColumn()) {
-                return true;
-            }
-        }
-
-        $stmt = $db->prepare("SELECT 1 FROM moderation_blocks WHERE type IN ('account', 'mute') AND (LOWER(target) = ? OR LOWER(target) = ?) LIMIT 1");
-        $stmt->execute([$username, $acct]);
-        if ($stmt->fetchColumn()) {
+        if ($domain !== '' && isset($cachedDomains[$domain])) {
             return true;
         }
-
-        return false;
+        return isset($cachedAccounts[$username]) || isset($cachedAccounts[$acct]);
     }
 
     public static function getRelationships(): void {
