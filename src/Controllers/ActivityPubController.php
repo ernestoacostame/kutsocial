@@ -2671,6 +2671,9 @@ XML;
 
     public static function log(string $message): void {
         $logFile = dirname(Database::getDbPath()) . '/activitypub.log';
+        if (@filesize($logFile) > 20 * 1024 * 1024) {
+            @file_put_contents($logFile, '');
+        }
         $timestamp = date('Y-m-d H:i:s');
         @file_put_contents($logFile, "[$timestamp] $message\n", FILE_APPEND);
     }

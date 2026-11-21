@@ -76,6 +76,13 @@ class SecurityHelper {
             return '';
         }
 
+        if (!class_exists('DOMDocument')) {
+            $clean = strip_tags($html, '<p><br><a><span><strong><b><em><i><ul><ol><li><blockquote><code><pre>');
+            $clean = preg_replace('/\s+on[a-z]+\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $clean);
+            $clean = preg_replace('/(href|src)\s*=\s*(["\'])\s*javascript:[^"\']*\2/i', '$1=$2#$2', $clean);
+            return trim((string)$clean);
+        }
+
         $allowedTags = ['p', 'br', 'a', 'span', 'strong', 'b', 'em', 'i', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre'];
         $dropEntirelyTags = ['script', 'style', 'iframe', 'object', 'embed', 'svg', 'math', 'form', 'input', 'textarea', 'button', 'noscript'];
 

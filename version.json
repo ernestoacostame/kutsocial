@@ -1,5 +1,5 @@
 {
-  "version": "2.1.8",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.8/kutsocial-v2.1.8.zip",
-  "changelog": "Botón Publicar del tema Mastodon 5.0 abre el editor en pop-up (Zen/Modal) en todas las páginas"
+  "version": "2.1.9",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.9/kutsocial-v2.1.9.zip",
+  "changelog": "Fallback seguro en sanitizeRemoteHtml si falta php-xml (DOMDocument) y rotación automática de activitypub.log"
 }
