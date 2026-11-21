@@ -3424,6 +3424,8 @@ HTML;
         $queryParams[] = $userId; // followed_hashtags: fh.account_id = ?
 
         return "(
+            (s.content != '' OR s.reblog_of_id IS NOT NULL OR (s.media_attachments IS NOT NULL AND s.media_attachments != '' AND s.media_attachments != '[]'))
+            AND (
             (
                 s.visibility IN ('public', 'unlisted', 'private') AND (
                     s.account_id = ?
@@ -3480,7 +3482,7 @@ HTML;
                 WHERE fh.account_id = ? 
                   AND (s.content LIKE '%#' || fh.hashtag || '%' OR s.content LIKE '%/tags/' || fh.hashtag || '%')
             ))
-        )";
+        ))";
     }
 
     /**
@@ -3617,6 +3619,7 @@ HTML;
             }
         }
 
+        $whereClauses[] = "(s.content != '' OR s.reblog_of_id IS NOT NULL OR (s.media_attachments IS NOT NULL AND s.media_attachments != '' AND s.media_attachments != '[]'))";
         // Excluir respuestas a terceros de la vista federada pública (estándar de Mastodon: solo toots raíz o retoots)
         $whereClauses[] = "(s.in_reply_to_id IS NULL AND (s.in_reply_to_url IS NULL OR s.in_reply_to_url = ''))";
         $whereClauses[] = "NOT (

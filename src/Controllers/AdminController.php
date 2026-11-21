@@ -1325,6 +1325,11 @@ class AdminController {
                     $delStmt->execute($chunk);
                     $deletedStatuses += $delStmt->rowCount();
                 }
+                // Eliminar retoots huérfanos cuyo post original fue borrado (reblog_of_id = NULL con contenido vacío)
+                $delOrphanReblogs = $db->exec("DELETE FROM statuses WHERE content = '' AND reblog_of_id IS NULL AND (media_attachments IS NULL OR media_attachments = '' OR media_attachments = '[]')");
+                if ($delOrphanReblogs > 0) {
+                    $deletedStatuses += $delOrphanReblogs;
+                }
                 $messages[] = "Se eliminaron $deletedStatuses estados remotos antiguos (> $statusesDays días).";
             } catch (Exception $e) {
                 $messages[] = "Error al eliminar estados remotos: " . $e->getMessage();

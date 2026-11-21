@@ -1,5 +1,5 @@
 {
-  "version": "2.1.10",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.10/kutsocial-v2.1.10.zip",
-  "changelog": "Optimiza getNotifications() e isBlockedOrMuted() eliminando cientos de consultas N+1 por petición"
+  "version": "2.1.11",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.11/kutsocial-v2.1.11.zip",
+  "changelog": "Oculta y limpia retoots huérfanos vacíos y añade margen a la flecha de volver en hilos"
 }
