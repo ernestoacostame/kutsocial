@@ -93,12 +93,17 @@ html[data-ui-theme="mastodon"] .m5-brand-sub {
     color: var(--text-muted);
 }
 
-html[data-ui-theme="mastodon"] .m5-collapse-btn {
+html[data-ui-theme="mastodon"] button.m5-collapse-btn {
     width: 32px;
+    min-width: 32px;
     height: 32px;
+    padding: 0;
+    margin: 0;
     border-radius: 9999px;
     border: none;
     background: transparent;
+    background-image: none;
+    box-shadow: none;
     color: var(--text-muted);
     display: inline-flex;
     align-items: center;
@@ -108,9 +113,10 @@ html[data-ui-theme="mastodon"] .m5-collapse-btn {
     transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-html[data-ui-theme="mastodon"] .m5-collapse-btn:hover {
+html[data-ui-theme="mastodon"] button.m5-collapse-btn:hover {
     background: rgba(255, 255, 255, 0.08);
     color: #ffffff;
+    transform: none;
 }
 
 html[data-ui-theme="mastodon"] .m5-collapse-btn .m5-icon-open {
@@ -126,25 +132,40 @@ html[data-ui-theme="mastodon"] .m5-icon-bar {
     padding: 2px 2px 14px 2px;
 }
 
-html[data-ui-theme="mastodon"] .m5-icon-btn {
-    width: 42px;
-    height: 42px;
+html[data-ui-theme="mastodon"] .m5-account-wrap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+html[data-ui-theme="mastodon"] .m5-icon-btn,
+html[data-ui-theme="mastodon"] button.m5-icon-btn {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+    padding: 0;
+    margin: 0;
     border-radius: 9999px;
     border: 1px solid transparent;
     background: transparent;
+    background-image: none;
+    box-shadow: none;
     color: #c8c8d6;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     text-decoration: none;
     cursor: pointer;
+    flex-shrink: 0;
     transition: background-color 0.15s ease, color 0.15s ease;
-    padding: 0;
 }
 
-html[data-ui-theme="mastodon"] .m5-icon-btn:hover {
-    background: rgba(255, 255, 255, 0.07);
+html[data-ui-theme="mastodon"] .m5-icon-btn:hover,
+html[data-ui-theme="mastodon"] button.m5-icon-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
     color: #ffffff;
+    transform: none;
 }
 
 html[data-ui-theme="mastodon"] .m5-icon-btn.active {
@@ -264,12 +285,16 @@ html[data-ui-theme="mastodon"] .m5-menu-lang {
 }
 
 /* Botón principal "New Post / Publicar" */
-html[data-ui-theme="mastodon"] .m5-new-post-btn {
+html[data-ui-theme="mastodon"] button.m5-new-post-btn {
     width: 100%;
     height: 44px;
+    padding: 0 16px;
+    margin: 0 0 16px 0;
     border-radius: 9999px;
     border: none;
     background: var(--pill-bg);
+    background-image: none;
+    box-shadow: none;
     color: var(--pill-text);
     font-family: inherit;
     font-size: 14.5px;
@@ -279,16 +304,17 @@ html[data-ui-theme="mastodon"] .m5-new-post-btn {
     justify-content: center;
     gap: 8px;
     cursor: pointer;
-    margin-bottom: 16px;
     transition: background-color 0.15s ease, transform 0.1s ease;
 }
 
-html[data-ui-theme="mastodon"] .m5-new-post-btn:hover {
+html[data-ui-theme="mastodon"] button.m5-new-post-btn:hover {
     background: var(--pill-bg-hover);
+    transform: none;
 }
 
-html[data-ui-theme="mastodon"] .m5-new-post-btn .material-icons-outlined {
+html[data-ui-theme="mastodon"] button.m5-new-post-btn .material-icons-outlined {
     font-size: 19px;
+    line-height: 1;
 }
 
 /* Enlaces secundarios de navegación */
@@ -371,9 +397,10 @@ html[data-ui-theme="mastodon"].m5-sidebar-collapsed .m5-popover-menu {
     top: 0;
 }
 
-html[data-ui-theme="mastodon"].m5-sidebar-collapsed .m5-new-post-btn {
-    width: 44px;
-    height: 44px;
+html[data-ui-theme="mastodon"].m5-sidebar-collapsed button.m5-new-post-btn {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
     padding: 0;
     border-radius: 14px;
     margin: 0 auto 14px auto;

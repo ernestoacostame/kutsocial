@@ -161,7 +161,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
 
                 <!-- Botón principal New Post -->
                 <button type="button" class="m5-new-post-btn" onclick="openM5NewPost()" title="<?= __('publish', 'Publicar') ?>">
-                    <span class="material-icons-outlined">edit_square</span>
+                    <span class="material-icons-outlined">edit</span>
                     <span class="m5-new-post-label"><?= __('publish', 'Publicar') ?></span>
                 </button>
                 <?php else: ?>
@@ -780,12 +780,6 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
         }
     }
     function openM5NewPost() {
-        var feedComposer = document.querySelector('#tab-feed > .composer-card #composer-textarea');
-        if (feedComposer && document.getElementById('tab-feed') && document.getElementById('tab-feed').style.display !== 'none') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            setTimeout(function() { feedComposer.focus(); }, 180);
-            return;
-        }
         var modal = document.getElementById('modal-composer');
         if (modal) {
             var title = document.getElementById('modal-composer-title');
@@ -796,7 +790,13 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                 if (ta) ta.focus();
             }, 60);
         } else {
-            window.location.href = '<?= $basePath ?>/home';
+            var feedComposer = document.querySelector('#tab-feed > .composer-card #composer-textarea');
+            if (feedComposer) {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+                setTimeout(function() { feedComposer.focus(); }, 180);
+            } else {
+                window.location.href = '<?= $basePath ?>/home';
+            }
         }
     }
     document.addEventListener('click', function(e) {
