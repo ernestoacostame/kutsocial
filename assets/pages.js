@@ -412,8 +412,10 @@ function initPublicView() {
     // Reemplazar summary por botón Iniciar Sesión
     const summaryDiv = document.querySelector('.user-profile-summary');
     if (summaryDiv) {
+        summaryDiv.onclick = null;
+        summaryDiv.style.cursor = 'default';
         summaryDiv.innerHTML = `
-            <button onclick="showLoginModal()" style="margin: 0; width: 100%; padding: 12px; font-weight:600; background: var(--primary); border:none; border-radius:10px; color:white; cursor:pointer;">🔑 Iniciar Sesión</button>
+            <button type="button" onclick="event.stopPropagation(); showLoginModal()" style="margin: 0; width: 100%; padding: 12px; font-weight:600; background: var(--primary); border:none; border-radius:10px; color:white; cursor:pointer;">🔑 Iniciar Sesión</button>
         `;
     }
     

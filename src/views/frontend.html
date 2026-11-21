@@ -169,7 +169,7 @@
 
             <!-- Perfil del usuario actual -->
             <div class="user-profile-summary" style="cursor: pointer;" onclick="const u = (typeof currentProfileData !== 'undefined' && currentProfileData?.username) ? currentProfileData.username : '<?= htmlspecialchars($localUser['username'] ?? '') ?>'; if(u) window.location.href='/@' + u;">
-                <img id="my-avatar" class="user-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.png') ?>" alt="Mi Avatar">
+                <img id="my-avatar" class="user-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.svg') ?>" alt="Mi Avatar">
                 <div class="user-info">
                     <div id="my-display-name" class="user-name"><?= htmlspecialchars($localUser['display_name'] ?: ($localUser['username'] ?? 'Cargando...')) ?></div>
                     <div id="my-username" class="user-handle">@<?= htmlspecialchars($localUser['username'] ?? 'cargando') ?></div>

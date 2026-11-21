@@ -1,5 +1,5 @@
 {
-  "version": "2.0.93",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.93/kutsocial-v2.0.93.zip",
-  "changelog": "Fix: elimina redirección en bucle ante 401 en verify_credentials y valida el token antes de recargar tras login"
+  "version": "2.0.94",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.94/kutsocial-v2.0.94.zip",
+  "changelog": "Fix: evita propagación de clic en botón Iniciar Sesión sobre .user-profile-summary (cerraba el modal y recargaba /@iam)"
 }
