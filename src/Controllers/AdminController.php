@@ -459,6 +459,8 @@ class AdminController {
         }
         self::clearRememberCookie();
         unset($_SESSION['admin_account_id']);
+        unset($_SESSION['kutsocial_user_id']);
+        unset($_SESSION['kutsocial_auto_token']);
         unset($_SESSION['temp_admin_id']);
         unset($_SESSION['admin_csrf_token']);
         $redirect = (string)($_GET['redirect'] ?? '/admin/login');

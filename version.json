@@ -1,5 +1,5 @@
 {
-  "version": "2.0.91",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.91/kutsocial-v2.0.91.zip",
-  "changelog": "Hotfix: corrige columna inexistente last_status_at en preloadStatusesContext y restaura sesión/Authorization en login web"
+  "version": "2.0.92",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.92/kutsocial-v2.0.92.zip",
+  "changelog": "Fix: evita submit GET nativo en #login-form, sincroniza sesión web en postToken y corrige rutas .svg de avatar/header por defecto"
 }

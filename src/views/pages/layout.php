@@ -42,7 +42,7 @@ $basePath = $basePath ?? '';
             
             <div id="login-error" style="color: var(--error); font-size: 14px; margin-bottom: 15px; display: none;"></div>
 
-            <form id="login-form">
+            <form id="login-form" method="POST" action="javascript:void(0);" onsubmit="return false;">
                 <div class="form-group">
                     <label for="username"><?= __('username') ?></label>
                     <input type="text" id="username" required placeholder="ej. admin">

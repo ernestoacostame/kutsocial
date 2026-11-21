@@ -929,9 +929,17 @@ HTML;
         $insTok = $db->prepare("INSERT INTO oauth_tokens (token_hash, client_id, account_id, scopes, expires_at) VALUES (?, ?, ?, ?, ?)");
         $insTok->execute([$tokenHash, $clientId ?: null, (int)$account['id'], $requestedScope, $expiresAt]);
 
-        if ($grantType === 'password' && $clientId === '' && session_status() === PHP_SESSION_ACTIVE && in_array($account['role'] ?? '', ['admin', 'owner'], true)) {
-            $_SESSION['admin_account_id'] = (int)$account['id'];
-            $_SESSION['kutsocial_auto_token'] = $token;
+        if ($grantType === 'password' && $clientId === '') {
+            if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
+                \KutSocial\Controllers\AdminController::startSecureSession();
+            }
+            if (session_status() === PHP_SESSION_ACTIVE) {
+                $_SESSION['kutsocial_user_id'] = (int)$account['id'];
+                $_SESSION['kutsocial_auto_token'] = $token;
+                if (in_array($account['role'] ?? '', ['admin', 'owner'], true)) {
+                    $_SESSION['admin_account_id'] = (int)$account['id'];
+                }
+            }
         }
 
         Router::json([
@@ -1918,10 +1926,11 @@ HTML;
             if (session_status() === PHP_SESSION_NONE && !headers_sent()) {
                 @session_start();
             }
-            if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['admin_account_id'])) {
+            $sessionUserId = $_SESSION['admin_account_id'] ?? $_SESSION['kutsocial_user_id'] ?? null;
+            if (session_status() === PHP_SESSION_ACTIVE && !empty($sessionUserId)) {
                 $db = Database::connect();
                 $stmt = $db->prepare("SELECT * FROM accounts WHERE id = ? LIMIT 1");
-                $stmt->execute([(int)$_SESSION['admin_account_id']]);
+                $stmt->execute([(int)$sessionUserId]);
                 $account = $stmt->fetch();
                 if ($account) {
                     return $account;
@@ -2177,8 +2186,8 @@ HTML;
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         
-        $avatarUrl = !empty($account['avatar']) ? $account['avatar'] : "$proto://$domain/assets/default-avatar.png";
-        $headerUrl = !empty($account['header']) ? $account['header'] : "$proto://$domain/assets/default-header.png";
+        $avatarUrl = !empty($account['avatar']) ? $account['avatar'] : "$proto://$domain/assets/default-avatar.svg";
+        $headerUrl = !empty($account['header']) ? $account['header'] : "$proto://$domain/assets/default-header.svg";
 
         // Asegurar que las rutas locales absolutas tengan el prefijo del dominio si no son ya URLs
         if (!filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
@@ -5112,8 +5121,8 @@ HTML;
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
   
-        $avatarUrl = !empty($row['avatar']) ? $row['avatar'] : "$proto://$domain/assets/default-avatar.png";
-        $headerUrl = !empty($row['header']) ? $row['header'] : "$proto://$domain/assets/default-header.png";
+        $avatarUrl = !empty($row['avatar']) ? $row['avatar'] : "$proto://$domain/assets/default-avatar.svg";
+        $headerUrl = !empty($row['header']) ? $row['header'] : "$proto://$domain/assets/default-header.svg";
   
         if (!filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
             $avatarUrl = $proto . '://' . $domain . $avatarUrl;
