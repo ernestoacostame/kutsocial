@@ -1,5 +1,5 @@
 {
-  "version": "2.1.17",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.17/kutsocial-v2.1.17.zip",
-  "changelog": "Prioriza la cuenta local real en /@usuario (evita duplicado fantasma), evita botón Seguir en perfil propio y añade margen al botón Atrás"
+  "version": "2.1.18",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.18/kutsocial-v2.1.18.zip",
+  "changelog": "Restaura el botón Ir Arriba / Nuevos Toots en el sidebar del tema Mastodon 5.0"
 }

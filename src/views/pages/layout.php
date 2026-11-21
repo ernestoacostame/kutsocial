@@ -292,6 +292,15 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                 </div>
                 <button class="btn-logout" title="Cerrar Sesión" onclick="event.stopPropagation(); logout()">✕</button>
             </div>
+            <?php if ($uiTheme === 'mastodon'): ?>
+            <!-- Botón Ir Arriba / Nuevos Toots en Sidebar (Tema Mastodon 5.0) -->
+            <div id="sidebar-scroll-top-container" class="sidebar-scroll-top-container m5-scroll-top" style="display: none;">
+                <button id="btn-sidebar-scroll-top" class="sidebar-scroll-top-btn" onclick="scrollToTopTimeline()" type="button" title="<?= __('timeline_scroll_to_top', 'Volver al principio') ?>">
+                    <span class="material-icons-outlined" style="font-size: 20px;">arrow_upward</span>
+                    <span id="sidebar-scroll-top-text" class="m5-scroll-top-text"><?= __('timeline_scroll_to_top', 'Volver al principio') ?></span>
+                </button>
+            </div>
+            <?php endif; ?>
         </aside>
 
         <!-- Columna Central: ÚNICA vista cargada en esta página -->
@@ -342,6 +351,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                 </div>
             </div>
 
+            <?php if ($uiTheme !== 'mastodon'): ?>
             <!-- Botón Ir Arriba / Nuevos Toots en Sidebar -->
             <div id="sidebar-scroll-top-container" class="sidebar-scroll-top-container" style="display: none;">
                 <button id="btn-sidebar-scroll-top" class="sidebar-scroll-top-btn" onclick="scrollToTopTimeline()" type="button">
@@ -349,6 +359,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                     <span id="sidebar-scroll-top-text"><?= __('timeline_scroll_to_top', 'Volver al principio') ?></span>
                 </button>
             </div>
+            <?php endif; ?>
         </aside>
 
     </div>

@@ -559,6 +559,58 @@ html[data-ui-theme="mastodon"] .modal-content {
     border-radius: 18px;
 }
 
+html[data-ui-theme="mastodon"] .m5-scroll-top {
+    width: 100%;
+    margin-top: auto;
+    padding-top: 12px;
+}
+
+html[data-ui-theme="mastodon"] button.sidebar-scroll-top-btn {
+    width: 100%;
+    padding: 10px 14px;
+    margin: 0;
+    border-radius: 9999px;
+    background: var(--surface-elevated);
+    background-image: none;
+    border: 1px solid rgba(196, 192, 255, 0.28);
+    color: #e4e1ff;
+    font-size: 13.5px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+
+html[data-ui-theme="mastodon"] button.sidebar-scroll-top-btn:hover {
+    background: var(--pill-bg);
+    color: var(--pill-text);
+}
+
+html[data-ui-theme="mastodon"] button.sidebar-scroll-top-btn.has-new-toots {
+    background: var(--pill-bg);
+    color: var(--pill-text);
+    border-color: transparent;
+}
+
+html[data-ui-theme="mastodon"].m5-sidebar-collapsed .m5-scroll-top {
+    display: flex;
+    justify-content: center;
+}
+
+html[data-ui-theme="mastodon"].m5-sidebar-collapsed button.sidebar-scroll-top-btn {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 9999px;
+}
+
+html[data-ui-theme="mastodon"].m5-sidebar-collapsed .m5-scroll-top-text {
+    display: none;
+}
+
 @media (max-width: 768px) {
     html[data-ui-theme="mastodon"] .app-layout {
         padding: 0;
