@@ -3177,7 +3177,10 @@ HTML;
         $currUser = self::getAuthenticatedAccount();
         $currUserId = $currUser ? (int)$currUser['id'] : null;
 
-        $whereClauses = ["s.account_id = ?"];
+        $whereClauses = [
+            "s.account_id = ?",
+            "(s.content != '' OR s.reblog_of_id IS NOT NULL OR (s.media_attachments IS NOT NULL AND s.media_attachments != '' AND s.media_attachments != '[]'))"
+        ];
         $queryParams = [$id];
 
         if ($currUserId === $id) {
@@ -3207,12 +3210,12 @@ HTML;
 
         $excludeReplies = isset($_GET['exclude_replies']) && ($_GET['exclude_replies'] === 'true' || $_GET['exclude_replies'] === '1' || $_GET['exclude_replies'] === true);
         if ($excludeReplies) {
-            $whereClauses[] = "(s.in_reply_to_id IS NULL OR s.in_reply_to_id = '')";
+            $whereClauses[] = "s.in_reply_to_id IS NULL";
         }
 
         $excludeReblogs = isset($_GET['exclude_reblogs']) && ($_GET['exclude_reblogs'] === 'true' || $_GET['exclude_reblogs'] === '1' || $_GET['exclude_reblogs'] === true);
         if ($excludeReblogs) {
-            $whereClauses[] = "(s.reblog_of_id IS NULL OR s.reblog_of_id = '')";
+            $whereClauses[] = "s.reblog_of_id IS NULL";
         }
 
         $onlyMedia = isset($_GET['only_media']) && ($_GET['only_media'] === 'true' || $_GET['only_media'] === '1' || $_GET['only_media'] === true);
@@ -3236,6 +3239,12 @@ HTML;
         $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $timeline = self::formatStatusesBatch($rows, $currUserId);
+
+        if ($maxId === null && $sinceId === null && $minId === null) {
+            usort($timeline, function($a, $b) {
+                return strtotime($b['created_at'] ?? '1970-01-01') <=> strtotime($a['created_at'] ?? '1970-01-01');
+            });
+        }
 
         self::setLinkHeader($timeline);
 

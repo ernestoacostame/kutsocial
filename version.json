@@ -1,5 +1,5 @@
 {
-  "version": "2.1.11",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.11/kutsocial-v2.1.11.zip",
-  "changelog": "Oculta y limpia retoots huérfanos vacíos y añade margen a la flecha de volver en hilos"
+  "version": "2.1.12",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.12/kutsocial-v2.1.12.zip",
+  "changelog": "Filtra retoots huérfanos vacíos en perfiles, corrige filtros PostgreSQL y ordena por fecha real en getAccountStatuses()"
 }
