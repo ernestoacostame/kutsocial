@@ -1,5 +1,5 @@
 {
-  "version": "2.1.13",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.13/kutsocial-v2.1.13.zip",
-  "changelog": "Importa también boosts (Announce) al consultar el outbox de perfiles remotos"
+  "version": "2.1.14",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.14/kutsocial-v2.1.14.zip",
+  "changelog": "Añade reproductor embebido click-to-play de YouTube en el timeline (watch, youtu.be, shorts, live)"
 }

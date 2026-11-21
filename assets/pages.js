@@ -1261,7 +1261,36 @@ function createThreadTootElement(toot, isMain = false) {
 
     // Renderizar Tarjeta de Enlace (Card preview) si existe
     let cardHTML = '';
-    if (toot.card) {
+    // Helper para extraer ID de vídeo de YouTube (watch, youtu.be, shorts, live, embed)
+    const extractYouTubeId = (urlStr) => {
+        if (!urlStr) return null;
+        const m = String(urlStr).match(/(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^"'\s]*&)?v=|shorts\/|live\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})(?=[&#?\s"'<]|$)/i);
+        return m ? m[1] : null;
+    };
+
+    let ytVideoId = toot.card ? extractYouTubeId(toot.card.url) : null;
+    if (!ytVideoId && toot.content) {
+        const tmpMatch = String(toot.content).match(/https?:\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?[^\s"'<>]+|shorts\/[a-zA-Z0-9_-]{11}|live\/[a-zA-Z0-9_-]{11}|embed\/[a-zA-Z0-9_-]{11})|youtu\.be\/[a-zA-Z0-9_-]{11})/i);
+        if (tmpMatch) {
+            ytVideoId = extractYouTubeId(tmpMatch[0]);
+        }
+    }
+
+    if (ytVideoId) {
+        const ytThumb = proxyUrl(`https://i.ytimg.com/vi/${ytVideoId}/hqdefault.jpg`);
+        const ytTitle = (toot.card && toot.card.title) ? escapeHTML(toot.card.title) : 'YouTube';
+        cardHTML = `
+            <div class="toot-youtube-embed" data-yt-id="${ytVideoId}" onclick="event.stopPropagation(); if(!this.dataset.loaded){ this.dataset.loaded='1'; this.innerHTML='<iframe src=\\'https://www.youtube-nocookie.com/embed/${ytVideoId}?autoplay=1\\' style=\\'width:100%;height:100%;border:0;\\' allow=\\'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture\\' allowfullscreen></iframe>'; }" style="position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden; margin-top: 12px; border: 1px solid var(--border-color); background: #000; cursor: pointer;">
+                <img src="${ytThumb}" alt="${ytTitle}" loading="lazy" style="width: 100%; height: 100%; object-fit: cover; display: block; opacity: 0.9;">
+                <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.25);">
+                    <div style="width: 64px; height: 44px; border-radius: 12px; background: rgba(255,0,0,0.9); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
+                        <span class="material-icons" style="color: #fff; font-size: 32px;">play_arrow</span>
+                    </div>
+                </div>
+                ${(toot.card && toot.card.title) ? `<div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 10px 14px; background: linear-gradient(transparent, rgba(0,0,0,0.85)); color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${ytTitle}</div>` : ''}
+            </div>
+        `;
+    } else if (toot.card) {
         const card = toot.card;
         const authorAttributionHTML = (card.author_name && card.author_url) ? `
             <div style="display: flex; align-items: center; gap: 6px; margin-top: 8px; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px; font-size: 11.5px; color: var(--text-muted);">
@@ -1424,7 +1453,7 @@ function createThreadTootElement(toot, isMain = false) {
         }
 
         // If clicking on other interactive container elements, do not navigate
-        if (e.target.closest('.toot-actions') || e.target.closest('.toot-poll-card') || e.target.closest('.toot-link-card') || e.target.closest('.media-alt-popup')) {
+        if (e.target.closest('.toot-actions') || e.target.closest('.toot-poll-card') || e.target.closest('.toot-link-card') || e.target.closest('.toot-youtube-embed') || e.target.closest('.media-alt-popup')) {
             return;
         }
 
