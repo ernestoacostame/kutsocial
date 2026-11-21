@@ -1,5 +1,5 @@
 {
-  "version": "2.0.89",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.89/kutsocial-v2.0.89.zip",
-  "changelog": "Security & Perf: endurecimiento de seguridad (firmas AP, SSRF, XSS, CSRF, RBAC, uploads) y optimizaciones fases 2-3 (cachés, lote N+1, curl_multi)"
+  "version": "2.0.90",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.90/kutsocial-v2.0.90.zip",
+  "changelog": "Fix: publica assets/pages.css y assets/pages.js como archivos estáticos reales para cargar el diseño sin cambiar Nginx"
 }

@@ -1,0 +1,7762 @@
+let token = localStorage.getItem('kutsocial_token');
+if (!token && window.KUTSOCIAL_AUTO_TOKEN) {
+    token = window.KUTSOCIAL_AUTO_TOKEN;
+    localStorage.setItem('kutsocial_token', token);
+}
+if (token || (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked)) {
+    document.documentElement.classList.add('is-authenticated');
+}
+let currentTimeline = window.KUTSOCIAL_CURRENT_TIMELINE || (token ? 'home' : 'public');
+let lastRenderedTimeline = '';
+let lastLoadedProfile = null;
+let profilesCache = {};
+let currentProfileRelationship = null;
+let activeTootOptionsMenu = null;
+
+function renderRelationshipBadge(account) {
+    if (!account || !account.relationship) return '';
+    const rel = account.relationship;
+    if (rel.mutual) {
+        const title = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.rel_mutual) || 'Se siguen mutuamente';
+        return `<span class="account-rel-badge rel-mutual" title="${title}">⇄</span>`;
+    }
+    if (rel.following) {
+        const title = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.rel_following) || 'Siguiendo';
+        return `<span class="account-rel-badge rel-following" title="${title}">→</span>`;
+    }
+    if (rel.followed_by) {
+        const title = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.rel_follower) || 'Te sigue';
+        return `<span class="account-rel-badge rel-follower" title="${title}">←</span>`;
+    }
+    return '';
+}
+function proxyUrl(url) {
+    if (!url) return '';
+    if (url.startsWith('/') || url.startsWith(window.location.origin) || !url.startsWith('http')) {
+        return url;
+    }
+    const cleanUrl = url.toLowerCase().split('?')[0];
+    if (cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.webm') || cleanUrl.endsWith('.mov') || cleanUrl.endsWith('.m4v') || cleanUrl.endsWith('.mp3') || cleanUrl.endsWith('.wav') || cleanUrl.endsWith('.ogg')) {
+        return url;
+    }
+    return `/api/proxy?url=${encodeURIComponent(url)}`;
+}
+function sanitizeHTML(html) {
+    if (!html) return '';
+    if (window.DOMPurify) {
+        return DOMPurify.sanitize(html, {
+            ALLOWED_TAGS: ['p', 'br', 'a', 'span', 'strong', 'em', 'ul', 'ol', 'li', 'code', 'pre', 'blockquote'],
+            ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style']
+        });
+    }
+    return html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+}
+
+function parseDate(dateInput) {
+    if (!dateInput) return null;
+    if (dateInput instanceof Date) return isNaN(dateInput.getTime()) ? null : dateInput;
+    let s = String(dateInput).trim();
+    if (!s) return null;
+    if (/^\d{4}-\d{2}-\d{2}[\sT]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(s)) {
+        s = s.replace(' ', 'T') + 'Z';
+    } else if (/^\d{4}-\d{2}-\d{2}/.test(s) && !/(?:Z|[+-]\d{2}:?\d{2})$/i.test(s)) {
+        s = s + 'Z';
+    }
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function __(key, fallback, replace) {
+    let str = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N[key]) || fallback || key;
+    if (replace && typeof replace === 'object') {
+        for (const [k, v] of Object.entries(replace)) {
+            str = str.replace(new RegExp(':' + k, 'g'), v);
+        }
+    }
+    return str;
+}
+
+function formatRelativeTime(dateInput) {
+    const date = parseDate(dateInput);
+    if (!date) return '';
+    const now = new Date();
+    const diffMs = now - date;
+    let diffSecs = Math.floor(diffMs / 1000);
+
+    // Si la fecha parece en el futuro por desincronización de reloj o zona horaria
+    if (diffSecs < 0) {
+        if (diffSecs >= -60) {
+            return __('time_just_now', 'hace segundos');
+        }
+        // Si hay desfase de huso horario (ej: UTC vs local o reloj desfasado), calculamos la diferencia absoluta
+        diffSecs = Math.abs(diffSecs);
+    }
+
+    const diffMins = Math.floor(diffSecs / 60);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffSecs < 60) {
+        return __('time_just_now', 'hace segundos');
+    } else if (diffMins < 60) {
+        return __('time_mins_ago', `hace ${diffMins} min`, { n: diffMins });
+    } else if (diffHours < 24) {
+        return __('time_hours_ago', `hace ${diffHours} h`, { n: diffHours });
+    } else if (diffDays === 1) {
+        return __('time_yesterday', 'ayer');
+    } else if (diffDays > 1 && diffDays < 7) {
+        return __('time_days_ago', `hace ${diffDays} días`, { n: diffDays });
+    } else {
+        const isSameYear = date.getFullYear() === now.getFullYear();
+        const locale = (window.KUTSOCIAL_LANG === 'en') ? 'en-US' : 'es-ES';
+        return date.toLocaleDateString(locale, {
+            day: 'numeric',
+            month: 'short',
+            year: isSameYear ? undefined : 'numeric'
+        });
+    }
+}
+
+async function dismissGroupedNotifications(commaIds, element) {
+    if (!confirm('¿Estás seguro de que deseas eliminar estas notificaciones?')) return;
+    const ids = commaIds.split(',');
+    try {
+        await Promise.all(ids.map(id => 
+            fetch(`/api/v1/notifications/${id}/dismiss`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            })
+        ));
+        element.remove();
+        const list = document.getElementById('notifications-list');
+        if (list.children.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No tienes ninguna notificación por el momento.</div>';
+        }
+    } catch (err) {
+        alert('Error al conectar con el servidor.');
+    }
+}
+
+let lastId = 0;
+let oldestId = null;
+let hasMoreToots = true;
+let isLoadingToots = false;
+let eventSource = null;
+let unreadNewTootsCount = 0;
+let isUserScrolling = false;
+let userScrollTimer = null;
+
+// Timeline cache and DOM container state management
+const timelineStates = {};
+
+function getTimelineState(timelineId) {
+    if (!timelineStates[timelineId]) {
+        timelineStates[timelineId] = {
+            lastId: 0,
+            oldestId: null,
+            hasMoreToots: true
+        };
+    }
+    return timelineStates[timelineId];
+}
+
+function getFeedContainer(timelineId) {
+    let feed = document.getElementById(`feed-${timelineId}`);
+    if (!feed) {
+        feed = document.createElement('div');
+        feed.id = `feed-${timelineId}`;
+        feed.className = 'feed-container';
+        feed.style.display = 'none';
+        const wrapper = document.getElementById('feed-container-wrapper');
+        if (wrapper) {
+            wrapper.appendChild(feed);
+        }
+    }
+    return feed;
+}
+
+function showFeedContainer(timelineId) {
+    unreadNewTootsCount = 0;
+    updateNewTootsPill();
+    const wrapper = document.getElementById('feed-container-wrapper');
+    if (wrapper) {
+        const containers = wrapper.getElementsByClassName('feed-container');
+        for (let i = 0; i < containers.length; i++) {
+            containers[i].style.display = 'none';
+        }
+    }
+    const feed = getFeedContainer(timelineId);
+    feed.style.display = 'flex';
+    return feed;
+}
+
+// Comprobación de autenticación
+window.addEventListener('DOMContentLoaded', () => {
+    if (!token) {
+        if (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked) {
+            initPublicView();
+        } else {
+            document.getElementById('login-container').style.display = 'flex';
+        }
+    } else {
+        initApp();
+    }
+
+    // Registrar event listeners para autocompletado, drag & drop y paste en el composer
+    const textarea = document.getElementById('composer-text');
+    if (textarea) {
+        textarea.addEventListener('input', handleComposerInput);
+        textarea.addEventListener('keydown', handleComposerKeydown);
+
+        // Drag & Drop en el textarea/composer-card
+        const composerCard = document.querySelector('#tab-feed .composer-card');
+        const dragTarget = composerCard || textarea;
+        
+        dragTarget.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dragTarget.style.borderColor = 'var(--primary)';
+        });
+        dragTarget.addEventListener('dragleave', () => {
+            dragTarget.style.borderColor = '';
+        });
+        dragTarget.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragTarget.style.borderColor = '';
+            const files = e.dataTransfer.files;
+            if (files && files.length > 0) {
+                for (let i = 0; i < files.length; i++) {
+                    uploadFileDirectly(files[i]);
+                }
+            }
+        });
+
+        // Pegar desde el portapapeles
+        textarea.addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData || window.clipboardData).items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file') {
+                    const blob = items[i].getAsFile();
+                    uploadFileDirectly(blob);
+                }
+            }
+        });
+    }
+
+    // Inicializar checkbox de preferencia de AltText
+    const warnMissingAltCheckbox = document.getElementById('pref-warn-missing-alt');
+    if (warnMissingAltCheckbox) {
+        const savedVal = localStorage.getItem('kutsocial_warn_missing_alt') !== 'false';
+        warnMissingAltCheckbox.checked = savedVal;
+        warnMissingAltCheckbox.addEventListener('change', () => {
+            localStorage.setItem('kutsocial_warn_missing_alt', warnMissingAltCheckbox.checked);
+        });
+    }
+
+    // Inicializar checkbox de preferencia de Auto-Scroll a toots nuevos
+    const autoScrollNewCheckbox = document.getElementById('pref-auto-scroll-new');
+    if (autoScrollNewCheckbox) {
+        const savedVal = localStorage.getItem('kutsocial_auto_scroll_new') === 'true';
+        autoScrollNewCheckbox.checked = savedVal;
+        autoScrollNewCheckbox.addEventListener('change', () => {
+            localStorage.setItem('kutsocial_auto_scroll_new', autoScrollNewCheckbox.checked);
+        });
+    }
+
+    // Registrar listener de cambio de visibilidad en el composer para actualizar icono
+    const visSelect = document.getElementById('composer-visibility');
+    if (visSelect) {
+        visSelect.addEventListener('change', updateComposerVisibilityIcon);
+    }
+});
+
+// Event listener de scroll para carga diferida (Infinite Scroll) y control de botones de volver arriba
+window.addEventListener('scroll', () => {
+    isUserScrolling = true;
+    clearTimeout(userScrollTimer);
+    userScrollTimer = setTimeout(() => {
+        isUserScrolling = false;
+    }, 350);
+
+    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+
+    // Si el usuario regresa manualmente al tope del timeline, descartar la cuenta de toots nuevos
+    if (scrollY < 60 && unreadNewTootsCount > 0) {
+        unreadNewTootsCount = 0;
+    }
+
+    updateTimelineScrollTopUI();
+
+    const scrollHeight = Math.max(document.body.offsetHeight, document.documentElement.scrollHeight);
+    if ((window.innerHeight + scrollY) >= scrollHeight - 600) {
+        const tabProfile = document.getElementById('tab-profile-view');
+        if (tabProfile && tabProfile.style.display === 'block') {
+            if (!isLoadingProfileStatuses && profileHasMore && activeProfileViewId && activeProfileSubtab !== 'favourites') {
+                loadProfileStatuses(activeProfileViewId, true, activeProfileSubtab);
+            }
+        } else if (!isLoadingToots && hasMoreToots && currentTimeline !== 'bookmarks') {
+            loadTimeline(true);
+        }
+    }
+});
+
+// Evento de Login
+const loginForm = document.getElementById('login-form');
+if (loginForm) {
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+    const u = document.getElementById('username').value;
+    const p = document.getElementById('password').value;
+    const errDiv = document.getElementById('login-error');
+
+    errDiv.style.display = 'none';
+
+    // Verificamos si existe el campo OTP
+    const otpInput = document.getElementById('login-otp');
+    let otpVal = '';
+    if (otpInput) {
+        otpVal = otpInput.value;
+    }
+
+    try {
+        let body = `grant_type=password&username=${encodeURIComponent(u)}&password=${encodeURIComponent(p)}`;
+        if (otpVal) {
+            body += `&otp=${encodeURIComponent(otpVal)}`;
+        }
+
+        const response = await fetch('/oauth/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body
+        });
+        
+        const data = await response.json();
+        if (data.access_token) {
+            token = data.access_token;
+            localStorage.setItem('kutsocial_token', token);
+            window.location.reload();
+        } else if (data.error === 'two_factor_required') {
+            // Mostrar campo OTP si no existe ya
+            if (!otpInput) {
+                const form = document.getElementById('login-form');
+                const otpGroup = document.createElement('div');
+                otpGroup.className = 'form-group';
+                otpGroup.innerHTML = `
+                    <label for="login-otp">Código de Dos Factores (2FA)</label>
+                    <input type="text" id="login-otp" required placeholder="123456" pattern="\\d{6}" maxlength="6" style="text-align:center; font-size:18px; letter-spacing:5px;">
+                `;
+                // Insertar antes del botón
+                const button = form.querySelector('button');
+                form.insertBefore(otpGroup, button);
+            }
+            errDiv.innerText = 'Por favor, introduce el código 2FA de tu app de autenticación.';
+            errDiv.style.display = 'block';
+        } else {
+            errDiv.innerText = data.error_description || data.error || 'Fallo de acceso';
+            errDiv.style.display = 'block';
+        }
+    } catch (err) {
+        errDiv.innerText = 'Error de red al conectar al servidor.';
+        errDiv.style.display = 'block';
+    }
+    });
+}
+
+function logout() {
+    localStorage.removeItem('kutsocial_token');
+    window.location.href = '/admin/logout?redirect=/';
+}
+
+// Funciones para vista pública (visitante)
+function initPublicView() {
+    document.getElementById('app-container').style.display = 'flex';
+    document.getElementById('login-container').style.display = 'none';
+    
+    // Ocultar elementos exclusivos de usuarios registrados en el sidebar
+    const linksToHide = [
+        'nav-home', 'nav-catchup', 'nav-notifications', 'nav-bookmarks', 'nav-direct',
+        'nav-lists', 'nav-collections', 'nav-hashtags', 'nav-profile', 'nav-settings',
+        'nav-admin-settings'
+    ];
+    linksToHide.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
+
+    // Asegurar que Timeline Local y Federación Pública estén visibles para visitantes
+    const linksToShow = ['nav-local', 'nav-public'];
+    linksToShow.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'block';
+    });
+    
+    // Mostrar link "Propietario"
+    const itemOwner = document.getElementById('nav-item-owner');
+    if (itemOwner) {
+        itemOwner.style.display = 'block';
+        const ownerLink = document.getElementById('nav-owner-profile');
+        if (ownerLink && window.KUTSOCIAL_OWNER) {
+            const ownerHandle = window.KUTSOCIAL_OWNER.username || ('id-' + window.KUTSOCIAL_OWNER.id);
+            ownerLink.href = `${window.KUTSOCIAL_BASE_PATH || ''}/@${ownerHandle}`;
+            ownerLink.innerHTML = `<span>👤</span> Perfil de @${window.KUTSOCIAL_OWNER.username || ownerHandle}`;
+        }
+    }
+    
+    // Reemplazar summary por botón Iniciar Sesión
+    const summaryDiv = document.querySelector('.user-profile-summary');
+    if (summaryDiv) {
+        summaryDiv.innerHTML = `
+            <button onclick="showLoginModal()" style="margin: 0; width: 100%; padding: 12px; font-weight:600; background: var(--primary); border:none; border-radius:10px; color:white; cursor:pointer;">🔑 Iniciar Sesión</button>
+        `;
+    }
+    
+    // Ocultar composer en feed y modales (sin ocultar tarjetas de perfil)
+    document.querySelectorAll('#tab-feed > .composer-card, #modal-composer').forEach(el => {
+        el.style.display = 'none';
+    });
+
+    // Cargar estadísticas del servidor en el sidebar derecho
+    loadInstanceStats();
+    
+    // Cargar perfil del dueño o enrutar por path
+    if (!handlePathRouting() && window.KUTSOCIAL_OWNER) {
+        viewProfile(window.KUTSOCIAL_OWNER.id);
+    }
+}
+
+function showLoginModal() {
+    document.documentElement.classList.remove('is-authenticated');
+    document.getElementById('login-container').style.display = 'flex';
+    
+    let closeBtn = document.getElementById('btn-close-login');
+    if (!closeBtn) {
+        const card = document.querySelector('.login-card');
+        closeBtn = document.createElement('a');
+        closeBtn.id = 'btn-close-login';
+        closeBtn.href = '#';
+        closeBtn.innerText = 'Volver como Visitante';
+        closeBtn.style.cssText = 'display:block; margin-top:15px; font-size:13.5px; color:var(--text-muted); text-decoration:none; font-weight: 500;';
+        closeBtn.onclick = (e) => {
+            e.preventDefault();
+            document.documentElement.classList.add('is-authenticated');
+            document.getElementById('login-container').style.display = 'none';
+        };
+        card.appendChild(closeBtn);
+    }
+}
+
+let currentProfileData = null;
+let replyToId = null;
+let replyParticipants = [];
+let editTootId = null;
+let quoteTootId = null;
+let activeProfileViewId = null;
+let activeProfileFeedToots = [];
+let activeProfileSubtab = 'activity';
+let activeThreadId = null;
+let previousTab = 'feed';
+let maxTootChars = 500;
+let composerUploadedMediaIds = [];
+let isPollActive = false;
+
+const popularEmojis = [
+    '😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇',
+    '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚',
+    '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🥸',
+    '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣',
+    '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬',
+    '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗',
+    '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯',
+    '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐',
+    '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕', '😈', '👿', '👹',
+    '👺', '💀', '☠️', '👻', '👽', '👾', '🤖', '🎃', '😺', '😸',
+    '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '👋', '🤚', '🖐️',
+    '✋', '🖖', '👌', '🤌', '🤏', '✌️', '🤞', '🤟', '🤘', '🤙',
+    '👈', '👉', '👆', '🖕', '👇', '☝️', '👍', '👎', '✊', '👊',
+    '🤛', '🤜', '👏', '🙌', '👐', '🤲', '🤝', '🙏', '✍️', '💅',
+    '🤳', '💪', '🦾', '🦿', '🦵', '🦶', '👂', '🦻', '👃', '🧠',
+    '🫀', '🫁', '🦷', '🦴', '👀', '👁️', '👅', '👄', '💋', '🩸',
+    '❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔',
+    '❤️‍🔥', '❤️‍🩹', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝'
+];
+
+async function updateNotificationBadge() {
+    if (!token) return;
+    try {
+        let frCount = 0;
+        try {
+            const frRes = await fetch('/api/v1/follow_requests', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (frRes.ok) {
+                const frData = await frRes.json();
+                frCount = Array.isArray(frData) ? frData.length : 0;
+            }
+        } catch (e) {}
+
+        let notifCount = 0;
+        try {
+            const res = await fetch('/api/v1/notifications', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                notifCount = Array.isArray(data) ? data.filter(n => !n.read).length : 0;
+            }
+        } catch (e) {}
+
+        const total = frCount + notifCount;
+        const badge = document.getElementById('nav-notifications-count');
+        if (badge) {
+            if (total > 0) {
+                badge.innerText = total;
+                badge.style.display = 'inline-block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        console.error("Error updating notification badge", e);
+    }
+}
+
+async function resolveAndOpenProfile(username) {
+    const expectedPath = window.location.pathname;
+    try {
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(`/api/v1/search?q=${encodeURIComponent('@' + username)}&resolve=true`, {
+            headers: headers
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (window.location.pathname !== expectedPath) {
+                return;
+            }
+            if (data.accounts && data.accounts.length > 0) {
+                viewProfile(data.accounts[0].id, true);
+            }
+        }
+    } catch (e) {
+        console.error("Error al buscar perfil para enrutamiento", e);
+    }
+}
+
+function handlePathRouting() {
+    let path = window.location.pathname;
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    if (base && path.startsWith(base)) {
+        path = path.substring(base.length);
+        if (!path.startsWith('/')) path = '/' + path;
+    }
+    if (path === '/public' || path === '/home' || path === '/local' || path === '/bookmarks' || path === '/direct' || path.startsWith('/list_') || path.startsWith('/tag_')) {
+        const type = path.substring(1);
+        switchTimeline(type, true);
+        return true;
+    } else if (path === '/notifications' || path === '/lists' || path === '/collections' || path === '/followed-hashtags' || path === '/profile' || path === '/search-results' || path === '/catchup') {
+        const tab = path.substring(1);
+        if (tab === 'profile') {
+            showTab('profile', true);
+        } else {
+            showTab(tab, true);
+        }
+        return true;
+    } else if (path.startsWith('/@')) {
+        const username = path.substring(2);
+        if (username.startsWith('id-')) {
+            const profileId = username.substring(3);
+            viewProfile(profileId, true);
+        } else if (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username.toLowerCase() === username.toLowerCase()) {
+            viewProfile(window.KUTSOCIAL_OWNER.id, true);
+        } else {
+            resolveAndOpenProfile(username);
+        }
+        return true;
+    } else if (path.includes('/statuses/')) {
+        const parts = path.split('/');
+        const statusId = parts[parts.length - 1];
+        viewTootThread(statusId, true);
+        return true;
+    }
+    return false;
+}
+
+window.addEventListener('popstate', () => {
+    handlePathRouting();
+});
+
+// Inicializar Aplicación Autenticada
+async function initApp() {
+    document.getElementById('login-container').style.display = 'none';
+    document.getElementById('app-container').style.display = 'flex';
+
+    // 1. Obtener datos del perfil
+    try {
+        const res = await fetch('/api/v1/accounts/verify_credentials', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.status === 401) {
+            logout();
+            return;
+        }
+        const profile = await res.json();
+        currentProfileData = profile;
+        
+        const myDispEl = document.getElementById('my-display-name');
+        if (myDispEl) myDispEl.innerText = profile.display_name;
+        const myUserEl = document.getElementById('my-username');
+        if (myUserEl) myUserEl.innerText = '@' + profile.username;
+        if (profile.avatar) {
+            const myAvEl = document.getElementById('my-avatar');
+            if (myAvEl) myAvEl.src = profile.avatar;
+            const compAvEl = document.getElementById('composer-avatar');
+            if (compAvEl) compAvEl.src = profile.avatar;
+        }
+        
+        // Mostrar URL de perfil para configurar la etiqueta rel="me" en web externas
+        const prevUrlEl = document.getElementById('profile-verification-url-preview');
+        if (prevUrlEl) prevUrlEl.innerText = profile.url;
+    } catch (e) {
+        console.error("Error al verificar perfil", e);
+    }
+
+    // Cargar la versión dinámica desde el servidor
+    if (window.KUTSOCIAL_VERSION) {
+        document.getElementById('stat-version').innerText = 'v' + window.KUTSOCIAL_VERSION;
+    }
+
+    // 2. Obtener estadísticas de instancia
+    loadInstanceStats();
+
+    // 3. Cargar datos según la sección renderizada por el servidor
+    const activeSection = window.KUTSOCIAL_ACTIVE_SECTION || 'feed';
+    const currentTimelineVal = window.KUTSOCIAL_CURRENT_TIMELINE || (token ? 'home' : 'public');
+    const activeProfileId = window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID;
+    const activeThreadId = window.KUTSOCIAL_ACTIVE_THREAD_ID;
+    
+    if (activeSection === 'feed') {
+        currentTimeline = currentTimelineVal;
+        showTab('feed', true);
+        loadTimeline();
+    } else if (activeSection === 'profile-view') {
+        if (activeProfileId) {
+            viewProfile(activeProfileId, true);
+        } else {
+            const pathParts = window.location.pathname.split('/@');
+            if (pathParts.length > 1) {
+                const username = pathParts[1];
+                resolveAndOpenProfile(username);
+            }
+        }
+    } else if (activeSection === 'thread-view') {
+        if (activeThreadId) {
+            viewTootThread(activeThreadId, true);
+        }
+    } else if (activeSection === 'search-results') {
+        showTab('search-results', true);
+        const urlParams = new URLSearchParams(window.location.search);
+        const q = urlParams.get('q');
+        if (q) {
+            const searchInputs = document.querySelectorAll('.sidebar-search-input');
+            searchInputs.forEach(input => input.value = q);
+            performSearch(q);
+        }
+    } else {
+        showTab(activeSection, true);
+        if (activeSection === 'profile') {
+            const hash = window.location.hash;
+            if (hash === '#import' || hash === '#import-form') {
+                switchProfileSettingsTab('import');
+            } else if (hash === '#privacy') {
+                switchProfileSettingsTab('privacy');
+            }
+        }
+    }
+
+    // Cargar e iniciar badge de notificaciones
+    updateNotificationBadge();
+    setInterval(updateNotificationBadge, 30000);
+}
+
+async function loadInstanceStats() {
+    try {
+        const res = await fetch('/api/v1/instance');
+        const data = await res.json();
+        document.getElementById('stat-users').innerText = data.stats.user_count;
+        document.getElementById('stat-toots').innerText = data.stats.status_count;
+        if (data.kutsocial_version) {
+            document.getElementById('stat-version').innerText = 'v' + data.kutsocial_version;
+        }
+        if (data.configuration && data.configuration.statuses && data.configuration.statuses.max_characters) {
+            maxTootChars = parseInt(data.configuration.statuses.max_characters);
+            const composerText = document.getElementById('composer-text');
+            if (composerText) {
+                composerText.setAttribute('maxlength', maxTootChars);
+            }
+            updateCharCount();
+        }
+    } catch (e) {}
+}
+
+async function loadTimeline(loadMore = false) {
+    if (isLoadingToots) return;
+    if (loadMore && !hasMoreToots) return;
+
+    isLoadingToots = true;
+
+    const feed = showFeedContainer(currentTimeline);
+    let loadingIndicator = null;
+    const isTimelineChange = !loadMore && (lastRenderedTimeline !== currentTimeline || feed.innerHTML === '' || feed.innerHTML.includes('Cargando toots...'));
+
+    if (!loadMore) {
+        if (isTimelineChange) {
+            feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+            lastId = 0;
+            oldestId = null;
+        }
+        hasMoreToots = true;
+    } else {
+        loadingIndicator = document.createElement('div');
+        loadingIndicator.id = 'infinite-scroll-loading';
+        loadingIndicator.style = 'text-align:center; padding: 20px; color: var(--text-muted);';
+        loadingIndicator.innerText = 'Cargando más publicaciones...';
+        feed.appendChild(loadingIndicator);
+    }
+
+    let url = '/api/v1/timelines/public';
+    if (currentTimeline === 'home') {
+        url = '/api/v1/timelines/home';
+    } else if (currentTimeline === 'local') {
+        url = '/api/v1/timelines/public?local=true';
+    } else if (currentTimeline === 'bookmarks') {
+        url = '/api/v1/bookmarks';
+    } else if (currentTimeline === 'direct') {
+        url = '/api/v1/conversations';
+    } else if (currentTimeline.startsWith('list_')) {
+        const listId = currentTimeline.split('_')[1];
+        url = `/api/v1/timelines/list/${listId}`;
+    } else if (currentTimeline.startsWith('tag_')) {
+        const tagName = currentTimeline.split('_')[1];
+        url = `/api/v1/timelines/tag/${tagName}`;
+    }
+
+    const limit = 15;
+    const separator = url.includes('?') ? '&' : '?';
+    let fetchUrl = `${url}${separator}limit=${limit}`;
+    if (loadMore && oldestId !== null) {
+        fetchUrl += `&max_id=${oldestId}`;
+    }
+
+    try {
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(fetchUrl, {
+            headers: headers
+        });
+        let rawData = await res.json();
+        let toots = Array.isArray(rawData) ? rawData : [];
+
+        if (currentTimeline === 'direct') {
+            toots = toots.map(conv => conv.last_status).filter(Boolean);
+        }
+
+        if (loadingIndicator && loadingIndicator.parentNode) {
+            loadingIndicator.parentNode.removeChild(loadingIndicator);
+        }
+
+        // Si es refresco (no cambio de timeline) y no hay toots nuevos, salir silenciosamente
+        if (!loadMore && !isTimelineChange && toots.length > 0) {
+            const newestId = parseInt(toots[0].id);
+            if (newestId <= lastId) {
+                isLoadingToots = false;
+                return;
+            }
+        }
+
+        if (!loadMore) {
+            feed.innerHTML = '';
+            lastId = 0;
+            oldestId = null;
+        }
+
+        if (toots.length === 0) {
+            if (!loadMore) {
+                feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No hay publicaciones todavía.</div>';
+            }
+            hasMoreToots = false;
+            isLoadingToots = false;
+            return;
+        }
+
+        toots.forEach(toot => {
+            const idInt = parseInt(toot.id);
+            if (!loadMore) {
+                if (idInt > lastId) {
+                    lastId = idInt;
+                }
+            }
+            if (oldestId === null || idInt < oldestId) {
+                oldestId = idInt;
+            }
+            prependToot(toot, false);
+        });
+
+        if (toots.length < limit) {
+            hasMoreToots = false;
+        }
+
+        if (!loadMore) {
+            lastRenderedTimeline = currentTimeline;
+            if (currentTimeline !== 'bookmarks' && currentTimeline !== 'direct') {
+                startStreaming();
+            } else if (eventSource) {
+                eventSource.close();
+            }
+        }
+    } catch (e) {
+        if (loadingIndicator && loadingIndicator.parentNode) {
+            loadingIndicator.parentNode.removeChild(loadingIndicator);
+        }
+        if (!loadMore) {
+            feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar timeline.</div>';
+        }
+    } finally {
+        isLoadingToots = false;
+    }
+}
+
+// Conectar al endpoint SSE Streaming
+function startStreaming() {
+    if (eventSource) {
+        eventSource.close();
+    }
+
+    let queryStr = `since_id=${lastId}`;
+    if (token) {
+        queryStr += `&access_token=${token}`;
+    }
+    if (currentTimeline === 'home') {
+        queryStr += `&stream=user`;
+    } else if (currentTimeline === 'local') {
+        queryStr += `&stream=public:local`;
+    } else if (currentTimeline.startsWith('tag_')) {
+        const tagName = currentTimeline.split('_')[1];
+        queryStr += `&stream=hashtag&tag=${tagName}`;
+    } else if (currentTimeline.startsWith('list_')) {
+        const listId = currentTimeline.split('_')[1];
+        queryStr += `&stream=list&list_id=${listId}`;
+    } else {
+        queryStr += `&stream=public`;
+    }
+
+    eventSource = new EventSource(`/api/v1/streaming?${queryStr}`);
+    
+    eventSource.addEventListener('update', (e) => {
+        const toot = JSON.parse(e.data);
+        const idInt = parseInt(toot.id);
+        if (idInt > lastId) {
+            lastId = idInt;
+        }
+        prependToot(toot, true);
+        
+        const isLocalToot = toot.account && (!toot.account.acct.includes('@') || (currentProfileData && String(toot.account.id) === String(currentProfileData.id)));
+        if (isLocalToot) {
+            const tootStat = document.getElementById('stat-toots');
+            if (tootStat) {
+                tootStat.innerText = parseInt(tootStat.innerText || 0) + 1;
+            }
+        }
+    });
+
+    eventSource.onerror = (e) => {
+        console.log("Conexión SSE interrumpida. Reintentando...");
+    };
+}
+
+function updateTimelineScrollTopUI() {
+    const sidebarContainer = document.getElementById('sidebar-scroll-top-container');
+    const sidebarBtn = document.getElementById('btn-sidebar-scroll-top');
+    const sidebarText = document.getElementById('sidebar-scroll-top-text');
+    const mobileBtn = document.getElementById('btn-scroll-to-top');
+
+    const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+    const isScrolledDown = scrollY > 300;
+    const hasNewToots = unreadNewTootsCount > 0;
+
+    const tSingle = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_new_toots_single) || '1 nuevo toot ↑';
+    const tMulti = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_new_toots_multi) || ':count nuevos toots ↑';
+    const tTop = (window.KUTSOCIAL_I18N && window.KUTSOCIAL_I18N.timeline_scroll_to_top) || 'Volver al principio';
+
+    let btnText = tTop;
+    let isUrgent = false;
+
+    if (hasNewToots) {
+        btnText = unreadNewTootsCount === 1 ? tSingle : tMulti.replace(':count', unreadNewTootsCount);
+        isUrgent = true;
+    }
+
+    // Actualizar botón en Sidebar Derecho (Desktop)
+    if (sidebarContainer && sidebarBtn && sidebarText) {
+        if (hasNewToots || isScrolledDown) {
+            sidebarText.innerText = btnText;
+            if (isUrgent) {
+                sidebarBtn.classList.add('has-new-toots');
+            } else {
+                sidebarBtn.classList.remove('has-new-toots');
+            }
+            sidebarContainer.style.display = 'block';
+            sidebarContainer.classList.add('visible');
+        } else {
+            sidebarContainer.classList.remove('visible');
+            sidebarContainer.style.display = 'none';
+        }
+    }
+
+    // Actualizar botón flotante móvil (< 900px)
+    if (mobileBtn) {
+        if (hasNewToots || isScrolledDown) {
+            mobileBtn.classList.add('visible');
+            if (isUrgent) {
+                mobileBtn.classList.add('has-new-toots');
+                mobileBtn.setAttribute('title', btnText);
+            } else {
+                mobileBtn.classList.remove('has-new-toots');
+                mobileBtn.setAttribute('title', tTop);
+            }
+        } else {
+            mobileBtn.classList.remove('visible');
+            mobileBtn.classList.remove('has-new-toots');
+        }
+    }
+}
+
+function updateNewTootsPill() {
+    updateTimelineScrollTopUI();
+}
+
+function scrollToTopAndDismissPill() {
+    scrollToTopTimeline();
+}
+
+function scrollToTopTimeline() {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const hadNewToots = unreadNewTootsCount > 0;
+    unreadNewTootsCount = 0;
+    updateTimelineScrollTopUI();
+
+    if (hadNewToots) {
+        const feed = getFeedContainer(currentTimeline);
+        if (feed && feed.firstElementChild) {
+            feed.firstElementChild.classList.add('toot-highlight-flash');
+            setTimeout(() => {
+                if (feed.firstElementChild) {
+                    feed.firstElementChild.classList.remove('toot-highlight-flash');
+                }
+            }, 1600);
+        }
+    }
+}
+
+function prependToot(toot, isNew = false) {
+    if (currentTimeline === 'direct' && toot.visibility !== 'direct') {
+        return;
+    }
+    const feed = getFeedContainer(currentTimeline);
+    
+    if (feed.querySelector(`[data-toot-id="${toot.id}"]`)) {
+        return;
+    }
+    
+    if (feed.children.length === 1 && feed.children[0].innerText.includes('No hay publicaciones')) {
+        feed.innerHTML = '';
+    }
+
+    const card = createThreadTootElement(toot, false);
+    if (isNew) {
+        card.style.borderLeft = '3px solid var(--secondary)';
+        feed.insertBefore(card, feed.firstChild);
+
+        const isAutoScrollEnabled = localStorage.getItem('kutsocial_auto_scroll_new') === 'true';
+        const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        const isAtTop = scrollY < 60;
+
+        if (isAutoScrollEnabled && isAtTop && !isUserScrolling) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            unreadNewTootsCount = 0;
+            updateNewTootsPill();
+        } else {
+            unreadNewTootsCount++;
+            updateNewTootsPill();
+        }
+    } else {
+        feed.appendChild(card);
+    }
+}
+
+function createThreadTootElement(toot, isMain = false) {
+    let isReblog = false;
+    let rebloggedBy = null;
+    let originalTootId = toot.id;
+    
+    if (toot.reblog) {
+        isReblog = true;
+        rebloggedBy = toot.account;
+        toot = toot.reblog;
+    }
+
+    const card = document.createElement('div');
+    card.className = 'toot-card';
+    card._toot = toot;
+    card.setAttribute('data-toot-id', originalTootId);
+    if (toot.visibility === 'direct') {
+        card.classList.add('toot-direct');
+    } else if (toot.visibility === 'private') {
+        card.classList.add('toot-private');
+    }
+    if (isMain) {
+        card.style.background = 'rgba(99, 102, 241, 0.05)';
+        card.style.borderLeft = '3px solid var(--primary)';
+        card.classList.add('toot-main');
+    }
+
+    const parsedDate = parseDate(toot.created_at);
+    const absoluteDateStr = parsedDate ? parsedDate.toLocaleString('es-ES', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }) : '';
+    const relativeDateStr = formatRelativeTime(toot.created_at);
+
+    const isMyToot = currentProfileData && String(toot.account.id) === String(currentProfileData.id);
+    const favClass = toot.favourited ? 'active-fav' : '';
+    const bookmarkClass = toot.bookmarked ? 'active-bookmark' : '';
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    const authorProfileClick = isMyToot ? `viewTootThread('${toot.id}')` : `viewProfile('${toot.account.id}')`;
+    const authorProfileHref = `${base}/@${toot.account.acct}`;
+    const tootStatusHref = `${base}/statuses/${toot.id}`;
+
+    let sanitizedContent = sanitizeHTML(toot.content);
+    if (toot.emojis) {
+        sanitizedContent = replaceCustomEmojis(sanitizedContent, toot.emojis);
+    }
+    
+    let quotePlaceholderHTML = '';
+    const statusUrlRegex = /(\/users\/[a-zA-Z0-9_\-\.]+\/statuses\/[a-zA-Z0-9]+(?:\/)?(?:\?|#|$))|(\/@[a-zA-Z0-9_\-\.]+\/[0-9]+(?:\/)?(?:\?|#|$))|(\/(notice|objects|display)\/[a-zA-Z0-9_\-\.]+(?:\/)?(?:\?|#|$))/i;
+    
+    const quotedToot = toot.quote ? (toot.quote.quoted_status || toot.quote) : null;
+    
+    if (quotedToot) {
+        const quotePlaceholderId = `quote-placeholder-${toot.id}-${Math.floor(Math.random() * 100000)}`;
+        quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container"></div>`;
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = sanitizedContent;
+        const links = tempDiv.querySelectorAll('a');
+        for (let link of links) {
+            const href = link.href || '';
+            if (href === quotedToot.uri || href === quotedToot.url || statusUrlRegex.test(href)) {
+                let prevNode = link.previousSibling;
+                if (prevNode && prevNode.nodeType === 3 && prevNode.textContent.trim().endsWith('RE:')) {
+                    const txt = prevNode.textContent;
+                    prevNode.textContent = txt.substring(0, txt.lastIndexOf('RE:'));
+                }
+                link.remove();
+            }
+        }
+        sanitizedContent = tempDiv.innerHTML;
+        
+        setTimeout(() => {
+            renderEmbeddedQuote(quotePlaceholderId, quotedToot);
+        }, 0);
+    } else {
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = sanitizedContent;
+        const links = tempDiv.querySelectorAll('a');
+        let quoteUrl = null;
+        
+        for (let link of links) {
+            const href = link.href || '';
+            if (statusUrlRegex.test(href)) {
+                quoteUrl = href;
+                break;
+            }
+        }
+
+        if (quoteUrl) {
+            for (let link of links) {
+                if (link.href === quoteUrl) {
+                    let prevNode = link.previousSibling;
+                    if (prevNode && prevNode.nodeType === 3 && prevNode.textContent.trim().endsWith('RE:')) {
+                        const txt = prevNode.textContent;
+                        prevNode.textContent = txt.substring(0, txt.lastIndexOf('RE:'));
+                    }
+                    link.remove();
+                }
+            }
+            sanitizedContent = tempDiv.innerHTML;
+
+            const quotePlaceholderId = `quote-placeholder-${toot.id}-${Math.floor(Math.random() * 100000)}`;
+            quotePlaceholderHTML = `<div id="${quotePlaceholderId}" class="quote-toot-embed-container" style="color:var(--text-muted); font-size:12px;">Cargando publicación citada...</div>`;
+            
+            setTimeout(async () => {
+                try {
+                    const qHeaders = { 'Accept': 'application/json' };
+                    if (token) qHeaders['Authorization'] = `Bearer ${token}`;
+                    const res = await fetch(`/api/v1/statuses/resolve?url=${encodeURIComponent(quoteUrl)}`, {
+                        headers: qHeaders
+                    });
+                    if (res.ok) {
+                        const resolvedToot = await res.json();
+                        renderEmbeddedQuote(quotePlaceholderId, resolvedToot);
+                    } else {
+                        const el = document.getElementById(quotePlaceholderId);
+                        if (el) el.remove();
+                    }
+                } catch (e) {
+                    console.error("Error al resolver toot citado", e);
+                    const el = document.getElementById(quotePlaceholderId);
+                    if (el) el.remove();
+                }
+            }, 50);
+        }
+    }
+
+    let contentHTML = `<div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5; margin-bottom: 12px;' : ''}">${sanitizedContent}</div>`;
+    if (toot.sensitive) {
+        contentHTML = `
+            <div style="margin-top: 8px;">
+                <span style="color: #f59e0b; font-weight: 600; font-size: 13.5px;">⚠️ Advertencia: ${escapeHTML(toot.spoiler_text || 'CW')}</span>
+                <div>
+                    <button class="cw-spoiler-btn" onclick="toggleCWSpoiler(this)">Mostrar más</button>
+                    <div class="cw-spoiler-content" style="display: none;">
+                        <div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5;' : ''}">${sanitizedContent}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // Renderizar Multimedia subida si existe
+    let mediaHTML = '';
+    if (toot.media_attachments && toot.media_attachments.length > 0) {
+        // Filtrar adjuntos visuales para aplicar grid si hay más de uno
+        const visualMedia = toot.media_attachments.filter(media => {
+            const type = (media.type || '').toLowerCase();
+            const url = media.url || '';
+            const isAudio = type === 'audio' || url.endsWith('.mp3') || url.endsWith('.ogg') || url.endsWith('.wav') || url.endsWith('.m4a') || url.endsWith('.aac');
+            return !isAudio;
+        });
+        
+        const isMultiMedia = visualMedia.length > 1;
+        const gridStyle = isMultiMedia 
+            ? 'display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; width: 100%;'
+            : 'display: flex; flex-direction: column; gap: 12px; margin-top: 10px; width: 100%;';
+            
+        mediaHTML = `<div style="${gridStyle}">`;
+        toot.media_attachments.forEach(media => {
+            const type = (media.type || '').toLowerCase();
+            let url = media.url || '';
+            const altText = media.description ? escapeHTML(media.description) : '';
+            
+            const isGif = url.toLowerCase().split('?')[0].endsWith('.gif');
+            const isVideo = (type === 'video' || type === 'gifv' || url.endsWith('.mp4') || url.endsWith('.webm') || url.endsWith('.mov') || url.endsWith('.m4v')) && !isGif;
+            if (!isVideo && type !== 'audio') {
+                url = proxyUrl(url);
+            }
+            
+            if (type === 'audio' || url.endsWith('.mp3') || url.endsWith('.ogg') || url.endsWith('.wav') || url.endsWith('.m4a') || url.endsWith('.aac')) {
+                mediaHTML += `
+                    <div class="toot-media-item" style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); width: 100%; padding: 8px; display: flex; flex-direction: column; background: rgba(0,0,0,0.2);">
+                        <audio src="${url}" controls style="width: 100%;"></audio>
+                    </div>
+                `;
+            } else {
+                // Para Imagen, Video, Gifv
+                const imgStyle = isMultiMedia
+                    ? 'width: 100%; height: 100%; object-fit: cover; cursor: pointer; display: block; border-radius: 4px;'
+                    : 'max-width: 100%; max-height: 450px; object-fit: contain; cursor: pointer; display: block; margin: 0 auto; border-radius: 4px;';
+                
+                const videoStyle = isMultiMedia
+                    ? 'width: 100%; height: 100%; object-fit: cover; background: #000; display: block; border-radius: 4px;'
+                    : 'width: 100%; max-height: 380px; background: #000; display: block; margin: 0 auto; border-radius: 4px;';
+
+                const mediaTag = isVideo 
+                    ? `<video src="${media.url}" poster="${proxyUrl(media.preview_url || '')}" controls loop playsinline style="${videoStyle}"></video>`
+                    : `<img src="${url}" alt="${altText}" title="${altText}" class="toot-gallery-img" style="${imgStyle}" onclick="event.stopPropagation(); handleGalleryImageClick(event, this)">`;
+
+                const cardStyle = isMultiMedia
+                    ? 'position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; aspect-ratio: 1.5; display: flex; flex-direction: column;'
+                    : 'position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; display: flex; flex-direction: column;';
+
+                const wrapperStyle = isMultiMedia
+                    ? `display: ${toot.sensitive ? 'none' : 'block'}; position: relative; width: 100%; height: 100%;`
+                    : `display: ${toot.sensitive ? 'none' : 'block'}; position: relative; width: 100%;`;
+
+                const innerWrapperStyle = isMultiMedia
+                    ? `display: flex; justify-content: center; width: 100%; height: 100%; position: relative;`
+                    : `display: flex; justify-content: center; width: 100%; position: relative;`;
+
+                const placeholderStyle = isMultiMedia
+                    ? `display: ${toot.sensitive ? 'flex' : 'none'}; height: 100%; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;`
+                    : `display: ${toot.sensitive ? 'flex' : 'none'}; height: 220px; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;`;
+
+                mediaHTML += `
+                    <div class="toot-media-card" data-sensitive="${toot.sensitive ? 'true' : 'false'}" style="${cardStyle}">
+                        
+                        <!-- Botón superior derecho de ocultar/mostrar -->
+                        <button class="media-toggle-btn" onclick="event.stopPropagation(); toggleMediaVisibility(this)" style="position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.65); color: #fff; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
+                            ${toot.sensitive ? 'Show' : 'Hide'}
+                        </button>
+
+                        <!-- Contenedor del elemento multimedia -->
+                        <div class="media-wrapper" style="${wrapperStyle}">
+                            <div style="${innerWrapperStyle}">
+                                 ${mediaTag}
+                            </div>
+                        </div>
+
+                        <!-- Botón ALT (en la esquina inferior izquierda para imágenes, superior izquierda para videos para no tapar los controles) -->
+                        ${altText ? `
+                        <button class="media-alt-btn" onclick="toggleAltTextPopup(this, event)" style="display: ${toot.sensitive ? 'none' : 'block'}; position: absolute; ${isVideo ? 'top: 12px;' : 'bottom: 12px;'} left: 12px; background: rgba(0,0,0,0.75); color: #fff; font-size: 10px; font-weight: bold; padding: 3px 8px; border-radius: 4px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
+                            ALT
+                        </button>
+                        
+                        <!-- Popup flotante de Alt text -->
+                        <div class="media-alt-popup" style="display: none; position: absolute; ${isVideo ? 'top: 42px;' : 'bottom: 42px;'} left: 12px; width: 280px; max-width: 90%; background: #1e1f22; border: 1px solid #2f3037; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.5); z-index: 30; text-align: left; padding: 12px; color: #fff; font-family: sans-serif;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #2f3037; padding-bottom: 6px;">
+                                <span style="font-size: 12px; font-weight: bold; color: var(--text-color);">Alt text</span>
+                                <span onclick="closeAltTextPopup(this, event)" style="color: #aaa; cursor: pointer; font-size: 14px; padding: 0 4px; line-height: 1; user-select: none;">✕</span>
+                            </div>
+                            <div style="font-size: 12.5px; line-height: 1.4; color: #e3e4e8; word-break: break-word;">${altText}</div>
+                        </div>
+                        ` : ''}
+
+                        <!-- Contenedor de Advertencia / Contenido Sensible -->
+                        <div class="media-placeholder" style="${placeholderStyle}" onclick="event.stopPropagation(); revealMediaFromPlaceholder(this)">
+                            <span style="font-size: 32px; margin-bottom: 8px;">⚠️</span>
+                            <span style="font-size: 14px; font-weight: 600; color: var(--text-color);">${toot.spoiler_text || 'Contenido Sensible'}</span>
+                            <span style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">Haz clic para mostrar el contenido multimedia</span>
+                        </div>
+                    </div>
+                `;
+            }
+        });
+        mediaHTML += `</div>`;
+    }
+
+    // Renderizar Tarjeta de Enlace (Card preview) si existe
+    let cardHTML = '';
+    if (toot.card) {
+        const card = toot.card;
+        const authorAttributionHTML = (card.author_name && card.author_url) ? `
+            <div style="display: flex; align-items: center; gap: 6px; margin-top: 8px; border-top: 1px dashed rgba(255,255,255,0.05); padding-top: 6px; font-size: 11.5px; color: var(--text-muted);">
+                <span class="material-icons-outlined" style="font-size: 14px; color: var(--primary);">person</span>
+                <span>Más de: <a href="#" onclick="event.preventDefault(); event.stopPropagation(); viewProfileByUrl('${card.author_url}')" style="color: var(--primary); font-weight: 600; text-decoration: none;">${escapeHTML(card.author_name)}</a></span>
+            </div>
+        ` : '';
+
+        const parsedDomain = (u) => { try { return new URL(u).hostname; } catch(e) { return ''; } };
+
+        cardHTML = `
+            <div class="toot-link-card" onclick="event.stopPropagation(); window.open('${card.url}', '_blank')" style="display: flex; border: 1px solid var(--border-color); border-radius: 12px; overflow: hidden; margin-top: 12px; cursor: pointer; background: rgba(255,255,255,0.01); transition: all 0.2s; max-height: 140px; text-align: left; width: 100%;">
+                ${card.image ? `
+                    <div style="width: 120px; min-width: 120px; background-image: url('${proxyUrl(card.image)}'); background-size: cover; background-position: center; border-right: 1px solid var(--border-color);"></div>
+                ` : ''}
+                <div style="padding: 12px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; flex: 1;">
+                    <div>
+                        <div style="font-weight: 700; font-size: 14px; color: var(--text-color); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(card.title)}</div>
+                        <div style="font-size: 12px; color: var(--text-muted); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(card.description)}</div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; font-size: 11px; color: var(--text-muted);">
+                        <span>🔗 ${escapeHTML(card.provider_name || parsedDomain(card.url))}</span>
+                    </div>
+                    ${authorAttributionHTML}
+                </div>
+            </div>
+        `;
+    }
+
+    // Renderizar Encuesta interactiva si existe
+    let pollHTML = '';
+    if (toot.poll) {
+        const poll = toot.poll;
+        pollHTML = `<div class="toot-poll-card" id="poll-${poll.id}" style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; margin-top: 12px; display: flex; flex-direction: column; gap: 10px;">`;
+        
+        const showResults = poll.voted || poll.expired;
+        if (showResults) {
+            poll.options.forEach((opt, idx) => {
+                const pct = poll.votes_count > 0 ? Math.round((opt.votes_count / poll.votes_count) * 100) : 0;
+                const isOwnVote = poll.own_vote === idx;
+                pollHTML += `
+                    <div>
+                        <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px;">
+                            <span>${isOwnVote ? '☑️' : ''} ${escapeHTML(opt.title)}</span>
+                            <strong>${pct}% (${opt.votes_count})</strong>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.05); height: 8px; border-radius: 4px; overflow: hidden; border:1px solid var(--border-color);">
+                            <div style="background: #4f46e5; width: ${pct}%; height: 100%; border-radius: 4px;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+        } else {
+            poll.options.forEach((opt, idx) => {
+                pollHTML += `
+                    <button onclick="event.stopPropagation(); voteInPoll('${poll.id}', ${idx}, this)" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; font-family: inherit; font-size: 13px; color: white; cursor: pointer; transition: background 0.3s; font-weight: 500; width: 100%;">
+                        🔘 ${escapeHTML(opt.title)}
+                    </button>
+                `;
+            });
+        }
+        
+        const expDateStr = new Date(poll.expires_at).toLocaleString('es-ES', {
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        });
+        pollHTML += `
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px; display: flex; justify-content: space-between;">
+                <span>${poll.votes_count} votos</span>
+                <span>${poll.expired ? 'Finalizado' : 'Expira: ' + expDateStr}</span>
+            </div>
+        </div>`;
+    }
+
+    let reblogHeaderHTML = '';
+    if (isReblog) {
+        const rebloggedByDisplayName = rebloggedBy.display_name || rebloggedBy.username;
+        let rebloggedByHTML = escapeHTML(rebloggedByDisplayName);
+        if (rebloggedBy.emojis) {
+            rebloggedByHTML = replaceCustomEmojis(rebloggedByHTML, rebloggedBy.emojis);
+        }
+        reblogHeaderHTML = `
+            <div class="toot-reblog-header" style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; margin-left: 36px;">
+                <span class="material-icons" style="font-size: 16px; color: #10b981;">repeat</span>
+                <span><a href="${base}/@${rebloggedBy.acct}" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${rebloggedBy.id}')" style="color: inherit; text-decoration: none; font-weight: bold;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${rebloggedByHTML}</a> ha re-tooteado</span>
+            </div>
+        `;
+    }
+
+    const authorDisplayName = toot.account.display_name || toot.account.username;
+    let displayNameHTML = escapeHTML(authorDisplayName);
+    if (toot.account.emojis) {
+        displayNameHTML = replaceCustomEmojis(displayNameHTML, toot.account.emojis);
+    }
+
+    card.innerHTML = `
+        ${reblogHeaderHTML}
+        <div class="toot-card-body">
+            <a href="${authorProfileHref}" class="toot-avatar-link clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" title="Ver perfil de @${toot.account.acct}"><img class="user-avatar clickable-actor" src="${proxyUrl(toot.account.avatar)}" alt="Avatar"></a>
+            <div style="flex-grow: 1; min-width: 0;">
+                <div class="toot-header">
+                    <a href="${authorProfileHref}" class="toot-author-details clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewProfile('${toot.account.id}')" style="text-decoration: none; color: inherit;">
+                        <span class="toot-author-name">${displayNameHTML}</span>
+                        <span class="toot-author-handle">@${toot.account.acct}</span>
+                        ${renderRelationshipBadge(toot.account)}
+                        ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
+                        ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
+                    </a>
+                    <a href="${tootStatusHref}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewTootThread('${toot.id}')" title="${absoluteDateStr}">${relativeDateStr}</a>
+                </div>
+                ${contentHTML}
+                ${mediaHTML}
+                ${cardHTML}
+                ${pollHTML}
+                ${quotePlaceholderHTML}
+                
+                <div class="toot-actions" style="margin-top: 12px;">
+                    <button class="toot-action-btn btn-reply" onclick="event.stopPropagation(); handleReplyButtonClick(this)" title="${__('toot_reply', 'Responder')}">
+                        <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
+                    </button>
+                    <button class="toot-action-btn ${favClass}" onclick="event.stopPropagation(); toggleFavourite('${toot.id}', this)" title="${__('toot_favorite', 'Favorito')}">
+                        <span class="${toot.favourited ? 'material-icons' : 'material-icons-outlined'}">${toot.favourited ? 'star' : 'star_border'}</span> <span class="fav-count">${toot.favourites_count || 0}</span>
+                    </button>
+                    <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" data-reblog-toot-id="${toot.id}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="${__('toot_boost', 'Compartir / Citar')}">
+                        <span class="${toot.reblogged ? 'material-icons' : 'material-icons-outlined'}" style="${toot.reblogged ? 'color: #10b981;' : ''}">repeat</span> <span class="reblog-count" style="${toot.reblogged ? 'color: #10b981; font-weight: bold;' : ''}">${toot.reblogs_count || 0}</span>
+                    </button>
+                    <button class="toot-action-btn ${bookmarkClass}" onclick="event.stopPropagation(); toggleBookmark('${toot.id}', this)" title="${__('toot_bookmark', 'Guardar')}">
+                        <span class="${toot.bookmarked ? 'material-icons' : 'material-icons-outlined'}">${toot.bookmarked ? 'bookmark' : 'bookmark_border'}</span>
+                    </button>
+                    ${isMyToot ? `
+                        <button class="toot-action-btn btn-edit" onclick="event.stopPropagation(); handleEditButtonClick(this)" title="${__('edit', 'Editar')}">
+                            <span class="material-icons-outlined">edit</span>
+                        </button>
+                        <button class="toot-action-btn btn-delete" onclick="event.stopPropagation(); deleteToot('${toot.id}', this)" title="${__('delete', 'Eliminar')}">
+                            <span class="material-icons-outlined">delete</span>
+                        </button>
+                    ` : `
+                        <button class="toot-action-btn btn-options" onclick="toggleTootOptionsMenu('${toot.id}', this, event)" title="${__('options', 'Opciones de Moderación')}">
+                            <span class="material-icons-outlined">more_horiz</span>
+                        </button>
+                    `}
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Click on the card to navigate to the thread
+    card.addEventListener('click', (e) => {
+        if (isMain) return;
+        
+        // Don't navigate if selecting text
+        if (window.getSelection().toString().trim() !== '') return;
+
+        // If clicking on an interactive element, do not navigate
+        const interactive = e.target.closest('a, button, input, select, textarea, video, audio, [onclick], .media-placeholder');
+        if (interactive) return;
+
+        // If clicking on a media image, do not navigate
+        if (e.target.tagName === 'IMG' && (e.target.closest('.toot-media-card') || e.target.closest('.toot-media-item'))) {
+            return;
+        }
+
+        // If clicking on other interactive container elements, do not navigate
+        if (e.target.closest('.toot-actions') || e.target.closest('.toot-poll-card') || e.target.closest('.toot-link-card') || e.target.closest('.media-alt-popup')) {
+            return;
+        }
+
+        viewTootThread(toot.id);
+    });
+
+    return card;
+}
+
+function handleReplyButtonClick(btn) {
+    if (!token) {
+        showLoginModal();
+        return;
+    }
+    const card = btn.closest('.toot-card');
+    if (card && card._toot) {
+        const toot = card._toot;
+        initReplyToToot(toot);
+    }
+}
+
+function handleEditButtonClick(btn) {
+    const card = btn.closest('.toot-card');
+    if (card && card._toot) {
+        const toot = card._toot;
+        initEditToot(toot.id, toot.text || toot.content, toot.sensitive, toot.spoiler_text || '', toot.media_attachments);
+    }
+}
+
+let activeReblogMenu = null;
+
+function handleReblogButtonClick(tootId, btn, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+    if (!token) {
+        showLoginModal();
+        return;
+    }
+
+    if (activeReblogMenu) {
+        activeReblogMenu.remove();
+        activeReblogMenu = null;
+    }
+
+    const card = btn.closest('.toot-card');
+    if (!card || !card._toot) return;
+    const toot = card._toot;
+
+    const rect = btn.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'reblog-context-menu';
+    menu.style.top = `${rect.bottom + 6}px`;
+    menu.style.left = `${rect.left}px`;
+
+    const optReblog = document.createElement('button');
+    optReblog.type = 'button';
+    if (toot.reblogged) {
+        optReblog.innerHTML = '<span class="material-icons" style="color: #10b981;">repeat</span> Deshacer Re-toot';
+    } else {
+        optReblog.innerHTML = '<span class="material-icons-outlined">repeat</span> Re-tootear';
+    }
+    optReblog.onclick = (e) => {
+        e.stopPropagation();
+        menu.remove();
+        activeReblogMenu = null;
+        executeReblog(tootId, btn, !toot.reblogged);
+    };
+
+    const optQuote = document.createElement('button');
+    optQuote.type = 'button';
+    optQuote.innerHTML = '<span class="material-icons-outlined">format_quote</span> Citar publicación';
+    optQuote.onclick = (e) => {
+        e.stopPropagation();
+        menu.remove();
+        activeReblogMenu = null;
+        initQuoteToot(tootId, toot.account.acct, toot.uri);
+    };
+
+    menu.appendChild(optReblog);
+    menu.appendChild(optQuote);
+    document.body.appendChild(menu);
+    activeReblogMenu = menu;
+
+    setTimeout(() => {
+        const closeMenu = () => {
+            if (activeReblogMenu) {
+                activeReblogMenu.remove();
+                activeReblogMenu = null;
+            }
+            document.removeEventListener('click', closeMenu);
+        };
+        document.addEventListener('click', closeMenu);
+    }, 50);
+}
+
+async function executeReblog(tootId, btn, isReblog) {
+    const action = isReblog ? 'reblog' : 'unreblog';
+    try {
+        const res = await fetch(`/api/v1/statuses/${tootId}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const updatedToot = await res.json();
+            const targetToot = updatedToot.reblog ? updatedToot.reblog : updatedToot;
+            
+            const card = btn.closest('.toot-card');
+            if (card) {
+                card._toot = targetToot;
+            }
+
+            const reblogBtns = document.querySelectorAll(`button.btn-reblog[data-reblog-toot-id="${tootId}"]`);
+            reblogBtns.forEach(rebBtn => {
+                const icon = rebBtn.querySelector('.material-icons') || rebBtn.querySelector('.material-icons-outlined');
+                const countSpan = rebBtn.querySelector('.reblog-count');
+                
+                if (targetToot.reblogged) {
+                    rebBtn.classList.add('active-reblog');
+                    if (icon) {
+                        icon.className = 'material-icons';
+                        icon.style.color = '#10b981';
+                    }
+                    if (countSpan) {
+                        countSpan.innerText = targetToot.reblogs_count;
+                        countSpan.style.color = '#10b981';
+                        countSpan.style.fontWeight = 'bold';
+                    }
+                } else {
+                    rebBtn.classList.remove('active-reblog');
+                    if (icon) {
+                        icon.className = 'material-icons-outlined';
+                        icon.style.color = '';
+                    }
+                    if (countSpan) {
+                        countSpan.innerText = targetToot.reblogs_count;
+                        countSpan.style.color = '';
+                        countSpan.style.fontWeight = '';
+                    }
+                }
+            });
+        } else {
+            alert('No se pudo procesar la acción del re-toot.');
+        }
+    } catch (e) {
+        console.error("Error al re-tootear", e);
+    }
+}
+
+function initQuoteToot(id, handle, uri) {
+    quoteTootId = id;
+    replyToId = null;
+    editTootId = null;
+    const ctx = document.getElementById('composer-context');
+    if (ctx) ctx.style.display = 'flex';
+    const ctxText = document.getElementById('composer-context-text');
+    if (ctxText) ctxText.innerText = `Citando publicación de @${handle}`;
+    
+    const textarea = document.getElementById('composer-text');
+    if (textarea) {
+        textarea.value = '';
+        updateCharCount();
+    }
+    
+    const modalComposer = document.getElementById('modal-composer');
+    if (modalComposer) {
+        const modalTitle = document.getElementById('modal-composer-title');
+        if (modalTitle) modalTitle.innerText = `Citar publicación de @${handle}`;
+        modalComposer.style.display = 'flex';
+        if (textarea) textarea.focus();
+    } else {
+        const tabFeed = document.getElementById('tab-feed');
+        if (tabFeed) {
+            showTab('feed');
+            if (textarea) {
+                textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                textarea.focus();
+            }
+        }
+    }
+}
+
+function renderEmbeddedQuote(placeholderId, quotedToot) {
+    const container = document.getElementById(placeholderId);
+    if (!container) return;
+
+    const parsedQuoteDate = parseDate(quotedToot.created_at);
+    const absoluteDate = parsedQuoteDate ? parsedQuoteDate.toLocaleString('es-ES', {
+        day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    }) : '';
+    const relativeTime = formatRelativeTime(quotedToot.created_at);
+    
+    let mediaHTML = '';
+    if (quotedToot.media_attachments && quotedToot.media_attachments.length > 0) {
+        mediaHTML = `<div style="display:flex; gap:6px; margin-top:8px; flex-wrap:wrap;">`;
+        quotedToot.media_attachments.forEach(media => {
+            const type = (media.type || '').toLowerCase();
+            const rawUrl = media.url || '';
+            const cleanUrl = rawUrl.toLowerCase().split('?')[0];
+            // Ignorar enlaces web que hayan sido erróneamente guardados como adjuntos
+            if (cleanUrl.endsWith('.html') || cleanUrl.endsWith('.htm') || cleanUrl.endsWith('.php') || type === 'link' || type === 'unknown') {
+                return;
+            }
+            const url = type === 'audio' ? '' : proxyUrl(rawUrl);
+            if (url) {
+                const isGif = cleanUrl.endsWith('.gif');
+                const isVideo = type === 'video' || type === 'gifv' || ((cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.webm') || cleanUrl.endsWith('.mov') || cleanUrl.endsWith('.m4v') || cleanUrl.endsWith('.ogv')) && !isGif);
+                if (isVideo) {
+                    mediaHTML += `<video src="${rawUrl}" style="width:50px; height:50px; object-fit:cover; border-radius:6px; background:#000;" onerror="this.style.display='none'" muted playsinline loop onmouseover="this.play()" onmouseout="this.pause()" onclick="event.stopPropagation(); window.open('${rawUrl}', '_blank')"></video>`;
+                } else {
+                    mediaHTML += `<img src="${url}" class="toot-gallery-img" style="width:50px; height:50px; object-fit:cover; border-radius:6px; cursor:pointer;" onerror="this.style.display='none'" onclick="event.stopPropagation(); handleGalleryImageClick(event, this)">`;
+                }
+            }
+        });
+        mediaHTML += `</div>`;
+    }
+
+    // Previsualización de tarjeta de enlace (Card) para la cita
+    let quoteCardHTML = '';
+    if (quotedToot.card) {
+        const card = quotedToot.card;
+        const parsedDomain = (u) => { try { return new URL(u).hostname; } catch(e) { return ''; } };
+        const cardImg = card.image ? proxyUrl(card.image) : '';
+        quoteCardHTML = `
+            <div class="toot-link-card quote-link-card" onclick="event.stopPropagation(); window.open('${card.url}', '_blank')" style="display: flex; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin-top: 8px; cursor: pointer; background: rgba(255,255,255,0.02); transition: all 0.2s; max-height: 80px; text-align: left; width: 100%;">
+                ${cardImg ? `
+                    <div style="width: 80px; min-width: 80px; background-image: url('${cardImg}'); background-size: cover; background-position: center; border-right: 1px solid var(--border-color);"></div>
+                ` : ''}
+                <div style="padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; overflow: hidden; flex: 1;">
+                    <div style="font-weight: 600; font-size: 12.5px; color: var(--text-color); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHTML(card.title || '')}</div>
+                    ${card.description ? `<div style="font-size: 11px; color: var(--text-muted); line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(card.description)}</div>` : ''}
+                    <div style="display: flex; align-items: center; gap: 4px; margin-top: 4px; font-size: 10.5px; color: var(--text-muted);">
+                        <span>🔗 ${escapeHTML(card.provider_name || parsedDomain(card.url))}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    container.style.cursor = 'pointer';
+    container.onclick = (e) => {
+        e.stopPropagation();
+        viewTootThread(quotedToot.id);
+    };
+
+    let cleanContent = sanitizeHTML(quotedToot.content);
+    if (quotedToot.emojis) {
+        cleanContent = replaceCustomEmojis(cleanContent, quotedToot.emojis);
+    }
+    const quoteAuthorDisplayName = quotedToot.account.display_name || quotedToot.account.username;
+    let quoteAuthorHTML = escapeHTML(quoteAuthorDisplayName);
+    if (quotedToot.account.emojis) {
+        quoteAuthorHTML = replaceCustomEmojis(quoteAuthorHTML, quotedToot.account.emojis);
+    }
+
+    container.innerHTML = `
+        <div class="quote-toot-header">
+            <img src="${proxyUrl(quotedToot.account.avatar)}" class="quote-toot-avatar" alt="Avatar">
+            <div class="quote-toot-meta">
+                <div class="quote-toot-top-row">
+                    <span class="quote-toot-author-name">${quoteAuthorHTML}</span>
+                    <span class="quote-toot-time" title="${absoluteDate}">${relativeTime}</span>
+                </div>
+                <div class="quote-toot-author-handle">@${quotedToot.account.acct} ${renderRelationshipBadge(quotedToot.account)}</div>
+            </div>
+        </div>
+        <div class="quote-toot-content">${cleanContent}</div>
+        ${mediaHTML}
+        ${quoteCardHTML}
+    `;
+}
+
+// Variables para Autocompletado de menciones
+let autocompleteActiveIndex = -1;
+let autocompleteSuggestions = [];
+let activeWordInfo = null;
+let autocompleteTimeout = null;
+
+function getActiveWord(textarea) {
+    const text = textarea.value;
+    const selectionEnd = textarea.selectionEnd;
+    
+    let wordStart = selectionEnd - 1;
+    while (wordStart >= 0 && text[wordStart] !== ' ' && text[wordStart] !== '\n') {
+        wordStart--;
+    }
+    wordStart++;
+    
+    const word = text.slice(wordStart, selectionEnd);
+    return {
+        word: word,
+        start: wordStart,
+        end: selectionEnd
+    };
+}
+
+function handleComposerInput(e) {
+    const textarea = e.target;
+    const info = getActiveWord(textarea);
+    
+    if (info.word.startsWith('@')) {
+        const query = info.word.substring(1);
+        activeWordInfo = info;
+        fetchAutocompleteSuggestions(query);
+    } else {
+        closeAutocompleteDropdown();
+    }
+}
+
+function fetchAutocompleteSuggestions(query) {
+    clearTimeout(autocompleteTimeout);
+    autocompleteTimeout = setTimeout(async () => {
+        try {
+            const res = await fetch(`/api/v1/search?type=accounts&q=${encodeURIComponent(query)}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                autocompleteSuggestions = data.accounts || [];
+                renderAutocompleteDropdown();
+            }
+        } catch (err) {
+            console.error("Error al obtener sugerencias de autocompletado", err);
+        }
+    }, 150);
+}
+
+function renderAutocompleteDropdown() {
+    const dropdown = document.getElementById('composer-autocomplete');
+    if (!dropdown) return;
+    
+    if (autocompleteSuggestions.length === 0) {
+        dropdown.style.display = 'none';
+        return;
+    }
+    
+    dropdown.innerHTML = '';
+    dropdown.style.display = 'block';
+    autocompleteActiveIndex = 0;
+    
+    autocompleteSuggestions.forEach((account, idx) => {
+        const item = document.createElement('div');
+        item.className = 'autocomplete-suggestion-item' + (idx === 0 ? ' active' : '');
+        item.setAttribute('data-index', idx);
+        
+        const avatar = account.avatar || '/assets/default-avatar.png';
+        const display_name = account.display_name || account.username;
+        
+        item.innerHTML = `
+            <img class="autocomplete-suggestion-avatar" src="${avatar}" alt="">
+            <div style="display: flex; flex-direction: column; min-width: 0; text-align: left;">
+                <span class="autocomplete-suggestion-name">${escapeHTML(display_name)}</span>
+                <span class="autocomplete-suggestion-handle">@${escapeHTML(account.acct)}</span>
+            </div>
+        `;
+        
+        item.addEventListener('click', () => {
+            selectAutocompleteSuggestion(idx);
+        });
+        
+        dropdown.appendChild(item);
+    });
+}
+
+function selectAutocompleteSuggestion(idx) {
+    const account = autocompleteSuggestions[idx];
+    if (!account || !activeWordInfo) return;
+    
+    const textarea = document.getElementById('composer-text');
+    const text = textarea.value;
+    const mention = `@${account.acct} `;
+    
+    const before = text.slice(0, activeWordInfo.start);
+    const after = text.slice(activeWordInfo.end);
+    
+    textarea.value = before + mention + after;
+    
+    const newCursorPos = activeWordInfo.start + mention.length;
+    textarea.focus();
+    textarea.setSelectionRange(newCursorPos, newCursorPos);
+    
+    closeAutocompleteDropdown();
+    updateCharCount();
+}
+
+function handleComposerKeydown(e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        publishToot();
+        return;
+    }
+
+    if (e.key === 'Escape') {
+        const dropdown = document.getElementById('composer-autocomplete');
+        if (dropdown && dropdown.style.display !== 'none') {
+            e.preventDefault();
+            closeAutocompleteDropdown();
+            return;
+        }
+        if (isComposerZenActive()) {
+            e.preventDefault();
+            toggleComposerZen(false);
+            return;
+        }
+    }
+
+    const dropdown = document.getElementById('composer-autocomplete');
+    if (!dropdown || dropdown.style.display === 'none') return;
+    
+    const items = dropdown.querySelectorAll('.autocomplete-suggestion-item');
+    if (items.length === 0) return;
+    
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        items[autocompleteActiveIndex].classList.remove('active');
+        autocompleteActiveIndex = (autocompleteActiveIndex + 1) % items.length;
+        items[autocompleteActiveIndex].classList.add('active');
+        items[autocompleteActiveIndex].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        items[autocompleteActiveIndex].classList.remove('active');
+        autocompleteActiveIndex = (autocompleteActiveIndex - 1 + items.length) % items.length;
+        items[autocompleteActiveIndex].classList.add('active');
+        items[autocompleteActiveIndex].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        selectAutocompleteSuggestion(autocompleteActiveIndex);
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeAutocompleteDropdown();
+    }
+}
+
+function closeAutocompleteDropdown() {
+    const dropdown = document.getElementById('composer-autocomplete');
+    if (dropdown) {
+        dropdown.style.display = 'none';
+    }
+    autocompleteActiveIndex = -1;
+    autocompleteSuggestions = [];
+    activeWordInfo = null;
+}
+
+// Registrar cierre de dropdown al hacer clic fuera del composer
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('composer-autocomplete');
+    const textarea = document.getElementById('composer-text');
+    if (dropdown && e.target !== dropdown && e.target !== textarea && !dropdown.contains(e.target)) {
+        closeAutocompleteDropdown();
+    }
+});
+
+async function publishToot() {
+    const textarea = document.getElementById('composer-text');
+    const text = textarea.value.trim();
+    if (text === '' && composerUploadedMediaIds.length === 0) return;
+
+    const visibility = document.getElementById('composer-visibility').value;
+    const isCWActive = document.getElementById('composer-cw-container').style.display !== 'none';
+    const cwText = isCWActive ? document.getElementById('composer-cw-text').value.trim() : '';
+
+    const payload = {
+        status: text,
+        visibility: visibility,
+        sensitive: isCWActive,
+        spoiler_text: cwText
+    };
+
+    if (composerUploadedMediaIds.length > 0) {
+        // Verificar si la preferencia de advertencia de AltText está activa
+        const warnMissingAlt = localStorage.getItem('kutsocial_warn_missing_alt') !== 'false';
+        if (warnMissingAlt) {
+            const altInputs = document.querySelectorAll('#composer-media-preview .media-preview-item input');
+            let missingAlt = false;
+            altInputs.forEach(input => {
+                if (!input.value.trim()) {
+                    missingAlt = true;
+                }
+            });
+            if (missingAlt) {
+                const confirmPublish = confirm("¿Estás seguro de que quieres publicar? Hay imágenes sin texto alternativo (AltText).");
+                if (!confirmPublish) {
+                    return;
+                }
+            }
+        }
+        payload.media_ids = composerUploadedMediaIds;
+    }
+
+    const pollContainer = document.getElementById('composer-poll-container');
+    if (pollContainer && pollContainer.style.display !== 'none') {
+        const optionInputs = document.querySelectorAll('.poll-option-field');
+        const options = Array.from(optionInputs)
+            .map(input => input.value.trim())
+            .filter(val => val !== '');
+        
+        if (options.length >= 2) {
+            const expiresIn = parseInt(document.getElementById('poll-expires-in').value || 86400);
+            payload.poll = {
+                options: options,
+                expires_in: expiresIn
+            };
+        }
+    }
+
+    let url = '/api/v1/statuses';
+    let method = 'POST';
+
+    if (editTootId) {
+        url = `/api/v1/statuses/${editTootId}`;
+        method = 'PUT';
+    } else if (replyToId) {
+        payload.in_reply_to_id = replyToId;
+    } else if (quoteTootId) {
+        payload.quote_id = quoteTootId;
+    }
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+            const newToot = await response.json();
+            textarea.value = '';
+            cancelComposerContext();
+            
+            const modalComposer = document.getElementById('modal-composer');
+            if (modalComposer) {
+                modalComposer.style.display = 'none';
+            }
+            
+            if (editTootId) {
+                if (document.getElementById('tab-feed')) {
+                    loadTimeline(false);
+                }
+            } else {
+                if ((currentTimeline === 'home' || currentTimeline === 'public' || currentTimeline === 'local') && document.getElementById('tab-feed')) {
+                    const idInt = parseInt(newToot.id);
+                    if (idInt > lastId) {
+                        lastId = idInt;
+                    }
+                    prependToot(newToot, true);
+                } else if (currentTimeline === 'thread-view' && activeThreadId && typeof viewTootThread === 'function') {
+                    viewTootThread(activeThreadId);
+                } else if (document.getElementById('tab-feed')) {
+                    loadTimeline(false);
+                }
+            }
+        } else {
+            const errData = await response.json();
+            alert('Error: ' + (errData.error || 'No se pudo publicar.'));
+        }
+    } catch (e) {
+        alert('Error al conectar con el servidor.');
+    }
+}
+
+function switchTimeline(type, fromHashChange = false) {
+    const tabFeed = document.getElementById('tab-feed');
+    if (!tabFeed && !fromHashChange) {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        window.location.href = base + '/' + type;
+        return;
+    }
+    
+    if (fromHashChange && currentTimeline === type && tabFeed && tabFeed.style.display === 'block') {
+        return;
+    }
+
+    // Save current timeline state before switching
+    if (lastRenderedTimeline) {
+        const state = getTimelineState(lastRenderedTimeline);
+        state.lastId = lastId;
+        state.oldestId = oldestId;
+        state.hasMoreToots = hasMoreToots;
+    }
+
+    const feed = getFeedContainer(type);
+    const alreadyLoaded = feed.innerHTML !== '' && !feed.innerHTML.includes('Cargando toots...');
+    const forceReload = (currentTimeline === type && alreadyLoaded && !fromHashChange);
+
+    if (forceReload) {
+        feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+        const state = getTimelineState(type);
+        state.lastId = 0;
+        state.oldestId = null;
+        state.hasMoreToots = true;
+        lastId = 0;
+        oldestId = null;
+        hasMoreToots = true;
+    } else {
+        // Restore target timeline state
+        const newState = getTimelineState(type);
+        lastId = newState.lastId;
+        oldestId = newState.oldestId;
+        hasMoreToots = newState.hasMoreToots;
+    }
+
+    currentTimeline = type;
+    showFeedContainer(type);
+    
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    const newPath = base + '/' + type;
+    if (window.location.pathname !== newPath && !fromHashChange) {
+        history.pushState(null, '', newPath);
+    }
+    
+    document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+    
+    const navPub = document.getElementById('nav-public');
+    const navHome = document.getElementById('nav-home');
+    const navLocal = document.getElementById('nav-local');
+    const navBook = document.getElementById('nav-bookmarks');
+    const navDirect = document.getElementById('nav-direct');
+    const navList = document.getElementById('nav-lists');
+    const navHash = document.getElementById('nav-hashtags');
+
+    if (type === 'public' && navPub) {
+        navPub.classList.add('active');
+    } else if (type === 'home' && navHome) {
+        navHome.classList.add('active');
+    } else if (type === 'local' && navLocal) {
+        navLocal.classList.add('active');
+    } else if (type === 'bookmarks' && navBook) {
+        navBook.classList.add('active');
+    } else if (type === 'direct' && navDirect) {
+        navDirect.classList.add('active');
+    } else if (type.startsWith('list_') && navList) {
+        navList.classList.add('active');
+    } else if (type.startsWith('tag_') && navHash) {
+        navHash.classList.add('active');
+    }
+    
+    showTab('feed', fromHashChange);
+    
+    if (alreadyLoaded && !forceReload) {
+        lastRenderedTimeline = currentTimeline;
+        if (currentTimeline !== 'bookmarks' && currentTimeline !== 'direct') {
+            startStreaming();
+        } else if (eventSource) {
+            eventSource.close();
+        }
+    } else {
+        loadTimeline();
+    }
+}
+
+function isComposerZenActive() {
+    return document.body.classList.contains('composer-zen-active') || !!document.querySelector('.composer-card.zen-mode');
+}
+
+function updateZenStats() {
+    const textarea = document.getElementById('composer-text');
+    const statsEl = document.getElementById('composer-zen-stats');
+    if (!textarea || !statsEl) return;
+
+    const text = textarea.value;
+    const charsRemaining = maxTootChars - text.length;
+    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+    const wordLabel = words === 1 ? __('word', 'palabra') : __('words', 'palabras');
+    const charsLabel = __('chars_remaining', 'restantes');
+
+    statsEl.textContent = `${words} ${wordLabel} · ${charsRemaining} ${charsLabel}`;
+    if (charsRemaining < 0) {
+        statsEl.style.color = 'var(--error, #ef4444)';
+    } else if (charsRemaining < 50) {
+        statsEl.style.color = 'var(--warning, #f59e0b)';
+    } else {
+        statsEl.style.color = 'var(--text-muted, #94a3b8)';
+    }
+}
+
+function toggleComposerZen(forceState) {
+    const card = document.querySelector('.composer-card.zen-mode') 
+        || (document.getElementById('modal-composer') && document.getElementById('modal-composer').style.display !== 'none' 
+            ? document.querySelector('#modal-composer .composer-card') 
+            : null)
+        || document.querySelector('#tab-feed > .composer-card') 
+        || document.querySelector('.composer-card');
+    if (!card) return;
+
+    const isZen = (typeof forceState === 'boolean') ? !forceState : card.classList.contains('zen-mode');
+
+    if (!isZen) {
+        card.classList.add('zen-mode');
+        document.body.classList.add('composer-zen-active');
+
+        const modalComposer = document.getElementById('modal-composer');
+        if (modalComposer && modalComposer.style.display !== 'none') {
+            modalComposer.classList.add('zen-active');
+        }
+
+        const icon = document.getElementById('composer-zen-icon');
+        if (icon) icon.textContent = 'close_fullscreen';
+        const btn = document.getElementById('composer-zen-btn');
+        if (btn) {
+            btn.classList.add('active');
+            btn.title = __('composer_exit_distraction_free', 'Salir del modo sin distracción');
+        }
+
+        const textarea = document.getElementById('composer-text');
+        if (textarea) {
+            textarea.focus();
+        }
+        updateZenStats();
+    } else {
+        card.classList.remove('zen-mode');
+        document.body.classList.remove('composer-zen-active');
+
+        const modalComposer = document.getElementById('modal-composer');
+        if (modalComposer) {
+            modalComposer.classList.remove('zen-active');
+        }
+
+        const icon = document.getElementById('composer-zen-icon');
+        if (icon) icon.textContent = 'open_in_full';
+        const btn = document.getElementById('composer-zen-btn');
+        if (btn) {
+            btn.classList.remove('active');
+            btn.title = __('composer_distraction_free', 'Modo sin distracción');
+        }
+
+        updateCharCount();
+
+        const textarea = document.getElementById('composer-text');
+        if (textarea) {
+            textarea.focus();
+        }
+    }
+}
+
+function updateCharCount() {
+    const textarea = document.getElementById('composer-text');
+    if (textarea) {
+        const text = textarea.value;
+        const charCount = document.getElementById('char-count');
+        const charsRemaining = maxTootChars - text.length;
+        if (charCount) {
+            charCount.innerText = charsRemaining;
+            if (charsRemaining < 0) {
+                charCount.style.color = 'var(--error, #ef4444)';
+            } else if (charsRemaining < 50) {
+                charCount.style.color = 'var(--warning, #f59e0b)';
+            } else {
+                charCount.style.color = '';
+            }
+        }
+
+        if (isComposerZenActive()) {
+            updateZenStats();
+            textarea.style.height = '';
+            textarea.style.overflowY = 'auto';
+        } else {
+            // Auto-grow textarea up to twice its height (180px), then scroll
+            textarea.style.height = '90px';
+            const scrollHeight = textarea.scrollHeight;
+            const maxHeight = 180;
+            if (scrollHeight > 90) {
+                if (scrollHeight > maxHeight) {
+                    textarea.style.height = maxHeight + 'px';
+                    textarea.style.overflowY = 'auto';
+                } else {
+                    textarea.style.height = scrollHeight + 'px';
+                    textarea.style.overflowY = 'hidden';
+                }
+            } else {
+                textarea.style.height = '90px';
+                textarea.style.overflowY = 'hidden';
+            }
+        }
+
+        // Sincronizar estado visual de los chips si estamos en modo respuesta
+        if (replyParticipants && replyParticipants.length > 0) {
+            let changed = false;
+            replyParticipants.forEach(p => {
+                const escaped = p.handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const isPresent = new RegExp('(^|\\s)@' + escaped + '(?=\\s|$)', 'i').test(text);
+                if (p.selected !== isPresent) {
+                    p.selected = isPresent;
+                    changed = true;
+                }
+            });
+            if (changed) {
+                renderReplyParticipants();
+            }
+        }
+    }
+}
+
+function updateRightSidebarVisibility(tabName, timeline = currentTimeline) {
+    const rightSidebar = document.querySelector('.right-sidebar');
+    const appContainer = document.getElementById('app-container');
+    if (!rightSidebar) return;
+
+    // Mostrar en Inicio, Timeline local, Ponerse al Día, Federación pública, Notificaciones, Mensajes privados e Hilo de conversación
+    const isAllowed = (tabName === 'feed' && ['home', 'local', 'public', 'direct'].includes(timeline)) 
+        || tabName === 'catchup' 
+        || (timeline === 'catchup') 
+        || tabName === 'notifications'
+        || tabName === 'thread-view';
+
+    if (isAllowed) {
+        rightSidebar.style.display = '';
+        if (appContainer) appContainer.classList.remove('no-right-sidebar');
+    } else {
+        rightSidebar.style.display = 'none';
+        if (appContainer) appContainer.classList.add('no-right-sidebar');
+    }
+}
+
+function showTab(tabName, fromHashChange = false) {
+    const tabElement = document.getElementById('tab-' + tabName);
+    if (fromHashChange && tabElement && tabElement.style.display === 'block') {
+        return;
+    }
+    
+    if (!tabElement && !fromHashChange) {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        let targetPath = base + '/public';
+        if (tabName !== 'feed' && tabName !== 'profile-view' && tabName !== 'thread-view') {
+            targetPath = base + '/' + tabName;
+        }
+        window.location.href = targetPath;
+        return;
+    }
+
+    if (tabName !== 'feed' && tabName !== 'profile-view' && tabName !== 'thread-view') {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        const newPath = base + '/' + tabName;
+        if (window.location.pathname !== newPath && !fromHashChange) {
+            history.pushState(null, '', newPath);
+        }
+    }
+
+    document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
+    
+    const tabs = ['feed', 'profile', 'profile-view', 'thread-view', 'notifications', 'users-list', 'search-results', 'lists', 'collections', 'followed-hashtags', 'catchup'];
+    tabs.forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        if (el) el.style.display = 'none';
+    });
+
+    if (tabElement) {
+        tabElement.style.display = (tabName === 'lists' || tabName === 'collections') ? 'flex' : 'block';
+    }
+
+    updateRightSidebarVisibility(tabName, currentTimeline);
+
+    if (tabName === 'feed') {
+        const navPub = document.getElementById('nav-public');
+        const navHome = document.getElementById('nav-home');
+        const navLocal = document.getElementById('nav-local');
+        const navBook = document.getElementById('nav-bookmarks');
+        const navDirect = document.getElementById('nav-direct');
+        const navList = document.getElementById('nav-lists');
+        const navHash = document.getElementById('nav-hashtags');
+        if (currentTimeline === 'public' && navPub) navPub.classList.add('active');
+        else if (currentTimeline === 'home' && navHome) navHome.classList.add('active');
+        else if (currentTimeline === 'local' && navLocal) navLocal.classList.add('active');
+        else if (currentTimeline === 'bookmarks' && navBook) navBook.classList.add('active');
+        else if (currentTimeline === 'direct' && navDirect) navDirect.classList.add('active');
+        else if (currentTimeline.startsWith('list_') && navList) navList.classList.add('active');
+        else if (currentTimeline.startsWith('tag_') && navHash) navHash.classList.add('active');
+    } else if (tabName === 'profile') {
+        const navSettings = document.getElementById('nav-settings');
+        if (navSettings) navSettings.classList.add('active');
+        loadProfileFormValues();
+        const hash = window.location.hash;
+        if (hash === '#import' || hash === '#import-form') {
+            switchProfileSettingsTab('import');
+        } else if (hash === '#privacy') {
+            switchProfileSettingsTab('privacy');
+        } else {
+            switchProfileSettingsTab('edit');
+        }
+    } else if (tabName === 'profile-view') {
+        const navProf = document.getElementById('nav-profile');
+        if (activeProfileViewId === currentProfileData?.id && navProf) {
+            navProf.classList.add('active');
+        }
+    } else if (tabName === 'thread-view') {
+        // Nada específico
+    } else if (tabName === 'notifications') {
+        const navNotif = document.getElementById('nav-notifications');
+        if (navNotif) navNotif.classList.add('active');
+        loadNotifications();
+    } else if (tabName === 'users-list') {
+        // Nada específico
+    } else if (tabName === 'search-results') {
+        // Nada específico
+    } else if (tabName === 'lists') {
+        const navList = document.getElementById('nav-lists');
+        if (navList) navList.classList.add('active');
+        loadLists();
+    } else if (tabName === 'collections') {
+        const navColl = document.getElementById('nav-collections');
+        if (navColl) navColl.classList.add('active');
+        loadCollections();
+    } else if (tabName === 'followed-hashtags') {
+        const navHash = document.getElementById('nav-hashtags');
+        if (navHash) navHash.classList.add('active');
+        loadFollowedHashtags();
+    } else if (tabName === 'catchup') {
+        const navCatchup = document.getElementById('nav-catchup');
+        if (navCatchup) navCatchup.classList.add('active');
+        initCatchUpTab();
+    }
+}
+
+async function loadNotifications() {
+    const list = document.getElementById('notifications-list');
+    list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando notificaciones...</div>';
+    
+    updateNotificationBadge();
+    
+    try {
+        // 1. Obtener solicitudes de seguimiento pendientes
+        let followRequests = [];
+        try {
+            const frRes = await fetch('/api/v1/follow_requests', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (frRes.ok) {
+                followRequests = await frRes.json();
+            }
+        } catch (e) {
+            console.error("Error al cargar solicitudes de seguimiento", e);
+        }
+
+        // 2. Obtener notificaciones estándar
+        const res = await fetch('/api/v1/notifications', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const resText = await res.text();
+        let data;
+        try {
+            data = JSON.parse(resText);
+        } catch (jsonErr) {
+            console.error("Error parsing JSON. Raw response was:", resText);
+            list.innerHTML = `<div style="text-align:left; padding: 20px; color: var(--error);">
+                <h4>Error del Servidor (no es JSON válido)</h4>
+                <p>El servidor devolvió HTML/Texto en lugar de JSON. Detalle:</p>
+                <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; font-family: monospace; max-height: 400px; overflow: auto; border: 1px solid var(--border-color); color: var(--text-color);">
+                    ${escapeHTML(resText)}
+                </div>
+            </div>`;
+            return;
+        }
+        list.innerHTML = '';
+
+        // Sincronizar lectura con Markers API (Mona, Ivory, etc.) y ocultar badge
+        if (Array.isArray(data) && data.length > 0) {
+            const latestNotifId = data[0].id;
+            try {
+                fetch('/api/v1/markers', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        notifications: {
+                            last_read_id: String(latestNotifId)
+                        }
+                    })
+                }).catch(() => {});
+            } catch (e) {}
+
+            const badge = document.getElementById('nav-notifications-count');
+            if (badge) {
+                badge.innerText = '0';
+                badge.style.display = 'none';
+            }
+        }
+        
+        // 3. Renderizar solicitudes de seguimiento pendientes en la parte superior
+        followRequests.forEach(req => {
+            const div = document.createElement('div');
+            div.style = "display: flex; gap: 15px; align-items: center; background: rgba(16, 185, 129, 0.04); border: 1px solid rgba(16, 185, 129, 0.15); border-radius: 12px; padding: 15px; margin-bottom: 12px; transition: background 0.2s;";
+            
+            div.innerHTML = `
+                <span class="material-icons-outlined" style="font-size: 24px; color: var(--secondary);">person_add</span>
+                <img class="user-avatar clickable-actor" onclick="viewProfile('${req.id}')" src="${proxyUrl(req.avatar)}" alt="Avatar" style="width: 36px; height: 36px;">
+                <div style="flex-grow: 1; min-width: 0;">
+                    <div style="font-size: 14px;">
+                        <strong class="clickable-actor" onclick="viewProfile('${req.id}')">${req.display_name}</strong> 
+                        <span style="color: var(--text-muted);">@${req.acct}</span>
+                        quiere seguirte
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 8px;">
+                        <button onclick="respondFollowRequest('${req.id}', 'authorize')" class="btn-publish" style="font-size: 12px; padding: 4px 12px; border-radius: 15px; width: auto; margin-top: 0; box-shadow: none;">Aceptar</button>
+                        <button onclick="respondFollowRequest('${req.id}', 'reject')" class="btn-publish" style="font-size: 12px; padding: 4px 12px; border-radius: 15px; background: rgba(255,255,255,0.06); border: 1px solid var(--border-color); color: var(--text-color); width: auto; margin-top: 0; box-shadow: none;">Rechazar</button>
+                    </div>
+                </div>
+            `;
+            list.appendChild(div);
+        });
+
+        if (data.length === 0 && followRequests.length === 0) {
+            list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No tienes ninguna notificación por el momento.</div>';
+            return;
+        }
+
+        // 4. Agrupar notificaciones como Phanpy
+        const grouped = [];
+        const followGroup = {
+            type: 'grouped_follows',
+            notifications: [],
+            latest_created_at: null,
+            read: true
+        };
+        
+        const interactionGroups = {};
+
+        data.forEach(notif => {
+            const isUnread = !notif.read;
+            const notifDate = new Date(notif.created_at);
+            
+            if (notif.type === 'follow') {
+                followGroup.notifications.push(notif);
+                if (!followGroup.latest_created_at || notifDate > new Date(followGroup.latest_created_at)) {
+                    followGroup.latest_created_at = notif.created_at;
+                }
+                if (isUnread) {
+                    followGroup.read = false;
+                }
+            } else if (notif.type === 'favourite' || notif.type === 'reblog') {
+                const status = notif.status;
+                if (status) {
+                    const statusId = status.id;
+                    if (!interactionGroups[statusId]) {
+                        interactionGroups[statusId] = {
+                            type: 'grouped_interactions',
+                            status: status,
+                            favourites: [],
+                            reblogs: [],
+                            notifications: [],
+                            latest_created_at: null,
+                            read: true
+                        };
+                    }
+                    
+                    const group = interactionGroups[statusId];
+                    group.notifications.push(notif);
+                    if (notif.type === 'favourite') {
+                        if (!group.favourites.some(u => String(u.id) === String(notif.account.id))) {
+                            group.favourites.push(notif.account);
+                        }
+                    } else if (notif.type === 'reblog') {
+                        if (!group.reblogs.some(u => String(u.id) === String(notif.account.id))) {
+                            group.reblogs.push(notif.account);
+                        }
+                    }
+                    
+                    if (!group.latest_created_at || notifDate > new Date(group.latest_created_at)) {
+                        group.latest_created_at = notif.created_at;
+                    }
+                    if (isUnread) {
+                        group.read = false;
+                    }
+                } else {
+                    grouped.push({
+                        type: 'individual',
+                        notification: notif,
+                        latest_created_at: notif.created_at
+                    });
+                }
+            } else {
+                grouped.push({
+                    type: 'individual',
+                    notification: notif,
+                    latest_created_at: notif.created_at
+                });
+            }
+        });
+
+        if (followGroup.notifications.length > 0) {
+            grouped.push(followGroup);
+        }
+        
+        Object.values(interactionGroups).forEach(group => {
+            grouped.push(group);
+        });
+
+        grouped.sort((a, b) => new Date(b.latest_created_at) - new Date(a.latest_created_at));
+
+        // 5. Renderizar notificaciones agrupadas e individuales
+        grouped.forEach(item => {
+            if (item.type === 'grouped_follows') {
+                const isUnread = !item.read;
+                const qty = item.notifications.length;
+                const div = document.createElement('div');
+                div.className = 'notification-item grouped-follows-notification';
+                div.style = `display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? 'var(--primary)' : 'transparent'}; border-radius: 12px; padding: 15px; margin-bottom: 8px; transition: all 0.2s;`;
+                
+                let avatarsHTML = '<div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px;">';
+                item.notifications.forEach(n => {
+                    avatarsHTML += `
+                        <img class="user-avatar clickable-actor" onclick="viewProfile('${n.account.id}')" src="${proxyUrl(n.account.avatar)}" alt="${escapeHTML(n.account.display_name)}" title="@${escapeHTML(n.account.acct)} - ${escapeHTML(n.account.display_name)}" style="width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--border-color); cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(1)';" />
+                    `;
+                });
+                avatarsHTML += '</div>';
+
+                const dismissIds = item.notifications.map(n => n.id).join(',');
+                const dismissButton = `
+                    <button onclick="dismissGroupedNotifications('${dismissIds}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0; margin-left: auto;" title="Eliminar estas notificaciones" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
+                `;
+
+                div.innerHTML = `
+                    <div style="display: flex; align-items: center; width: 100%;">
+                        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; margin-right: 12px;">
+                            <span class="material-icons-outlined" style="font-size: 20px; color: var(--primary); opacity: ${isUnread ? '1' : '0.6'};">person_add</span>
+                        </div>
+                        <div style="flex-grow: 1; min-width: 0; font-size: 14px; color: var(--text-color);">
+                            <strong>${qty} ${qty === 1 ? 'persona' : 'personas'}</strong> te comenzaron a seguir.
+                        </div>
+                        ${dismissButton}
+                    </div>
+                    ${avatarsHTML}
+                `;
+                list.appendChild(div);
+            } else if (item.type === 'grouped_interactions') {
+                const isUnread = !item.read;
+                const favQty = item.favourites.length;
+                const rebQty = item.reblogs.length;
+                const totalQty = favQty + rebQty;
+                
+                let text = '';
+                let icon = '';
+                if (favQty > 0 && rebQty > 0) {
+                    text = `<strong>${totalQty} personas</strong> impulsaron y les gustó tu publicación.`;
+                    icon = `<span class="material-icons" style="font-size: 20px; color: #f59e0b; opacity: ${isUnread ? '1' : '0.6'};">star</span>`;
+                } else if (favQty > 0) {
+                    text = `A <strong>${favQty} ${favQty === 1 ? 'persona' : 'personas'}</strong> le${favQty === 1 ? '' : 's'} gustó tu publicación.`;
+                    icon = `<span class="material-icons" style="font-size: 20px; color: #ef4444; opacity: ${isUnread ? '1' : '0.6'};">favorite</span>`;
+                } else if (rebQty > 0) {
+                    text = `<strong>${rebQty} ${rebQty === 1 ? 'persona' : 'personas'}</strong> impulsó${rebQty === 1 ? 'n' : 'aron'} tu publicación.`;
+                    icon = `<span class="material-icons" style="font-size: 20px; color: #10b981; opacity: ${isUnread ? '1' : '0.6'};">repeat</span>`;
+                }
+
+                const div = document.createElement('div');
+                div.className = 'notification-item grouped-interactions-notification';
+                div.style = `display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? 'var(--primary)' : 'transparent'}; border-radius: 12px; padding: 15px; margin-bottom: 8px; transition: all 0.2s;`;
+                
+                let avatarsHTML = '<div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">';
+                item.favourites.forEach(u => {
+                    avatarsHTML += `
+                        <div style="position: relative; display: inline-block;">
+                            <img class="user-avatar clickable-actor" onclick="viewProfile('${u.id}')" src="${proxyUrl(u.avatar)}" alt="${escapeHTML(u.display_name)}" title="@${escapeHTML(u.acct)} - le gustó" style="width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--border-color); cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(1)';" />
+                            <span style="position: absolute; bottom: -4px; right: -4px; font-size: 10px; background: rgba(0,0,0,0.6); border-radius: 50%; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; pointer-events: none;" title="Favorito">❤️</span>
+                        </div>
+                    `;
+                });
+                item.reblogs.forEach(u => {
+                    avatarsHTML += `
+                        <div style="position: relative; display: inline-block;">
+                            <img class="user-avatar clickable-actor" onclick="viewProfile('${u.id}')" src="${proxyUrl(u.avatar)}" alt="${escapeHTML(u.display_name)}" title="@${escapeHTML(u.acct)} - impulsó" style="width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--border-color); cursor: pointer; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.15)';" onmouseout="this.style.transform='scale(1)';" />
+                            <span style="position: absolute; bottom: -4px; right: -4px; font-size: 10px; background: rgba(0,0,0,0.6); border-radius: 50%; width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; pointer-events: none;" title="Impulso">🚀</span>
+                        </div>
+                    `;
+                });
+                avatarsHTML += '</div>';
+
+                const statusPreviewHTML = `
+                    <div class="notification-status-preview" onclick="viewTootThread('${item.status.id}')" style="margin-top: 12px; border: 1px solid var(--border-color); border-radius: 12px; background: rgba(255, 255, 255, 0.015); padding: 12px; cursor: pointer; transition: background 0.2s; font-size: 13.5px;" onmouseover="this.style.background='rgba(255, 255, 255, 0.04)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.015)'">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 13px;">
+                            <img src="${proxyUrl(item.status.account.avatar)}" style="width: 20px; height: 20px; border-radius: 50%; object-fit: cover;">
+                            <strong style="color: var(--text-color);">${escapeHTML(item.status.account.display_name || item.status.account.username)}</strong>
+                            <span style="color: var(--text-muted);">@${escapeHTML(item.status.account.acct)}</span>
+                            <span style="font-size: 11px; color: var(--text-muted); margin-left: auto;" title="${new Date(item.status.created_at).toLocaleDateString('es-ES', { hour: '2-digit', minute: '2-digit' })}">${formatRelativeTime(item.status.created_at)}</span>
+                        </div>
+                        <div class="toot-content" style="font-size: 13px; color: var(--text-color); line-height: 1.4;">
+                            ${sanitizeHTML(item.status.content)}
+                        </div>
+                    </div>
+                `;
+
+                const dismissIds = item.notifications.map(n => n.id).join(',');
+                const dismissButton = `
+                    <button onclick="dismissGroupedNotifications('${dismissIds}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0; margin-left: auto;" title="Eliminar estas notificaciones" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
+                `;
+
+                div.innerHTML = `
+                    <div style="display: flex; align-items: center; width: 100%;">
+                        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; margin-right: 12px;">
+                            ${icon}
+                        </div>
+                        <div style="flex-grow: 1; min-width: 0; font-size: 14px; color: var(--text-color);">
+                            ${text}
+                        </div>
+                        ${dismissButton}
+                    </div>
+                    ${avatarsHTML}
+                    ${statusPreviewHTML}
+                `;
+                list.appendChild(div);
+            } else if (item.type === 'individual') {
+                const notif = item.notification;
+                const isUnread = !notif.read;
+                const div = document.createElement('div');
+                
+                if (notif.type === 'mention') {
+                    div.className = 'notification-item mention-notification';
+                    div.style = `display: flex; flex-direction: column; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? '#d97706' : 'transparent'}; border-radius: 12px; transition: all 0.2s; margin-bottom: 8px; overflow: hidden;`;
+                    
+                    const dateTooltip = new Date(notif.created_at).toLocaleDateString('es-ES', { hour: '2-digit', minute: '2-digit' });
+                    const dateDisplay = formatRelativeTime(notif.created_at);
+
+                    const notifDisplayName1 = notif.account.display_name || notif.account.username;
+                    let notifAuthorHTML1 = escapeHTML(notifDisplayName1);
+                    if (notif.account.emojis) {
+                        notifAuthorHTML1 = replaceCustomEmojis(notifAuthorHTML1, notif.account.emojis);
+                    }
+
+                    div.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 8px; padding: 10px 15px; background: rgba(217, 119, 6, ${isUnread ? '0.1' : '0.04'}); border-bottom: 1px solid var(--border-color); font-size: 13px; color: var(--text-muted);">
+                            <span class="material-icons-outlined" style="font-size: 18px; color: #d97706; opacity: ${isUnread ? '1' : '0.6'};">chat_bubble_outline</span>
+                            <span>
+                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${notifAuthorHTML1}</strong>
+                                te ha mencionado
+                            </span>
+                            <div style="flex-grow: 1;"></div>
+                            <span style="font-size: 11.5px; color: var(--text-muted); margin-right: 8px;" title="${dateTooltip}">
+                                ${dateDisplay}
+                            </span>
+                            <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
+                        </div>
+                    `;
+
+                    if (notif.status) {
+                        const statusCard = createThreadTootElement(notif.status, false);
+                        statusCard.style.border = 'none';
+                        statusCard.style.background = 'transparent';
+                        statusCard.style.boxShadow = 'none';
+                        statusCard.style.borderRadius = '0';
+                        statusCard.style.margin = '0';
+                        statusCard.style.padding = '15px';
+                        div.appendChild(statusCard);
+                    } else {
+                        const fallbackDiv = document.createElement('div');
+                        fallbackDiv.style = "padding: 15px; font-size: 14px; color: var(--text-muted);";
+                        fallbackDiv.innerText = "No se pudo cargar el contenido de la mención.";
+                        div.appendChild(fallbackDiv);
+                    }
+                } else {
+                    div.className = 'notification-item individual-notification';
+                    div.style = `display: flex; gap: 15px; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-left: 3px solid ${isUnread ? 'var(--primary)' : 'transparent'}; border-radius: 12px; padding: 15px; transition: all 0.2s; margin-bottom: 8px;`;
+                    
+                    let actionText = 'realizó una acción';
+                    let actionIcon = '<span class="material-icons-outlined">notifications</span>';
+                    
+                    if (notif.type === 'follow') {
+                        actionText = 'te ha seguido';
+                        actionIcon = `<span class="material-icons-outlined" style="font-size: 20px; color: #10b981; opacity: ${isUnread ? '1' : '0.6'};">person_add</span>`;
+                    }
+                    
+                    const notifDisplayName2 = notif.account.display_name || notif.account.username;
+                    let notifAuthorHTML2 = escapeHTML(notifDisplayName2);
+                    if (notif.account.emojis) {
+                        notifAuthorHTML2 = replaceCustomEmojis(notifAuthorHTML2, notif.account.emojis);
+                    }
+
+                    div.innerHTML = `
+                        <div style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;">${actionIcon}</div>
+                        <img class="user-avatar clickable-actor" onclick="viewProfile('${notif.account.id}')" src="${proxyUrl(notif.account.avatar)}" alt="Avatar" style="width: 36px; height: 36px; flex-shrink: 0;">
+                        <div style="flex-grow: 1; min-width: 0;">
+                            <div style="font-size: 14px;">
+                                <strong class="clickable-actor" onclick="viewProfile('${notif.account.id}')">${notifAuthorHTML2}</strong> 
+                                <span style="color: var(--text-muted);">@${escapeHTML(notif.account.acct)}</span>
+                                ${actionText}
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                                <span title="${new Date(notif.created_at).toLocaleDateString('es-ES', { hour: '2-digit', minute: '2-digit' })}">${formatRelativeTime(notif.created_at)}</span>
+                            </div>
+                        </div>
+                        <button onclick="dismissNotification('${notif.id}', this.parentElement.parentElement)" style="background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-color); color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; cursor: pointer; transition: all 0.2s; flex-shrink: 0;" title="Eliminar notificación" onmouseover="this.style.background='rgba(239, 68, 68, 0.1)'; this.style.borderColor='rgba(239, 68, 68, 0.3)'; this.style.color='var(--error)';" onmouseout="this.style.background='rgba(255, 255, 255, 0.03)'; this.style.borderColor='var(--border-color)'; this.style.color='var(--text-muted)';"><span class="material-icons-outlined" style="font-size: 14px;">delete</span></button>
+                    `;
+                }
+                
+                list.appendChild(div);
+            }
+        });
+    } catch (e) {
+        console.error("Error al cargar notificaciones:", e);
+        list.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar notificaciones: ${escapeHTML(e.message)}<pre style="text-align:left; font-size:11px; margin-top:10px; max-height:200px; overflow:auto; background:rgba(0,0,0,0.2); padding:10px; border-radius:6px;">${escapeHTML(e.stack)}</pre></div>`;
+    }
+}
+
+async function respondFollowRequest(id, action) {
+    try {
+        const res = await fetch(`/api/v1/follow_requests/${id}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            loadNotifications();
+        } else {
+            alert('Error al procesar la solicitud de seguimiento.');
+        }
+    } catch (err) {
+        alert('Error al conectar con el servidor.');
+    }
+}
+
+async function dismissNotification(id, element) {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta notificación?')) return;
+    try {
+        const res = await fetch(`/api/v1/notifications/${id}/dismiss`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            element.remove();
+            const list = document.getElementById('notifications-list');
+            if (list.children.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No tienes ninguna notificación por el momento.</div>';
+            }
+        } else {
+            alert('Error al eliminar la notificación.');
+        }
+    } catch (err) {
+        alert('Error al conectar con el servidor.');
+    }
+}
+
+async function clearAllNotifications() {
+    if (!confirm('¿Estás seguro de que deseas marcar todas las notificaciones como leídas?')) return;
+    try {
+        const res = await fetch('/api/v1/notifications/clear', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            // Actualizar interfaz visual localmente de inmediato sin recargar el DOM
+            const items = document.querySelectorAll('.notification-item');
+            items.forEach(item => {
+                // Quitar el borde de color
+                item.style.borderLeftColor = 'transparent';
+                
+                // Atenuar iconos de tipo (star, reply, person_add)
+                const icons = item.querySelectorAll('.material-icons, .material-icons-outlined');
+                icons.forEach(icon => {
+                    if (icon.innerText === 'star' || icon.innerText === 'reply' || icon.innerText === 'person_add') {
+                        icon.style.opacity = '0.6';
+                    }
+                });
+                
+                // Atenuar fondos de cabecera en menciones
+                const header = item.querySelector('div[style*="background: rgba(99, 102, 241"]');
+                if (header) {
+                    header.style.backgroundColor = 'rgba(99, 102, 241, 0.04)';
+                }
+            });
+            
+            // Ocultar el badge lateral
+            const badge = document.getElementById('nav-notifications-count');
+            if (badge) {
+                badge.innerText = '0';
+                badge.style.display = 'none';
+            }
+        } else {
+            alert('Error al marcar las notificaciones como leídas.');
+        }
+    } catch (err) {
+        alert('Error al conectar con el servidor.');
+    }
+}
+
+// Cargar valores de Perfil en el formulario de edición
+async function loadProfileFormValues() {
+    if (!document.getElementById('tab-profile')) {
+        return;
+    }
+    if (!currentProfileData) {
+        try {
+            const res = await fetch('/api/v1/accounts/verify_credentials', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            currentProfileData = await res.json();
+        } catch (e) {
+            console.error("Error al cargar credenciales", e);
+            return;
+        }
+    }
+
+    const dispEl = document.getElementById('profile-display-name');
+    if (dispEl) dispEl.value = currentProfileData.display_name || '';
+    
+    const noteEl = document.getElementById('profile-note');
+    if (noteEl) {
+        let note = currentProfileData.note || '';
+        note = note.replace(/<\/p>\s*<p>/gi, '\n\n')
+                   .replace(/<br\s*\/?>/gi, '\n')
+                   .replace(/<p>/gi, '')
+                   .replace(/<\/p>/gi, '');
+        noteEl.value = note;
+    }
+
+    const akaEl = document.getElementById('profile-also-known-as');
+    if (akaEl) akaEl.value = currentProfileData.also_known_as || '';
+
+    // Restaurar estado de los checkboxes de privacidad
+    const discEl = document.getElementById('profile-discoverable');
+    if (discEl) discEl.checked = !!currentProfileData.discoverable;
+    const autoEl = document.getElementById('profile-auto-accept');
+    if (autoEl) autoEl.checked = !currentProfileData.locked;
+    const searchEl = document.getElementById('profile-searchable');
+    if (searchEl) searchEl.checked = !!currentProfileData.searchable;
+    const idxEl = document.getElementById('profile-indexable');
+    if (idxEl) idxEl.checked = !!currentProfileData.indexable;
+    const srcEl = document.getElementById('profile-show-source');
+    if (srcEl) srcEl.checked = !!currentProfileData.show_source;
+
+    for (let i = 0; i < 4; i++) {
+        const fn = document.getElementById(`field-name-${i}`);
+        const fv = document.getElementById(`field-value-${i}`);
+        const fver = document.getElementById(`field-verified-${i}`);
+        if (fn) fn.value = '';
+        if (fv) fv.value = '';
+        if (fver) fver.innerText = '';
+    }
+
+    const fields = currentProfileData.fields || [];
+    fields.forEach((f, idx) => {
+        if (idx < 4) {
+            const fn = document.getElementById(`field-name-${idx}`);
+            if (fn) fn.value = f.name || '';
+            
+            let val = f.value || '';
+            if (val.includes('<a href=')) {
+                const match = val.match(/href="([^"]+)"/);
+                if (match) {
+                    val = match[1];
+                }
+            }
+            const fv = document.getElementById(`field-value-${idx}`);
+            if (fv) fv.value = val;
+
+            const fver = document.getElementById(`field-verified-${idx}`);
+            if (fver) {
+                if (f.verified_at) {
+                    fver.innerText = __('profile_verified_badge', '✓ Verificado');
+                    fver.style.color = 'var(--secondary)';
+                } else {
+                    fver.innerText = __('profile_not_verified_badge', 'No verificado');
+                    fver.style.color = 'var(--text-muted)';
+                }
+            }
+        }
+    });
+}
+
+// Modal Editar Perfil
+async function openEditProfileModal() {
+    const modal = document.getElementById('modal-edit-profile');
+    if (!modal) return;
+
+    if (!currentProfileData) {
+        try {
+            const res = await fetch('/api/v1/accounts/verify_credentials', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                currentProfileData = await res.json();
+            }
+        } catch (e) {
+            console.error("Error al cargar credenciales", e);
+        }
+    }
+
+    if (currentProfileData) {
+        const nameEl = document.getElementById('modal-profile-display-name');
+        if (nameEl) nameEl.value = currentProfileData.display_name || '';
+
+        const noteEl = document.getElementById('modal-profile-note');
+        if (noteEl) {
+            let note = currentProfileData.note || '';
+            note = note.replace(/<\/p>\s*<p>/gi, '\n\n')
+                       .replace(/<br\s*\/?>/gi, '\n')
+                       .replace(/<p>/gi, '')
+                       .replace(/<\/p>/gi, '');
+            noteEl.value = note;
+        }
+
+        const akaEl = document.getElementById('modal-profile-also-known-as');
+        if (akaEl) akaEl.value = currentProfileData.also_known_as || '';
+
+        const discEl = document.getElementById('modal-profile-discoverable');
+        if (discEl) discEl.checked = !!currentProfileData.discoverable;
+
+        const autoEl = document.getElementById('modal-profile-auto-accept');
+        if (autoEl) autoEl.checked = !currentProfileData.locked;
+
+        const searchEl = document.getElementById('modal-profile-searchable');
+        if (searchEl) searchEl.checked = !!currentProfileData.searchable;
+
+        const idxEl = document.getElementById('modal-profile-indexable');
+        if (idxEl) idxEl.checked = !!currentProfileData.indexable;
+
+        const srcEl = document.getElementById('modal-profile-show-source');
+        if (srcEl) srcEl.checked = !!currentProfileData.show_source;
+
+        // Custom fields y badges de verificación
+        for (let i = 0; i < 4; i++) {
+            const fName = document.getElementById(`modal-field-name-${i}`);
+            const fVal = document.getElementById(`modal-field-value-${i}`);
+            const fVer = document.getElementById(`modal-field-verified-${i}`);
+            if (fName) fName.value = '';
+            if (fVal) fVal.value = '';
+            if (fVer) {
+                fVer.innerText = '';
+                fVer.style.color = 'var(--text-muted)';
+            }
+        }
+        const fields = currentProfileData.fields || [];
+        fields.forEach((f, idx) => {
+            if (idx < 4) {
+                const fName = document.getElementById(`modal-field-name-${idx}`);
+                const fVal = document.getElementById(`modal-field-value-${idx}`);
+                const fVer = document.getElementById(`modal-field-verified-${idx}`);
+                if (fName) fName.value = f.name || '';
+                if (fVal) {
+                    let val = f.value || '';
+                    if (val.includes('<a href=')) {
+                        const m = val.match(/href="([^"]+)"/);
+                        if (m) val = m[1];
+                    }
+                    fVal.value = val;
+                }
+                if (fVer) {
+                    if (f.verified_at) {
+                        fVer.innerText = __('profile_verified_badge', '✓ Verificado');
+                        fVer.style.color = 'var(--secondary)';
+                    } else {
+                        fVer.innerText = __('profile_not_verified_badge', 'No verificado');
+                        fVer.style.color = 'var(--text-muted)';
+                    }
+                }
+            }
+        });
+
+        // URL de verificación rel="me"
+        const prevUrlEl = document.getElementById('modal-profile-verification-url-preview');
+        if (prevUrlEl) {
+            prevUrlEl.innerText = currentProfileData.url || (window.location.origin + '/@' + (currentProfileData.username || ''));
+        }
+
+        // Preferencias de publicación y timeline en modal
+        const modalWarnAlt = document.getElementById('modal-pref-warn-missing-alt');
+        if (modalWarnAlt) {
+            modalWarnAlt.checked = localStorage.getItem('kutsocial_warn_missing_alt') !== 'false';
+        }
+        const modalAutoScroll = document.getElementById('modal-pref-auto-scroll-new');
+        if (modalAutoScroll) {
+            modalAutoScroll.checked = localStorage.getItem('kutsocial_auto_scroll_new') === 'true';
+        }
+    }
+
+    switchModalProfileSettingsTab('edit');
+
+    const statusDiv = document.getElementById('modal-profile-save-status');
+    if (statusDiv) statusDiv.innerText = '';
+    const privStatusDiv = document.getElementById('modal-profile-privacy-save-status');
+    if (privStatusDiv) privStatusDiv.innerText = '';
+    const importStatusMsg = document.getElementById('modal-import-status-msg');
+    if (importStatusMsg) importStatusMsg.innerText = '';
+
+    modal.style.display = 'flex';
+}
+
+function closeEditProfileModal() {
+    const modal = document.getElementById('modal-edit-profile');
+    if (modal) modal.style.display = 'none';
+}
+
+function switchModalProfileSettingsTab(subtab = 'edit') {
+    const tabs = ['edit', 'privacy', 'import'];
+    tabs.forEach(t => {
+        const content = document.getElementById('modal-subtab-content-profile-' + t);
+        const btn = document.getElementById('btn-modal-subtab-profile-' + t);
+        if (content) content.style.display = (t === subtab) ? 'block' : 'none';
+        if (btn) {
+            if (t === subtab) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+    });
+}
+
+function switchProfileSettingsTab(subtab = 'edit') {
+    const tabs = ['edit', 'privacy', 'import'];
+    tabs.forEach(t => {
+        const content = document.getElementById('subtab-content-profile-' + t);
+        const btn = document.getElementById('btn-subtab-profile-' + t);
+        if (content) content.style.display = (t === subtab) ? 'block' : 'none';
+        if (btn) {
+            if (t === subtab) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        }
+    });
+}
+
+function goToFullProfileSettings(event, section = 'import') {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+    closeEditProfileModal();
+
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    const targetUrl = base + '/profile#' + section;
+
+    const tabProfile = document.getElementById('tab-profile');
+    if (tabProfile && typeof showTab === 'function') {
+        showTab('profile');
+        switchProfileSettingsTab(section);
+        window.location.hash = section;
+        const targetEl = document.getElementById('subtab-content-profile-' + section) || tabProfile;
+        targetEl.scrollIntoView({ behavior: 'smooth' });
+    } else {
+        window.location.href = targetUrl;
+    }
+}
+
+window.addEventListener('hashchange', () => {
+    const hash = window.location.hash;
+    if (hash === '#import' || hash === '#import-form') {
+        if (typeof switchProfileSettingsTab === 'function') switchProfileSettingsTab('import');
+    } else if (hash === '#privacy') {
+        if (typeof switchProfileSettingsTab === 'function') switchProfileSettingsTab('privacy');
+    } else if (hash === '#edit') {
+        if (typeof switchProfileSettingsTab === 'function') switchProfileSettingsTab('edit');
+    }
+});
+
+// Sincronizar checkboxes de preferencias en el modal con localStorage y la página
+const modalWarnAltInput = document.getElementById('modal-pref-warn-missing-alt');
+if (modalWarnAltInput) {
+    modalWarnAltInput.addEventListener('change', () => {
+        localStorage.setItem('kutsocial_warn_missing_alt', modalWarnAltInput.checked);
+        const pageWarn = document.getElementById('pref-warn-missing-alt');
+        if (pageWarn) pageWarn.checked = modalWarnAltInput.checked;
+    });
+}
+const modalAutoScrollInput = document.getElementById('modal-pref-auto-scroll-new');
+if (modalAutoScrollInput) {
+    modalAutoScrollInput.addEventListener('change', () => {
+        localStorage.setItem('kutsocial_auto_scroll_new', modalAutoScrollInput.checked);
+        const pageAuto = document.getElementById('pref-auto-scroll-new');
+        if (pageAuto) pageAuto.checked = modalAutoScrollInput.checked;
+    });
+}
+
+// Interceptar submit del formulario de importación en el modal
+const modalImportForm = document.getElementById('modal-import-form');
+if (modalImportForm) {
+    modalImportForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const statusDiv = document.getElementById('modal-import-status-msg');
+        if (statusDiv) {
+            statusDiv.innerText = __('profile_import_processing', 'Procesando importación...');
+            statusDiv.style.color = 'var(--text-muted)';
+        }
+
+        const formData = new FormData(modalImportForm);
+
+        try {
+            const response = await fetch('/api/v1/import', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (statusDiv) {
+                    statusDiv.innerText = __('profile_import_success', '✓ Importación completada: :imported registros procesados correctamente. Errores: :errors', { imported: data.imported, errors: data.errors || 0 });
+                    statusDiv.style.color = 'var(--secondary)';
+                }
+                const fileInput = document.getElementById('modal-import-file');
+                if (fileInput) fileInput.value = '';
+            } else {
+                const data = await response.json();
+                if (statusDiv) {
+                    statusDiv.innerText = __('profile_import_error', 'Error al importar: :error', { error: data.error || 'Intenta de nuevo.' });
+                    statusDiv.style.color = 'var(--error)';
+                }
+            }
+        } catch (err) {
+            if (statusDiv) {
+                statusDiv.innerText = __('profile_network_error', 'Error al conectar al servidor.');
+                statusDiv.style.color = 'var(--error)';
+            }
+        }
+    });
+}
+
+// Interceptar submit del formulario modal de perfil
+const modalProfileForm = document.getElementById('modal-profile-form');
+if (modalProfileForm) {
+    modalProfileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const statusDiv = document.getElementById('modal-profile-save-status');
+        const privStatusDiv = document.getElementById('modal-profile-privacy-save-status');
+        const submitBtn = document.getElementById('modal-profile-submit-btn');
+        const privSubmitBtn = document.getElementById('modal-profile-privacy-submit-btn');
+        if (submitBtn) submitBtn.disabled = true;
+        if (privSubmitBtn) privSubmitBtn.disabled = true;
+        if (statusDiv) {
+            statusDiv.innerText = __('profile_saving', 'Guardando cambios...');
+            statusDiv.style.color = 'var(--text-muted)';
+        }
+        if (privStatusDiv) {
+            privStatusDiv.innerText = __('profile_saving', 'Guardando cambios...');
+            privStatusDiv.style.color = 'var(--text-muted)';
+        }
+
+        const formData = new FormData(modalProfileForm);
+
+        try {
+            const response = await fetch('/api/v1/accounts/update_credentials', {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            if (response.ok) {
+                const updatedProfile = await response.json();
+                currentProfileData = updatedProfile;
+
+                const dispNameEl = document.getElementById('my-display-name');
+                if (dispNameEl) dispNameEl.innerText = updatedProfile.display_name;
+
+                if (updatedProfile.avatar) {
+                    const myAvEl = document.getElementById('my-avatar');
+                    if (myAvEl) myAvEl.src = updatedProfile.avatar;
+                    const compAvEl = document.getElementById('composer-avatar');
+                    if (compAvEl) compAvEl.src = updatedProfile.avatar;
+                }
+
+                if (activeProfileViewId && String(activeProfileViewId) === String(updatedProfile.id)) {
+                    renderProfileData(updatedProfile);
+                }
+
+                if (document.getElementById('tab-profile')) {
+                    loadProfileFormValues();
+                }
+
+                if (statusDiv) {
+                    statusDiv.innerText = __('profile_saved', '✓ Cambios guardados correctamente.');
+                    statusDiv.style.color = 'var(--secondary)';
+                }
+                if (privStatusDiv) {
+                    privStatusDiv.innerText = __('profile_privacy_saved', '✓ Preferencias guardadas correctamente.');
+                    privStatusDiv.style.color = 'var(--secondary)';
+                }
+
+                setTimeout(() => {
+                    closeEditProfileModal();
+                }, 800);
+            } else {
+                const data = await response.json();
+                const errText = __('profile_save_error', 'Error al guardar: :error', { error: data.error || 'Intenta de nuevo.' });
+                if (statusDiv) {
+                    statusDiv.innerText = errText;
+                    statusDiv.style.color = 'var(--error)';
+                }
+                if (privStatusDiv) {
+                    privStatusDiv.innerText = errText;
+                    privStatusDiv.style.color = 'var(--error)';
+                }
+            }
+        } catch (err) {
+            const errConn = __('profile_network_error', 'Error al conectar al servidor.');
+            if (statusDiv) {
+                statusDiv.innerText = errConn;
+                statusDiv.style.color = 'var(--error)';
+            }
+            if (privStatusDiv) {
+                privStatusDiv.innerText = errConn;
+                privStatusDiv.style.color = 'var(--error)';
+            }
+        } finally {
+            if (submitBtn) submitBtn.disabled = false;
+            if (privSubmitBtn) privSubmitBtn.disabled = false;
+        }
+    });
+}
+
+// Interceptar submit del formulario de perfil de la página
+const profileForm = document.getElementById('profile-form');
+if (profileForm) {
+    profileForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const statusDiv = document.getElementById('profile-save-status');
+        const privStatusDiv = document.getElementById('profile-privacy-save-status');
+        if (statusDiv) {
+            statusDiv.innerText = __('profile_saving', 'Guardando cambios...');
+            statusDiv.style.color = 'var(--text-muted)';
+        }
+        if (privStatusDiv) {
+            privStatusDiv.innerText = __('profile_saving', 'Guardando cambios...');
+            privStatusDiv.style.color = 'var(--text-muted)';
+        }
+
+        const formData = new FormData(profileForm);
+
+        try {
+            const response = await fetch('/api/v1/accounts/update_credentials', {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            if (response.ok) {
+                const updatedProfile = await response.json();
+                currentProfileData = updatedProfile;
+
+                const dispNameEl = document.getElementById('my-display-name');
+                if (dispNameEl) {
+                    dispNameEl.innerText = updatedProfile.display_name;
+                }
+                if (updatedProfile.avatar) {
+                    const myAvEl = document.getElementById('my-avatar');
+                    if (myAvEl) {
+                        myAvEl.src = updatedProfile.avatar;
+                    }
+                    const compAvEl = document.getElementById('composer-avatar');
+                    if (compAvEl) {
+                        compAvEl.src = updatedProfile.avatar;
+                    }
+                }
+
+                if (activeProfileViewId && String(activeProfileViewId) === String(updatedProfile.id)) {
+                    renderProfileData(updatedProfile);
+                }
+
+                if (statusDiv) {
+                    statusDiv.innerText = __('profile_saved', '✓ Cambios guardados correctamente.');
+                    statusDiv.style.color = 'var(--secondary)';
+                }
+                if (privStatusDiv) {
+                    privStatusDiv.innerText = __('profile_privacy_saved', '✓ Preferencias guardadas correctamente.');
+                    privStatusDiv.style.color = 'var(--secondary)';
+                }
+
+                loadProfileFormValues();
+            } else {
+                const data = await response.json();
+                const msg = __('profile_save_error', 'Error al guardar: :error', { error: data.error || 'Intenta de nuevo.' });
+                if (statusDiv) {
+                    statusDiv.innerText = msg;
+                    statusDiv.style.color = 'var(--error)';
+                }
+                if (privStatusDiv) {
+                    privStatusDiv.innerText = msg;
+                    privStatusDiv.style.color = 'var(--error)';
+                }
+            }
+        } catch (err) {
+            if (statusDiv) {
+                statusDiv.innerText = __('profile_network_error', 'Error al conectar al servidor.');
+                statusDiv.style.color = 'var(--error)';
+            }
+            if (privStatusDiv) {
+                privStatusDiv.innerText = __('profile_network_error', 'Error al conectar al servidor.');
+                privStatusDiv.style.color = 'var(--error)';
+            }
+        }
+    });
+}
+
+// Funciones de descarga de exportaciones
+async function downloadExport(endpoint, defaultFilename) {
+    try {
+        const btn = event.target;
+        const oldText = btn.innerText;
+        btn.innerText = __('profile_exporting', 'Exportando...');
+        btn.disabled = true;
+
+        const response = await fetch(endpoint, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!response.ok) throw new Error('Error al descargar');
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = defaultFilename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        
+        btn.innerText = oldText;
+        btn.disabled = false;
+    } catch (err) {
+        alert('No se pudo exportar la información: ' + err.message);
+        event.target.innerText = 'Error';
+        event.target.disabled = false;
+    }
+}
+
+// Interceptar submit del formulario de importación
+const importForm = document.getElementById('import-form');
+if (importForm) {
+    importForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const statusDiv = document.getElementById('import-status-msg');
+        statusDiv.innerText = __('profile_import_processing', 'Procesando importación...');
+        statusDiv.style.color = 'var(--text-muted)';
+
+        const formData = new FormData(importForm);
+
+        try {
+            const response = await fetch('/api/v1/import', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                statusDiv.innerText = __('profile_import_success', '✓ Importación completada: :imported registros procesados correctamente. Errores: :errors', { imported: data.imported, errors: data.errors || 0 });
+                statusDiv.style.color = 'var(--secondary)';
+                document.getElementById('import-file').value = '';
+            } else {
+                const data = await response.json();
+                statusDiv.innerText = __('profile_import_error', 'Error al importar: :error', { error: data.error || 'Intenta de nuevo.' });
+                statusDiv.style.color = 'var(--error)';
+            }
+        } catch (err) {
+            statusDiv.innerText = __('profile_network_error', 'Error al conectar al servidor.');
+            statusDiv.style.color = 'var(--error)';
+        }
+    });
+}
+
+// Re-enviar follows pendientes
+async function resendPendingFollows() {
+    const btn = document.getElementById('resend-pending-btn');
+    const statusMsg = document.getElementById('resend-status-msg');
+    
+    btn.disabled = true;
+    btn.innerText = __('profile_resend_sending', '⏳ Enviando...');
+    statusMsg.innerText = '';
+    statusMsg.style.color = 'var(--text-muted)';
+    
+    try {
+        const response = await fetch('/api/v1/follows/resend_pending', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            statusMsg.innerText = __('profile_resend_success', '✓ :resent solicitudes re-enviadas de :total pendientes.', { resent: data.resent, total: data.total_pending });
+            statusMsg.style.color = 'var(--secondary)';
+        } else {
+            const data = await response.json();
+            statusMsg.innerText = 'Error: ' + (data.error || 'Intenta de nuevo.');
+            statusMsg.style.color = 'var(--error)';
+        }
+    } catch (err) {
+        statusMsg.innerText = __('profile_network_error', 'Error al conectar al servidor.');
+        statusMsg.style.color = 'var(--error)';
+    }
+    
+    btn.disabled = false;
+    btn.innerText = __('profile_resend_btn', '🔄 Re-enviar Follows Pendientes');
+}
+
+// Procesar cola de fondo bajo demanda
+async function processQueueNow() {
+    const btn = document.getElementById('process-queue-btn');
+    const msg = document.getElementById('queue-status-msg');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerText = '⏳ ' + __('profile_queue_processing', 'Procesando tareas pendientes...');
+    }
+    if (msg) {
+        msg.innerText = __('profile_queue_processing', 'Procesando tareas pendientes...');
+        msg.style.color = 'var(--text-muted)';
+    }
+    try {
+        const res = await fetch('/api/v1/queue/process', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (msg) {
+            msg.innerText = data.message ? `✓ ${data.message}` : __('profile_queue_success', '✓ Procesadas :count tareas.', { count: data.processed_count || 0 });
+            msg.style.color = 'var(--secondary)';
+        }
+    } catch (e) {
+        if (msg) {
+            msg.innerText = __('profile_queue_error', 'Error al ejecutar tareas de la cola: :error', { error: e.message });
+            msg.style.color = 'var(--error)';
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = __('profile_queue_btn', '⚡ Procesar Tareas Pendientes Ahora');
+        }
+    }
+}
+
+async function loadUsersList(type, accountId) {
+    if (!accountId) {
+        accountId = (typeof activeProfileViewId !== 'undefined' && activeProfileViewId)
+            || (typeof lastLoadedProfile !== 'undefined' && lastLoadedProfile?.id)
+            || window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID
+            || document.getElementById('tab-profile-view')?.dataset?.accountId
+            || currentProfileData?.id;
+    }
+    if (!accountId) {
+        console.warn('loadUsersList: No se pudo determinar el ID de la cuenta.');
+        return;
+    }
+    
+    if (document.getElementById('tab-users-list')) {
+        showTab('users-list');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    
+    const titleEl = document.getElementById('users-list-title');
+    if (titleEl) {
+        titleEl.innerText = type === 'followers' ? 'Seguidores' : 'Siguiendo';
+    }
+    
+    const container = document.getElementById('users-list-container');
+    if (container) {
+        container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando usuarios...</div>';
+    }
+    
+    try {
+        const endpoint = type === 'followers' 
+            ? `/api/v1/accounts/${accountId}/followers?limit=80` 
+            : `/api/v1/accounts/${accountId}/following?limit=80`;
+            
+        const res = await fetch(endpoint, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) throw new Error("Error en la solicitud.");
+        const users = await res.json();
+        
+        container.innerHTML = '';
+        if (users.length === 0) {
+            container.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted);">No hay usuarios en esta lista.</div>`;
+            return;
+        }
+
+        // Obtener relaciones en batch
+        const myId = currentProfileData?.id;
+        let relationshipsMap = {};
+        if (myId) {
+            const ids = users.map(u => u.id).filter(id => String(id) !== String(myId));
+            if (ids.length > 0) {
+                const idsParam = ids.map(id => `id[]=${id}`).join('&');
+                try {
+                    const relRes = await fetch(`/api/v1/accounts/relationships?${idsParam}`, {
+                        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+                    });
+                    if (relRes.ok) {
+                        const rels = await relRes.json();
+                        rels.forEach(r => { relationshipsMap[r.id] = r; });
+                    }
+                } catch (e) { /* silenciar error de relaciones */ }
+            }
+        }
+        
+        users.forEach(user => {
+            const item = document.createElement('div');
+            item.className = 'user-list-item';
+            
+            const rawAvatar = user.avatar || '/assets/default-avatar.png';
+            const avatarSrc = typeof proxyUrl === 'function' ? proxyUrl(rawAvatar) : rawAvatar;
+            const isMe = myId && String(user.id) === String(myId);
+            const rel = relationshipsMap[user.id];
+            const following = rel?.following || false;
+            const followedBy = rel?.followed_by || false;
+            const requested = rel?.requested || false;
+            const isMutual = following && followedBy;
+
+            // Badge de relación
+            let badgeHTML = '';
+            if (!isMe && rel) {
+                if (isMutual) {
+                    badgeHTML = `<span class="user-list-badge-mutual" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-weight:600; white-space:nowrap;">🤝 Mutuo</span>`;
+                } else if (followedBy) {
+                    badgeHTML = `<span class="user-list-badge-follows" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(255,255,255,0.06); border:1px solid var(--border-color); color:var(--text-muted); font-weight:500; white-space:nowrap;">Te sigue</span>`;
+                }
+            }
+
+            // Bio / resumen
+            let bioHTML = '';
+            if (user.note) {
+                const tmp = document.createElement('div');
+                tmp.innerHTML = user.note;
+                const plainBio = (tmp.textContent || tmp.innerText || '').trim();
+                if (plainBio) {
+                    bioHTML = `<div class="user-list-bio">${escapeHTML(plainBio)}</div>`;
+                }
+            }
+
+            // Estadísticas (seguidores y publicaciones)
+            let statsHTML = '';
+            const fCount = user.followers_count !== undefined && user.followers_count !== null ? (typeof formatStatNumber === 'function' ? formatStatNumber(user.followers_count) : user.followers_count) : null;
+            const sCount = user.statuses_count !== undefined && user.statuses_count !== null ? (typeof formatStatNumber === 'function' ? formatStatNumber(user.statuses_count) : user.statuses_count) : null;
+            if (fCount !== null || sCount !== null) {
+                statsHTML = `<div class="user-list-stats">
+                    ${fCount !== null ? `<span><strong>${fCount}</strong> seguidores</span>` : ''}
+                    ${sCount !== null ? `<span><strong>${sCount}</strong> publicaciones</span>` : ''}
+                </div>`;
+            }
+
+            // Botón de acción
+            let actionHTML = '';
+            if (!isMe) {
+                const btnId = `user-list-follow-btn-${user.id}`;
+                if (following) {
+                    actionHTML = `<button type="button" id="${btnId}" onclick="handleUserListFollow('${user.id}', this, false)" class="user-list-action-btn btn-following" onmouseover="this.innerText='Dejar de seguir'" onmouseout="this.innerText='Siguiendo'">Siguiendo</button>`;
+                } else if (requested) {
+                    actionHTML = `<button type="button" id="${btnId}" disabled class="user-list-action-btn btn-pending">Pendiente</button>`;
+                } else {
+                    actionHTML = `<button type="button" id="${btnId}" onclick="handleUserListFollow('${user.id}', this, true)" class="user-list-action-btn btn-follow">Seguir</button>`;
+                }
+            }
+            
+            const displayName = user.display_name || user.username || 'Usuario';
+            
+            item.innerHTML = `
+                <img src="${avatarSrc}" 
+                     class="user-list-avatar" 
+                     alt="${escapeHTML(displayName)}" 
+                     title="@${escapeHTML(user.acct)} - ${escapeHTML(displayName)}" 
+                     onclick="viewProfile('${user.id}')">
+                <div class="user-list-info">
+                    <div class="user-list-name-row">
+                        <span class="user-list-name" onclick="viewProfile('${user.id}')" title="${escapeHTML(displayName)}">
+                            ${escapeHTML(displayName)}
+                        </span>
+                        ${badgeHTML}
+                    </div>
+                    <div class="user-list-handle" onclick="viewProfile('${user.id}')">
+                        @${escapeHTML(user.acct)}
+                    </div>
+                    ${bioHTML}
+                    ${statsHTML}
+                </div>
+                ${actionHTML ? `<div class="user-list-actions">${actionHTML}</div>` : ''}
+            `;
+            container.appendChild(item);
+        });
+    } catch (err) {
+        container.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar la lista: ${err.message}</div>`;
+    }
+}
+
+async function handleUserListFollow(accountId, btn, doFollow) {
+    btn.disabled = true;
+    const originalText = btn.innerText;
+    btn.innerText = doFollow ? 'Siguiendo...' : 'Dejando...';
+    
+    try {
+        const endpoint = doFollow 
+            ? `/api/v1/accounts/${accountId}/follow`
+            : `/api/v1/accounts/${accountId}/unfollow`;
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+            const data = await res.json();
+            const isNowFollowing = !!data.following;
+            const isRequested = !!data.requested;
+            
+            if (isNowFollowing) {
+                btn.innerText = 'Siguiendo';
+                btn.className = 'user-list-action-btn btn-following';
+                btn.onmouseover = () => { btn.innerText = 'Dejar de seguir'; };
+                btn.onmouseout = () => { btn.innerText = 'Siguiendo'; };
+                btn.onclick = () => handleUserListFollow(accountId, btn, false);
+            } else if (isRequested) {
+                btn.innerText = 'Pendiente';
+                btn.className = 'user-list-action-btn btn-pending';
+                btn.onmouseover = null;
+                btn.onmouseout = null;
+                btn.onclick = null;
+            } else {
+                btn.innerText = 'Seguir';
+                btn.className = 'user-list-action-btn btn-follow';
+                btn.onmouseover = null;
+                btn.onmouseout = null;
+                btn.onclick = () => handleUserListFollow(accountId, btn, true);
+            }
+
+            // Actualizar badge de mutualidad
+            const item = btn.closest('.user-list-item');
+            if (item) {
+                const nameRow = item.querySelector('.user-list-name-row');
+                if (nameRow) {
+                    const existingBadge = nameRow.querySelector('.user-list-badge-mutual, .user-list-badge-follows');
+                    const followedBy = !!data.followed_by;
+                    const isMutual = isNowFollowing && followedBy;
+                    
+                    if (existingBadge) existingBadge.remove();
+                    
+                    if (isMutual) {
+                        nameRow.insertAdjacentHTML('beforeend', `<span class="user-list-badge-mutual" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.3); color:#34d399; font-weight:600; white-space:nowrap;">🤝 Mutuo</span>`);
+                    } else if (followedBy) {
+                        nameRow.insertAdjacentHTML('beforeend', `<span class="user-list-badge-follows" style="display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:20px; background:rgba(255,255,255,0.06); border:1px solid var(--border-color); color:var(--text-muted); font-weight:500; white-space:nowrap;">Te sigue</span>`);
+                    }
+                }
+            }
+        } else {
+            btn.innerText = originalText;
+        }
+    } catch (e) {
+        btn.innerText = originalText;
+    }
+    btn.disabled = false;
+}
+
+function goBackFromUsersList() {
+    showTab('profile-view');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function viewProfileByUrl(profileUrl) {
+    try {
+        const res = await fetch(`/api/v1/search?q=${encodeURIComponent(profileUrl)}&resolve=true`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (data.accounts && data.accounts.length > 0) {
+                viewProfile(data.accounts[0].id);
+            } else {
+                window.open(profileUrl, '_blank');
+            }
+        } else {
+            window.open(profileUrl, '_blank');
+        }
+    } catch (e) {
+        window.open(profileUrl, '_blank');
+    }
+}
+
+// ---------------------------
+// VISTA DE PERFIL Y SEGUIMIENTOS
+// ---------------------------
+function renderProfileData(account) {
+    if (!account) return;
+    activeProfileViewId = account.id;
+    lastLoadedProfile = account;
+    const tabProf = document.getElementById('tab-profile-view');
+    if (tabProf) tabProf.dataset.accountId = account.id;
+
+    document.getElementById('profile-view-display-name').innerText = account.display_name || account.username;
+    document.getElementById('profile-view-handle').innerText = `@${account.acct}`;
+    document.getElementById('profile-view-followers-count').innerText = formatStatNumber(account.followers_count);
+    document.getElementById('profile-view-following-count').innerText = formatStatNumber(account.following_count);
+    document.getElementById('profile-view-posts-count').innerText = formatStatNumber(account.statuses_count);
+    
+    const joinedYear = new Date(account.created_at).getFullYear();
+    document.getElementById('profile-view-joined').innerText = isNaN(joinedYear) ? '-' : joinedYear;
+
+    const headerUrl = proxyUrl(account.header || "/assets/default-header.png");
+    const avatarUrl = proxyUrl(account.avatar || "/assets/default-avatar.png");
+    
+    const headerBg = document.getElementById('profile-view-header-bg');
+    if (headerBg) {
+        const newBg = `url("${headerUrl}")`;
+        const currentBg = headerBg.style.backgroundImage || '';
+        if (currentBg !== newBg && currentBg.replace(/'/g, '"') !== newBg) {
+            headerBg.style.backgroundImage = newBg;
+        }
+    }
+
+    const avatarImg = document.getElementById('profile-view-avatar');
+    if (avatarImg && avatarImg.getAttribute('src') !== avatarUrl) {
+        avatarImg.src = avatarUrl;
+    }
+
+    const bioContainer = document.getElementById('profile-view-bio');
+    if (bioContainer) {
+        bioContainer.innerHTML = sanitizeHTML(account.note) || '<p style="color:var(--text-muted)">Sin biografía.</p>';
+    }
+
+    const fieldsGrid = document.getElementById('profile-view-fields');
+    if (fieldsGrid) {
+        fieldsGrid.innerHTML = '';
+        const fields = account.fields || [];
+        fields.forEach(f => {
+            const card = document.createElement('div');
+            card.className = 'profile-field-card';
+            if (f.verified_at) {
+                card.classList.add('verified');
+            }
+
+            let valHTML = sanitizeHTML(f.value || '');
+            if (valHTML.includes('<a ')) {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = valHTML;
+                const links = tempDiv.querySelectorAll('a');
+                links.forEach(a => {
+                    const href = a.getAttribute('href');
+                    const cleanText = a.textContent || href.replace(/^https?:\/\/(www\.)?/, '');
+                    const newLink = document.createElement('a');
+                    newLink.setAttribute('href', href);
+                    newLink.setAttribute('target', '_blank');
+                    newLink.setAttribute('rel', 'me nofollow noopener noreferrer');
+                    newLink.textContent = cleanText;
+                    a.parentNode.replaceChild(newLink, a);
+                });
+                valHTML = tempDiv.innerHTML;
+            } else if (valHTML.startsWith('http://') || valHTML.startsWith('https://')) {
+                const label = valHTML.replace(/^https?:\/\/(www\.)?/, '');
+                valHTML = `<a href="${valHTML}" rel="me nofollow noopener noreferrer" target="_blank">${label}</a>`;
+            }
+
+            const verifiedBadge = f.verified_at ? `<span class="verified-badge">✓</span>` : '';
+            card.innerHTML = `
+                <span class="field-label" title="${f.name}">${f.name}</span>
+                <span class="field-value">${valHTML} ${verifiedBadge}</span>
+            `;
+            fieldsGrid.appendChild(card);
+        });
+    }
+}
+
+async function viewProfile(accountId, fromHashChange = false) {
+    if (!accountId) return;
+    if (!document.getElementById('tab-profile-view')) {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        const targetHandle = (window.KUTSOCIAL_OWNER && String(window.KUTSOCIAL_OWNER.id) === String(accountId) && window.KUTSOCIAL_OWNER.username)
+            ? window.KUTSOCIAL_OWNER.username
+            : ('id-' + accountId);
+        window.location.href = base + '/@' + targetHandle;
+        return;
+    }
+    if (fromHashChange && activeProfileViewId === accountId && document.getElementById('tab-profile-view').style.display === 'block') {
+        return;
+    }
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    const tempPath = base + '/@id-' + accountId;
+    if (window.location.pathname !== tempPath && !fromHashChange) {
+        history.pushState(null, '', tempPath);
+    }
+    
+    let activeTab = 'feed';
+    const tabFeed = document.getElementById('tab-feed');
+    const tabThread = document.getElementById('tab-thread-view');
+    if (tabFeed && tabFeed.style.display !== 'none') {
+        activeTab = 'feed';
+    } else if (tabThread && tabThread.style.display !== 'none') {
+        activeTab = 'thread-view';
+    }
+    previousTab = activeTab;
+
+    activeProfileViewId = accountId;
+    activeProfileSubtab = 'activity';
+    
+    const actSubtab = document.getElementById('profile-subtab-activity');
+    if (actSubtab) actSubtab.classList.add('active');
+    const medSubtab = document.getElementById('profile-subtab-media');
+    if (medSubtab) medSubtab.classList.remove('active');
+    const favSubtab = document.getElementById('profile-subtab-favourites');
+    if (favSubtab) {
+        favSubtab.classList.remove('active');
+        favSubtab.style.display = 'none';
+    }
+    
+    showTab('profile-view', fromHashChange);
+
+    // Intentar renderizar datos desde caché de inmediato
+    let cachedAccount = null;
+    if (currentProfileData && String(accountId) === String(currentProfileData.id)) {
+        cachedAccount = currentProfileData;
+    } else if (profilesCache[accountId]) {
+        cachedAccount = profilesCache[accountId];
+    }
+
+    if (cachedAccount) {
+        renderProfileData(cachedAccount);
+    } else {
+        document.getElementById('profile-view-display-name').innerText = 'Cargando...';
+        document.getElementById('profile-view-handle').innerText = '@...';
+        document.getElementById('profile-view-followers-count').innerText = '-';
+        document.getElementById('profile-view-following-count').innerText = '-';
+        document.getElementById('profile-view-posts-count').innerText = '-';
+        document.getElementById('profile-view-joined').innerText = '-';
+        document.getElementById('profile-view-bio').innerHTML = '';
+        document.getElementById('profile-view-fields').innerHTML = '';
+        document.getElementById('profile-view-role-container').style.display = 'none';
+        document.getElementById('profile-view-badge').innerText = '';
+        document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+        document.getElementById('profile-view-mutual-badge').style.display = 'none';
+        document.getElementById('profile-view-remove-follower-btn').style.display = 'none';
+        
+        // Reiniciar imágenes para evitar mostrar el perfil anterior mientras carga
+        const defaultAvatar = "/assets/default-avatar.png";
+        const defaultHeader = "/assets/default-header.png";
+        
+        const avatarImg = document.getElementById('profile-view-avatar');
+        if (avatarImg && avatarImg.getAttribute('src') !== defaultAvatar) {
+            avatarImg.src = defaultAvatar;
+        }
+        const headerBg = document.getElementById('profile-view-header-bg');
+        if (headerBg) {
+            headerBg.style.backgroundImage = `url("${defaultHeader}")`;
+        }
+    }
+
+    const optionsBtn = document.getElementById('profile-view-options-btn');
+    if (optionsBtn) optionsBtn.style.display = 'none';
+    const dropdown = document.getElementById('profile-options-dropdown');
+    if (dropdown) dropdown.style.display = 'none';
+    document.getElementById('profile-feed').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Cargando toots...</div>';
+
+    try {
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(`/api/v1/accounts/${accountId}`, {
+            headers: headers
+        });
+        if (!res.ok) throw new Error("Error cargando perfil");
+        const account = await res.json();
+        lastLoadedProfile = account;
+        profilesCache[account.id] = account;
+
+        // Actualizar la URL de la barra del navegador con el handle real @username o @username@domain
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        const handlePath = base + (account.domain ? `/@${account.username}@${account.domain}` : `/@${account.username}`);
+        if (window.location.pathname !== handlePath && !fromHashChange) {
+            history.replaceState(null, '', handlePath);
+        }
+
+        renderProfileData(account);
+
+        const actionBtn = document.getElementById('profile-view-action-btn');
+        if (!token) {
+            actionBtn.innerText = 'Seguir';
+            actionBtn.style.background = 'var(--primary)';
+            actionBtn.onclick = () => showLoginModal();
+            document.getElementById('profile-view-manage-lists-btn').style.display = 'none';
+        } else if (currentProfileData && String(account.id) === String(currentProfileData.id)) {
+            actionBtn.innerText = 'Editar perfil';
+            actionBtn.style.background = 'rgba(255,255,255,0.06)';
+            actionBtn.onclick = () => openEditProfileModal();
+            document.getElementById('profile-view-manage-lists-btn').style.display = 'none';
+            
+            const favSubtab = document.getElementById('profile-subtab-favourites');
+            if (favSubtab) favSubtab.style.display = 'inline-block';
+            
+            document.getElementById('profile-view-badge').innerHTML = '⚙️';
+            document.getElementById('profile-view-role-text').innerText = 'Owner (' + window.location.hostname + ')';
+            document.getElementById('profile-view-role-container').style.display = 'inline-flex';
+        } else {
+            actionBtn.innerText = 'Consultando...';
+            actionBtn.style.background = 'var(--primary)';
+            actionBtn.onclick = null;
+            document.getElementById('profile-view-manage-lists-btn').style.display = 'inline-block';
+
+            const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${account.id}`, {
+                headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' }
+            });
+            if (relRes.ok) {
+                const rels = await relRes.json();
+                const rel = rels[0];
+                if (rel) {
+                    const followsYou = !!rel.followed_by;
+                    const following = !!rel.following;
+                    
+                    if (followsYou && following) {
+                        document.getElementById('profile-view-mutual-badge').style.display = 'inline-flex';
+                        document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+                    } else if (followsYou) {
+                        document.getElementById('profile-view-follows-you-badge').style.display = 'inline-block';
+                        document.getElementById('profile-view-mutual-badge').style.display = 'none';
+                    } else {
+                        document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+                        document.getElementById('profile-view-mutual-badge').style.display = 'none';
+                    }
+
+                    const removeFollowerBtn = document.getElementById('profile-view-remove-follower-btn');
+                    if (followsYou) {
+                        removeFollowerBtn.style.display = 'inline-block';
+                        removeFollowerBtn.onclick = () => handleRemoveFollower(account.id, removeFollowerBtn);
+                    } else {
+                        removeFollowerBtn.style.display = 'none';
+                    }
+
+                    if (following) {
+                        actionBtn.innerText = 'Dejar de seguir';
+                        actionBtn.style.background = 'rgba(255,255,255,0.06)';
+                        actionBtn.onclick = () => handleUnfollow(account.id, actionBtn);
+                    } else {
+                        actionBtn.innerText = 'Seguir';
+                        actionBtn.style.background = 'var(--primary)';
+                        actionBtn.onclick = () => handleFollow(account.id, actionBtn);
+                    }
+
+                    currentProfileRelationship = rel;
+                    updateProfileModerationMenu(account);
+                }
+            }
+        }
+
+        // Mostrar opciones de bloquear/silenciar/reportar si no es mi propio perfil
+        if (token && currentProfileData && String(account.id) !== String(currentProfileData.id)) {
+            if (optionsBtn) optionsBtn.style.display = 'inline-block';
+        }
+
+        await loadProfileStatuses(accountId);
+    } catch (err) {
+        console.error(err);
+        document.getElementById('profile-feed').innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar el perfil.</div>';
+    }
+}
+
+async function handleFollow(accountId, btn) {
+    try {
+        btn.innerText = 'Siguiendo...';
+        const res = await fetch(`/api/v1/accounts/${accountId}/follow`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            btn.innerText = 'Dejar de seguir';
+            btn.style.background = 'rgba(255,255,255,0.06)';
+            btn.onclick = () => handleUnfollow(accountId, btn);
+            const countSpan = document.getElementById('profile-view-followers-count');
+            countSpan.innerText = parseInt(countSpan.innerText || 0) + 1;
+        } else {
+            btn.innerText = 'Seguir';
+        }
+    } catch (e) {
+        btn.innerText = 'Seguir';
+    }
+}
+
+async function handleUnfollow(accountId, btn) {
+    try {
+        btn.innerText = 'Dejando...';
+        const res = await fetch(`/api/v1/accounts/${accountId}/unfollow`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            btn.innerText = 'Seguir';
+            btn.style.background = 'var(--primary)';
+            btn.onclick = () => handleFollow(accountId, btn);
+            const countSpan = document.getElementById('profile-view-followers-count');
+            countSpan.innerText = Math.max(0, parseInt(countSpan.innerText || 0) - 1);
+        } else {
+            btn.innerText = 'Dejar de seguir';
+        }
+    } catch (e) {
+        btn.innerText = 'Dejar de seguir';
+    }
+}
+
+async function handleRemoveFollower(accountId, btn) {
+    if (!confirm('¿Estás seguro de que deseas eliminar a este usuario de tus seguidores?')) return;
+    btn.disabled = true;
+    btn.innerText = 'Eliminando...';
+    try {
+        const res = await fetch(`/api/v1/accounts/${accountId}/remove_from_followers`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            btn.style.display = 'none';
+            document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+            document.getElementById('profile-view-mutual-badge').style.display = 'none';
+            viewProfile(accountId);
+        } else {
+            alert('Error al eliminar seguidor.');
+            btn.disabled = false;
+            btn.innerText = 'Eliminar seguidor';
+        }
+    } catch (err) {
+        alert('Error al conectar con el servidor.');
+        btn.disabled = false;
+        btn.innerText = 'Eliminar seguidor';
+    }
+}
+
+function toggleProfileOptionsMenu(event) {
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('profile-options-dropdown');
+    if (!dropdown) return;
+    const isHidden = (dropdown.style.display === 'none');
+    dropdown.style.display = isHidden ? 'block' : 'none';
+}
+
+// Add global listener to close profile options dropdown when clicking outside
+document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('profile-options-dropdown');
+    const optionsBtn = document.getElementById('profile-view-options-btn');
+    if (dropdown && dropdown.style.display === 'block') {
+        if (optionsBtn && e.target !== optionsBtn && !optionsBtn.contains(e.target) && e.target !== dropdown && !dropdown.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    }
+});
+
+function updateProfileModerationMenu(account) {
+    const optionsBtn = document.getElementById('profile-view-options-btn');
+    const dropdown = document.getElementById('profile-options-dropdown');
+    
+    if (dropdown) dropdown.style.display = 'none';
+
+    if (!token || !currentProfileRelationship || !currentProfileData || String(account.id) === String(currentProfileData.id)) {
+        if (optionsBtn) optionsBtn.style.display = 'none';
+        return;
+    }
+    
+    if (optionsBtn) optionsBtn.style.display = 'inline-flex';
+    
+    const isMuted = currentProfileRelationship.muting;
+    const isBlocked = currentProfileRelationship.blocking;
+    const isDomainBlocked = currentProfileRelationship.domain_blocking;
+    
+    const muteText = document.getElementById('profile-mute-text');
+    const muteIcon = document.getElementById('profile-mute-icon');
+    if (muteText && muteIcon) {
+        muteText.innerText = isMuted ? 'Desactivar silencio' : 'Silenciar usuario';
+        muteIcon.innerText = isMuted ? 'volume_up' : 'volume_off';
+    }
+    
+    const blockText = document.getElementById('profile-block-text');
+    const blockIcon = document.getElementById('profile-block-icon');
+    if (blockText && blockIcon) {
+        blockText.innerText = isBlocked ? 'Desbloquear usuario' : 'Bloquear usuario';
+        blockIcon.innerText = isBlocked ? 'do_not_disturb_off' : 'block';
+    }
+    
+    const domainBtn = document.getElementById('profile-domain-block-btn');
+    if (domainBtn) {
+        const domain = account.domain;
+        if (domain) {
+            domainBtn.style.display = 'flex';
+            const domainText = document.getElementById('profile-domain-block-text');
+            domainText.innerText = isDomainBlocked ? `Desbloquear dominio (${domain})` : `Bloquear dominio (${domain})`;
+            const domainIcon = domainBtn.querySelector('.material-icons-outlined');
+            if (domainIcon) {
+                domainIcon.innerText = isDomainBlocked ? 'public' : 'public_off';
+            }
+        } else {
+            domainBtn.style.display = 'none';
+        }
+    }
+
+    const exclusiveBtn = document.getElementById('profile-exclusive-replies-btn');
+    if (exclusiveBtn) {
+        if (currentProfileRelationship.following) {
+            exclusiveBtn.style.display = 'flex';
+            const isExclusive = !!currentProfileRelationship.only_replies_to_me;
+            const exclText = document.getElementById('profile-exclusive-replies-text');
+            const exclIcon = document.getElementById('profile-exclusive-replies-icon');
+            if (exclText) exclText.innerText = isExclusive ? __('toot_show_all_replies', 'Mostrar todas las respuestas') : __('toot_only_replies_to_me', 'Solo respuestas cuando me responda a mí');
+            if (exclIcon) exclIcon.innerText = isExclusive ? 'chat' : 'filter_alt';
+        } else {
+            exclusiveBtn.style.display = 'none';
+        }
+    }
+}
+
+async function handleProfileToggleExclusiveReplies() {
+    if (!currentProfileRelationship || !activeProfileViewId) return;
+    try {
+        const res = await fetch(`/api/v1/accounts/${activeProfileViewId}/exclusive_replies`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            currentProfileRelationship = data;
+            const nowExclusive = !!data.only_replies_to_me;
+            const handle = currentProfileData?.acct || currentProfileData?.username || '';
+
+            if (nowExclusive) {
+                const myUsername = (window.KUTSOCIAL_CURRENT_USER && window.KUTSOCIAL_CURRENT_USER.username) || 
+                                   (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username) || '';
+                const targetId = String(activeProfileViewId);
+                const targetUser = (currentProfileData?.username || '').toLowerCase();
+                const cards = document.querySelectorAll('.toot-card');
+                cards.forEach(c => {
+                    const cToot = c._toot;
+                    if (cToot && cToot.account) {
+                        const cId = String(cToot.account.id);
+                        const cUser = (cToot.account.username || '').toLowerCase();
+                        if (cId === targetId || cUser === targetUser) {
+                            const content = cToot.content || '';
+                            const isForMe = myUsername && (
+                                content.toLowerCase().includes('@' + myUsername.toLowerCase()) || 
+                                content.toLowerCase().includes('/users/' + myUsername.toLowerCase())
+                            );
+                            if (!isForMe) {
+                                c.remove();
+                            }
+                        }
+                    }
+                });
+            }
+
+            alert(nowExclusive ? 
+                __('toot_exclusive_replies_enabled', `Ahora solo verás respuestas de @${handle} cuando te responda a ti.`, {acct: handle}) : 
+                __('toot_exclusive_replies_disabled', `Se volverán a mostrar todas las respuestas de @${handle}.`, {acct: handle}));
+            updateProfileModerationMenu(currentProfileData);
+            if (typeof reloadCurrentTimeline === 'function') {
+                reloadCurrentTimeline(true);
+            }
+        } else {
+            alert(__('error', 'Error al cambiar la preferencia de respuestas'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert(__('error', 'Error de conexión'));
+    }
+}
+
+async function handleProfileMute() {
+    if (!currentProfileRelationship || !activeProfileViewId) return;
+    const isMuted = currentProfileRelationship.muting;
+    const action = isMuted ? 'unmute' : 'mute';
+    const confirmMsg = isMuted ? 
+        '¿Deseas reactivar el sonido de este usuario?' : 
+        '¿Deseas silenciar a este usuario? No verás sus toots en tus timelines.';
+        
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+        const res = await fetch(`/api/v1/accounts/${activeProfileViewId}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const rel = await res.json();
+            currentProfileRelationship = rel;
+            const handleText = document.getElementById('profile-view-handle').innerText;
+            const parts = handleText.split('@');
+            const domain = parts[2] || null;
+            const account = { id: activeProfileViewId, domain: domain };
+            updateProfileModerationMenu(account);
+            reloadCurrentTimeline();
+            alert(`Usuario ${isMuted ? 'desilenciado' : 'silenciado'} con éxito`);
+        } else {
+            alert("Error al cambiar estado de silencio");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error de red al silenciar/desilenciar");
+    }
+}
+
+async function handleProfileBlock() {
+    if (!currentProfileRelationship || !activeProfileViewId) return;
+    const isBlocked = currentProfileRelationship.blocking;
+    const action = isBlocked ? 'unblock' : 'block';
+    const confirmMsg = isBlocked ? 
+        '¿Deseas desbloquear a este usuario?' : 
+        '¿Deseas bloquear a este usuario? Se romperá el seguimiento mutuo y no verás sus toots.';
+        
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+        const res = await fetch(`/api/v1/accounts/${activeProfileViewId}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const rel = await res.json();
+            currentProfileRelationship = rel;
+            const handleText = document.getElementById('profile-view-handle').innerText;
+            const parts = handleText.split('@');
+            const domain = parts[2] || null;
+            const account = { id: activeProfileViewId, domain: domain };
+            updateProfileModerationMenu(account);
+            
+            // Si bloqueamos, actualizar botones de seguimiento
+            const actionBtn = document.getElementById('profile-view-action-btn');
+            if (actionBtn) {
+                if (rel.blocking) {
+                    actionBtn.innerText = 'Seguir';
+                    actionBtn.style.background = 'var(--primary)';
+                    actionBtn.onclick = () => handleFollow(activeProfileViewId, actionBtn);
+                    document.getElementById('profile-view-follows-you-badge').style.display = 'none';
+                    document.getElementById('profile-view-mutual-badge').style.display = 'none';
+                    document.getElementById('profile-view-remove-follower-btn').style.display = 'none';
+                }
+            }
+            reloadCurrentTimeline();
+            alert(`Usuario ${isBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+        } else {
+            alert("Error al cambiar estado de bloqueo");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error de red al bloquear/desbloquear");
+    }
+}
+
+async function handleProfileDomainBlock() {
+    if (!currentProfileRelationship || !activeProfileViewId) return;
+    const handleText = document.getElementById('profile-view-handle').innerText;
+    const parts = handleText.split('@');
+    const domain = parts[2];
+    if (!domain) return;
+    
+    const isDomainBlocked = currentProfileRelationship.domain_blocking;
+    const confirmMsg = isDomainBlocked ? 
+        `¿Deseas desbloquear el dominio ${domain}?` : 
+        `¿Deseas bloquear completamente el dominio ${domain}? No verás ninguna publicación ni recibirás interacciones de esta instancia.`;
+        
+    if (!confirm(confirmMsg)) return;
+    
+    try {
+        const res = await fetch(`/api/v1/domain_blocks`, {
+            method: isDomainBlocked ? 'DELETE' : 'POST',
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ domain: domain })
+        });
+        if (res.ok) {
+            currentProfileRelationship.domain_blocking = !isDomainBlocked;
+            const account = { id: activeProfileViewId, domain: domain };
+            updateProfileModerationMenu(account);
+            reloadCurrentTimeline();
+            alert(`Dominio ${domain} ${isDomainBlocked ? 'desbloqueado' : 'bloqueado'} con éxito`);
+        } else {
+            alert("Error al cambiar estado de bloqueo de dominio");
+        }
+    } catch (err) {
+        console.error(err);
+        alert("Error de red al bloquear/desbloquear dominio");
+    }
+}
+
+function reloadCurrentTimeline(forceReset = false) {
+    const activeSection = window.KUTSOCIAL_ACTIVE_SECTION || 
+        (document.getElementById('tab-profile-view')?.style.display === 'block' ? 'profile-view' : 
+        (document.getElementById('tab-thread-view')?.style.display === 'block' ? 'thread-view' : 'feed'));
+
+    if (activeSection === 'feed') {
+        if (forceReset) {
+            lastId = 0;
+            oldestId = null;
+            const feed = showFeedContainer(currentTimeline);
+            if (feed) feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">' + __('loading', 'Cargando toots...') + '</div>';
+            isLoadingToots = false;
+        }
+        loadTimeline(false);
+    } else if (activeSection === 'profile-view' && activeProfileViewId) {
+        loadProfileStatuses(activeProfileViewId);
+    } else if (activeSection === 'thread-view' && typeof activeThreadTootId !== 'undefined' && activeThreadTootId) {
+        viewTootThread(activeThreadTootId);
+    }
+}
+
+async function toggleTootOptionsMenu(tootId, btn, event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    if (activeTootOptionsMenu) {
+        const wasCurrent = activeTootOptionsMenu._sourceBtn === btn;
+        activeTootOptionsMenu.remove();
+        activeTootOptionsMenu = null;
+        if (wasCurrent) return;
+    }
+
+    const card = btn.closest('.toot-card');
+    let toot = card ? card._toot : null;
+    if (!toot && typeof activeThreadToots !== 'undefined' && activeThreadToots) {
+        if (activeThreadToots.status && String(activeThreadToots.status.id) === String(tootId)) {
+            toot = activeThreadToots.status;
+        } else if (activeThreadToots.ancestors) {
+            toot = activeThreadToots.ancestors.find(t => String(t.id) === String(tootId));
+        }
+        if (!toot && activeThreadToots.descendants) {
+            toot = activeThreadToots.descendants.find(t => String(t.id) === String(tootId));
+        }
+    }
+    if (!toot || !toot.account) return;
+    const account = toot.account;
+
+    // Create the menu container
+    const rect = btn.getBoundingClientRect();
+    const menu = document.createElement('div');
+    menu.className = 'toot-context-menu';
+    menu._sourceBtn = btn;
+
+    const menuWidth = 240;
+    let left = rect.left;
+    if (left + menuWidth > window.innerWidth - 12) {
+        left = window.innerWidth - menuWidth - 12;
+    }
+    if (left < 12) left = 12;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${rect.bottom + 6}px`;
+
+    // Prevent clicks inside the menu container from triggering outside close
+    menu.addEventListener('click', (e) => {
+        e.stopPropagation();
+    });
+
+    // Make visible in DOM immediately!
+    activeTootOptionsMenu = menu;
+    document.body.appendChild(menu);
+
+    // Opción: Abrir página original
+    const postUrl = toot.url || toot.uri;
+    if (postUrl) {
+        const optOpen = document.createElement('button');
+        optOpen.innerHTML = `<span class="material-icons-outlined">open_in_new</span> <span>${__('toot_open_original', 'Abrir página original')}</span>`;
+        setupMenuBtn(optOpen, () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            window.open(postUrl, '_blank', 'noopener,noreferrer');
+        });
+        menu.appendChild(optOpen);
+
+        // Opción: Copiar enlace
+        const optCopy = document.createElement('button');
+        optCopy.innerHTML = `<span class="material-icons-outlined">content_copy</span> <span>${__('toot_copy_link', 'Copiar enlace')}</span>`;
+        setupMenuBtn(optCopy, () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(postUrl).then(() => {
+                    alert(__('copied_to_clipboard', 'Enlace copiado al portapapeles'));
+                }).catch(() => {
+                    prompt(__('toot_copy_link', 'Copia el enlace manualmente:') + ' ', postUrl);
+                });
+            } else {
+                prompt(__('toot_copy_link', 'Copia el enlace manualmente:') + ' ', postUrl);
+            }
+        });
+        menu.appendChild(optCopy);
+    }
+
+    // Opción: Ver perfil
+    const optProfile = document.createElement('button');
+    optProfile.innerHTML = `<span class="material-icons-outlined">person</span> <span>${__('nav_profile', 'Ver perfil')}</span>`;
+    setupMenuBtn(optProfile, () => {
+        menu.remove();
+        activeTootOptionsMenu = null;
+        viewProfile(account.id);
+    });
+    menu.appendChild(optProfile);
+
+    if (token) {
+        // Separador para moderación / relaciones
+        const separator = document.createElement('div');
+        separator.style = 'height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;';
+        menu.appendChild(separator);
+
+        const relLoading = document.createElement('div');
+        relLoading.style = 'padding: 6px 14px; font-size: 12px; color: var(--text-muted);';
+        relLoading.innerText = 'Cargando opciones...';
+        menu.appendChild(relLoading);
+
+        try {
+            const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${encodeURIComponent(account.id)}`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (relLoading.parentNode) {
+                relLoading.remove();
+            }
+            if (activeTootOptionsMenu !== menu) return;
+
+            let rel = { muting: false, blocking: false, domain_blocking: false };
+            if (relRes.ok) {
+                const rels = await relRes.json();
+                if (rels && rels[0]) rel = rels[0];
+            }
+            renderTootModerationItems(menu, account, toot, rel, btn, rect);
+        } catch (err) {
+            console.error(err);
+            if (relLoading.parentNode) {
+                relLoading.remove();
+            }
+            if (activeTootOptionsMenu !== menu) return;
+            renderTootModerationItems(menu, account, toot, { muting: false, blocking: false, domain_blocking: false }, btn, rect);
+        }
+    }
+
+    // Adjust position if overflowing viewport bottom
+    adjustMenuPosition(menu, rect);
+
+    setTimeout(() => {
+        const closeMenu = (e) => {
+            if (activeTootOptionsMenu) {
+                if (!activeTootOptionsMenu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+                    activeTootOptionsMenu.remove();
+                    activeTootOptionsMenu = null;
+                    document.removeEventListener('click', closeMenu);
+                }
+            } else {
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        document.addEventListener('click', closeMenu);
+    }, 50);
+}
+
+function adjustMenuPosition(menu, rect) {
+    if (!menu) return;
+    const menuRect = menu.getBoundingClientRect();
+    if (menuRect.bottom > window.innerHeight - 10) {
+        const topAbove = rect.top - menuRect.height - 6;
+        if (topAbove >= 10) {
+            menu.style.top = `${topAbove}px`;
+        } else {
+            menu.style.top = `${Math.max(10, window.innerHeight - menuRect.height - 10)}px`;
+        }
+    }
+}
+
+function renderTootModerationItems(menu, account, toot, rel, btn, rect) {
+    const isMuted = !!rel.muting;
+    const isBlocked = !!rel.blocking;
+    const acctHandle = account.acct || account.username || '';
+
+    // Opción Silenciar
+    const optMute = document.createElement('button');
+    const muteLabel = isMuted ? __('toot_unmute_user', 'Desactivar silencio') : (__('toot_mute_user', 'Silenciar a') + ' @' + escapeHTML(acctHandle));
+    optMute.innerHTML = `<span class="material-icons-outlined">${isMuted ? 'volume_up' : 'volume_off'}</span> <span>${muteLabel}</span>`;
+    setupMenuBtn(optMute, async () => {
+        menu.remove();
+        activeTootOptionsMenu = null;
+
+        const confirmMsg = isMuted ? 
+            __('toot_unmute_confirm', `¿Deseas reactivar el sonido de @${acctHandle}?`, {acct: acctHandle}) : 
+            __('toot_mute_confirm', `¿Deseas silenciar a @${acctHandle}? No verás sus publicaciones.`, {acct: acctHandle});
+        if (!confirm(confirmMsg)) return;
+
+        const action = isMuted ? 'unmute' : 'mute';
+        const res = await fetch(`/api/v1/accounts/${account.id}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            alert(isMuted ? __('toot_unmuted_success', 'Usuario desilenciado con éxito') : __('toot_muted_success', 'Usuario silenciado con éxito'));
+            reloadCurrentTimeline();
+        } else {
+            alert(__('error', 'Error'));
+        }
+    });
+    menu.appendChild(optMute);
+
+    // Opción Solo respuestas a mí (si sigues a la cuenta)
+    if (rel.following) {
+        const isExclusive = !!rel.only_replies_to_me;
+        const optExclusive = document.createElement('button');
+        optExclusive.innerHTML = `<span class="material-icons-outlined">${isExclusive ? 'chat' : 'filter_alt'}</span> <span>${isExclusive ? __('toot_show_all_replies', 'Mostrar todas las respuestas') : __('toot_only_replies_to_me', 'Solo respuestas cuando me responda a mí')}</span>`;
+        setupMenuBtn(optExclusive, async () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            try {
+                const res = await fetch(`/api/v1/accounts/${account.id}/exclusive_replies`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const nowExclusive = !!data.only_replies_to_me;
+
+                    if (nowExclusive) {
+                        const myUsername = (window.KUTSOCIAL_CURRENT_USER && window.KUTSOCIAL_CURRENT_USER.username) || 
+                                           (window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username) || '';
+                        const targetAcct = (account.acct || account.username || '').toLowerCase();
+                        const targetUser = (account.username || '').toLowerCase();
+                        const targetId = String(account.id);
+
+                        const cards = document.querySelectorAll('.toot-card');
+                        cards.forEach(c => {
+                            const cToot = c._toot;
+                            if (cToot && cToot.account) {
+                                const cId = String(cToot.account.id);
+                                const cAcct = (cToot.account.acct || cToot.account.username || '').toLowerCase();
+                                const cUser = (cToot.account.username || '').toLowerCase();
+
+                                if (cId === targetId || cAcct === targetAcct || cUser === targetUser) {
+                                    const content = cToot.content || '';
+                                    const isForMe = myUsername && (
+                                        content.toLowerCase().includes('@' + myUsername.toLowerCase()) || 
+                                        content.toLowerCase().includes('/users/' + myUsername.toLowerCase())
+                                    );
+                                    if (!isForMe) {
+                                        c.remove();
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    alert(nowExclusive ? 
+                        __('toot_exclusive_replies_enabled', `Ahora solo verás respuestas de @${acctHandle} cuando te responda a ti.`, {acct: acctHandle}) : 
+                        __('toot_exclusive_replies_disabled', `Se volverán a mostrar todas las respuestas de @${acctHandle}.`, {acct: acctHandle}));
+                    reloadCurrentTimeline(true);
+                } else {
+                    alert(__('error', 'Error al actualizar preferencia de respuestas'));
+                }
+            } catch (e) {
+                console.error(e);
+                alert(__('error', 'Error de conexión'));
+            }
+        });
+        menu.appendChild(optExclusive);
+    }
+
+    // Opción Bloquear
+    const optBlock = document.createElement('button');
+    const blockLabel = isBlocked ? (__('toot_unblock_user', 'Desbloquear a') + ' @' + escapeHTML(acctHandle)) : (__('toot_block_user', 'Bloquear a') + ' @' + escapeHTML(acctHandle));
+    optBlock.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">block</span> <span style="color: var(--error, #ef4444);">${blockLabel}</span>`;
+    setupMenuBtn(optBlock, async () => {
+        menu.remove();
+        activeTootOptionsMenu = null;
+
+        const confirmMsg = isBlocked ? 
+            __('toot_unblock_confirm', `¿Deseas desbloquear a @${acctHandle}?`, {acct: acctHandle}) : 
+            __('toot_block_confirm', `¿Deseas bloquear a @${acctHandle}? Se romperá la relación de seguimiento y no verás sus publicaciones.`, {acct: acctHandle});
+        if (!confirm(confirmMsg)) return;
+
+        const action = isBlocked ? 'unblock' : 'block';
+        const res = await fetch(`/api/v1/accounts/${account.id}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            alert(isBlocked ? __('toot_unblocked_success', 'Usuario desbloqueado con éxito') : __('toot_blocked_success', 'Usuario bloqueado con éxito'));
+            const card = btn ? btn.closest('.toot-card') : null;
+            if (card) {
+                card.style.opacity = '0.3';
+                setTimeout(() => card.remove(), 250);
+            }
+            reloadCurrentTimeline();
+        } else {
+            alert(__('error', 'Error al cambiar estado de bloqueo'));
+        }
+    });
+    menu.appendChild(optBlock);
+
+    // Opción Bloquear Dominio (si es cuenta remota)
+    if (acctHandle.includes('@')) {
+        const domain = acctHandle.split('@')[1];
+        const optDomain = document.createElement('button');
+        const isDomainBlocked = !!rel.domain_blocking;
+        const domLabel = isDomainBlocked ? (__('toot_unblock_domain', 'Desbloquear dominio') + ' ' + escapeHTML(domain)) : (__('toot_block_domain', 'Bloquear dominio') + ' ' + escapeHTML(domain));
+        optDomain.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">public_off</span> <span style="color: var(--error, #ef4444);">${domLabel}</span>`;
+        setupMenuBtn(optDomain, async () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+
+            const confirmMsg = isDomainBlocked ? 
+                __('toot_unblock_domain_confirm', `¿Deseas desbloquear el servidor ${domain}?`, {domain: domain}) : 
+                __('toot_block_domain_confirm', `¿Deseas bloquear todas las publicaciones del servidor ${domain}?`, {domain: domain});
+            if (!confirm(confirmMsg)) return;
+
+            const res = await fetch(`/api/v1/domain_blocks`, {
+                method: isDomainBlocked ? 'DELETE' : 'POST',
+                headers: { 
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ domain: domain })
+            });
+            if (res.ok) {
+                alert(isDomainBlocked ? __('toot_domain_unblocked_success', 'Dominio desbloqueado con éxito') : __('toot_domain_blocked_success', 'Dominio bloqueado con éxito'));
+                reloadCurrentTimeline();
+            } else {
+                alert(__('error', 'Error al cambiar estado de bloqueo de dominio'));
+            }
+        });
+        menu.appendChild(optDomain);
+    }
+
+    // Separador para Reportar
+    const sepReport = document.createElement('div');
+    sepReport.style = 'height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;';
+    menu.appendChild(sepReport);
+
+    // Opción Reportar Usuario / Publicación
+    const optReport = document.createElement('button');
+    optReport.innerHTML = `<span class="material-icons-outlined" style="color: var(--error, #ef4444);">flag</span> <span style="color: var(--error, #ef4444);">${__('toot_report', 'Reportar')} @${escapeHTML(acctHandle)}</span>`;
+    setupMenuBtn(optReport, () => {
+        menu.remove();
+        activeTootOptionsMenu = null;
+        openReportModal(account, toot);
+    });
+    menu.appendChild(optReport);
+
+    // Recalculate position
+    adjustMenuPosition(menu, rect);
+}
+
+function openReportModal(account, toot = null) {
+    const modal = document.getElementById('modal-report-toot');
+    if (!modal) return;
+
+    const accId = account ? (account.id || '') : '';
+    const acctHandle = account ? (account.acct || account.username || '') : '';
+
+    document.getElementById('report-account-id').value = accId;
+    document.getElementById('report-status-id').value = (toot && toot.id) ? toot.id : '';
+    document.getElementById('report-comment').value = '';
+    document.getElementById('report-category').value = 'spam';
+    
+    document.getElementById('report-modal-title').innerText = toot ? 'Reportar publicación' : 'Reportar cuenta';
+    document.getElementById('report-target-handle').innerText = `@${acctHandle}`;
+
+    const previewEl = document.getElementById('report-status-preview');
+    if (toot && (toot.content || toot.spoiler_text)) {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = (toot.spoiler_text ? `<strong>[CW: ${toot.spoiler_text}]</strong> ` : '') + (toot.content || '');
+        const text = tmp.textContent || tmp.innerText || '';
+        previewEl.innerText = text.length > 200 ? text.substring(0, 200) + '...' : text;
+        previewEl.style.display = 'block';
+    } else {
+        previewEl.style.display = 'none';
+        previewEl.innerText = '';
+    }
+
+    const fwdContainer = document.getElementById('report-forward-container');
+    const isRemote = (acctHandle.includes('@')) || !!account.domain;
+    if (isRemote) {
+        const domain = account.domain || acctHandle.split('@')[1];
+        document.getElementById('report-remote-domain').innerText = domain;
+        document.getElementById('report-forward').checked = true;
+        fwdContainer.style.display = 'block';
+    } else {
+        fwdContainer.style.display = 'none';
+        document.getElementById('report-forward').checked = false;
+    }
+
+    modal.style.display = 'flex';
+    setTimeout(() => {
+        const commentInput = document.getElementById('report-comment');
+        if (commentInput) commentInput.focus();
+    }, 100);
+}
+
+function closeReportModal() {
+    const modal = document.getElementById('modal-report-toot');
+    if (modal) modal.style.display = 'none';
+}
+
+async function handleReportSubmit(e) {
+    e.preventDefault();
+    const accountId = document.getElementById('report-account-id').value;
+    const statusId = document.getElementById('report-status-id').value;
+    const category = document.getElementById('report-category').value;
+    const comment = document.getElementById('report-comment').value.trim();
+    const forward = document.getElementById('report-forward').checked;
+
+    if (!comment) {
+        alert('Por favor indica un motivo o comentario para el reporte.');
+        return;
+    }
+
+    const submitBtn = document.getElementById('report-submit-btn');
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'Enviando...';
+
+    try {
+        const payload = {
+            account_id: accountId,
+            category: category,
+            comment: comment,
+            forward: forward
+        };
+        if (statusId) {
+            payload.status_ids = [statusId];
+        }
+
+        const res = await fetch('/api/v1/reports', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        if (res.ok) {
+            closeReportModal();
+            const targetHandle = document.getElementById('report-target-handle').innerText;
+            const alsoBlock = confirm(`Reporte enviado correctamente. Los administradores revisarán este contenido.\n\n¿Deseas también bloquear a ${targetHandle} para no ver más su contenido?`);
+            if (alsoBlock && accountId) {
+                const blockRes = await fetch(`/api/v1/accounts/${accountId}/block`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (blockRes.ok) {
+                    alert(`${targetHandle} ha sido bloqueado con éxito.`);
+                    reloadCurrentTimeline();
+                }
+            }
+        } else {
+            const data = await res.json().catch(() => ({}));
+            alert('Error al enviar el reporte: ' + (data.error || 'Error del servidor'));
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Error de red al enviar el reporte');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Enviar reporte';
+    }
+}
+
+function setupMenuBtn(btn, onClick) {
+    btn.type = 'button';
+    btn.onclick = onClick;
+}
+
+let profileOldestId = null;
+let profileHasMore = true;
+let isLoadingProfileStatuses = false;
+
+async function loadProfileStatuses(accountId, loadMore = false, tab = null) {
+    const targetTab = tab || activeProfileSubtab || 'activity';
+    const feedContainer = document.getElementById('profile-feed');
+    if (!feedContainer) return;
+
+    if (loadMore) {
+        if (!profileHasMore || isLoadingProfileStatuses) return;
+    } else {
+        profileOldestId = null;
+        profileHasMore = true;
+        activeProfileFeedToots = [];
+        feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">' + (typeof __ === 'function' ? __('loading', 'Cargando toots...') : 'Cargando toots...') + '</div>';
+    }
+
+    isLoadingProfileStatuses = true;
+    try {
+        const headers = { 'Accept': 'application/json' };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        let url = `/api/v1/accounts/${accountId}/statuses?limit=30`;
+        if (targetTab === 'media') {
+            url += '&only_media=true';
+        }
+        if (loadMore && profileOldestId) {
+            url += `&max_id=${profileOldestId}`;
+        }
+        const res = await fetch(url, { headers: headers });
+        if (!res.ok) throw new Error("Error al obtener toots");
+        const toots = await res.json();
+
+        if (!loadMore) {
+            feedContainer.innerHTML = '';
+            activeProfileFeedToots = Array.isArray(toots) ? toots : [];
+        } else if (Array.isArray(toots)) {
+            activeProfileFeedToots = activeProfileFeedToots.concat(toots);
+        }
+
+        if (Array.isArray(toots) && toots.length > 0) {
+            profileOldestId = toots[toots.length - 1].id;
+            if (toots.length < 30) {
+                profileHasMore = false;
+            }
+            toots.forEach(toot => {
+                feedContainer.appendChild(createThreadTootElement(toot, false));
+            });
+        } else {
+            profileHasMore = false;
+            if (!loadMore) {
+                const emptyMsg = targetTab === 'media'
+                    ? (typeof __ === 'function' ? __('no_media_toots', 'No hay publicaciones multimedia para mostrar.') : 'No hay publicaciones multimedia para mostrar.')
+                    : (typeof __ === 'function' ? __('no_toots', 'No hay publicaciones para mostrar.') : 'No hay publicaciones para mostrar.');
+                feedContainer.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size:14px;">${emptyMsg}</div>`;
+            }
+        }
+    } catch (err) {
+        console.error(err);
+        if (!loadMore) {
+            feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar toots del perfil.</div>';
+        }
+    } finally {
+        isLoadingProfileStatuses = false;
+    }
+}
+
+function renderProfileFeed() {
+    const feedContainer = document.getElementById('profile-feed');
+    if (!feedContainer) return;
+    feedContainer.innerHTML = '';
+
+    if (activeProfileFeedToots.length === 0) {
+        const emptyMsg = activeProfileSubtab === 'media'
+            ? (typeof __ === 'function' ? __('no_media_toots', 'No hay publicaciones multimedia para mostrar.') : 'No hay publicaciones multimedia para mostrar.')
+            : (typeof __ === 'function' ? __('no_toots', 'No hay publicaciones para mostrar.') : 'No hay publicaciones para mostrar.');
+        feedContainer.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size:14px;">${emptyMsg}</div>`;
+        return;
+    }
+
+    activeProfileFeedToots.forEach(toot => {
+        feedContainer.appendChild(createThreadTootElement(toot, false));
+    });
+}
+
+async function switchProfileSubtab(tabName) {
+    activeProfileSubtab = tabName;
+    
+    document.getElementById('profile-subtab-activity').classList.remove('active');
+    document.getElementById('profile-subtab-media').classList.remove('active');
+    const favSubtab = document.getElementById('profile-subtab-favourites');
+    if (favSubtab) favSubtab.classList.remove('active');
+
+    if (tabName === 'activity') {
+        document.getElementById('profile-subtab-activity').classList.add('active');
+        await loadProfileStatuses(activeProfileViewId, false, 'activity');
+    } else if (tabName === 'media') {
+        document.getElementById('profile-subtab-media').classList.add('active');
+        await loadProfileStatuses(activeProfileViewId, false, 'media');
+    } else if (tabName === 'favourites') {
+        if (favSubtab) favSubtab.classList.add('active');
+        
+        const feedContainer = document.getElementById('profile-feed');
+        feedContainer.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">Cargando favoritos...</div>';
+        try {
+            const res = await fetch('/api/v1/favourites', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const toots = await res.json();
+            feedContainer.innerHTML = '';
+            if (toots.length === 0) {
+                feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size:14px;">No tienes publicaciones favoritas.</div>';
+                return;
+            }
+            toots.forEach(toot => {
+                feedContainer.appendChild(createThreadTootElement(toot, false));
+            });
+        } catch (e) {
+            feedContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar favoritos.</div>';
+        }
+    }
+}
+
+function formatStatNumber(num) {
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    }
+    if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
+    }
+    return num;
+}
+
+// ---------------------------
+// VISTA DE CONVERSACIÓN / HILO
+// ---------------------------
+async function viewTootThread(statusId, fromHashChange = false) {
+    if (!statusId) return;
+    if (!document.getElementById('tab-thread-view')) {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        window.location.href = `${base}/statuses/${statusId}`;
+        return;
+    }
+    
+    activeThreadId = statusId;
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    const threadPath = `${base}/statuses/${statusId}`;
+    if (window.location.pathname !== threadPath && !fromHashChange) {
+        history.pushState(null, '', threadPath);
+    }
+
+    let activeTab = 'feed';
+    const tabFeed = document.getElementById('tab-feed');
+    const tabProfile = document.getElementById('tab-profile-view');
+    if (tabFeed && tabFeed.style.display !== 'none') {
+        activeTab = 'feed';
+    } else if (tabProfile && tabProfile.style.display !== 'none') {
+        activeTab = 'profile-view';
+    }
+    previousTab = activeTab;
+
+    showTab('thread-view', fromHashChange);
+
+    const ancestorsContainer = document.getElementById('thread-ancestors');
+    const mainContainer = document.getElementById('thread-main');
+    const descendantsContainer = document.getElementById('thread-descendants');
+
+    ancestorsContainer.innerHTML = '';
+    mainContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando conversación...</div>';
+    descendantsContainer.innerHTML = '';
+
+    try {
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch(`/api/v1/statuses/${statusId}/context`, {
+            headers: headers
+        });
+        if (!res.ok) throw new Error("Error cargando hilo");
+        const context = await res.json();
+
+        ancestorsContainer.innerHTML = '';
+        if (context.ancestors && context.ancestors.length > 0) {
+            context.ancestors.forEach(toot => {
+                ancestorsContainer.appendChild(createThreadTootElement(toot, false));
+            });
+        }
+
+        mainContainer.innerHTML = '';
+        if (context.status) {
+            mainContainer.appendChild(createThreadTootElement(context.status, true));
+        } else {
+            mainContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar publicación.</div>';
+        }
+
+        descendantsContainer.innerHTML = '';
+        if (context.descendants && context.descendants.length > 0) {
+            context.descendants.forEach(toot => {
+                descendantsContainer.appendChild(createThreadTootElement(toot, false));
+            });
+        } else {
+            descendantsContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted); font-size: 14px;">Fin de la conversación.</div>';
+        }
+    } catch (err) {
+        console.error(err);
+        mainContainer.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar conversación.</div>';
+    }
+}
+
+function goBackToFeed() {
+    if (window.history.length > 1) {
+        window.history.back();
+    } else {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        window.location.href = base + '/local';
+    }
+}
+
+// ---------------------------
+// INTERACCIONES CON TOOTS (FAV, MARCADORES, CW, EDIT, BORRAR)
+// ---------------------------
+async function toggleFavourite(statusId, btn) {
+    if (!token) {
+        showLoginModal();
+        return;
+    }
+    const isFav = btn.classList.contains('active-fav');
+    const action = isFav ? 'unfavourite' : 'favourite';
+    try {
+        const res = await fetch(`/api/v1/statuses/${statusId}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const status = await res.json();
+            const countSpan = btn.querySelector('.fav-count');
+            if (countSpan) {
+                countSpan.innerText = status.favourites_count;
+            }
+            const icon = btn.querySelector('.material-icons, .material-icons-outlined');
+            if (isFav) {
+                btn.classList.remove('active-fav');
+                if (icon) {
+                    icon.textContent = 'star_border';
+                    icon.className = 'material-icons-outlined';
+                }
+            } else {
+                btn.classList.add('active-fav');
+                if (icon) {
+                    icon.textContent = 'star';
+                    icon.className = 'material-icons';
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error al favorito", e);
+    }
+}
+
+async function toggleBookmark(statusId, btn) {
+    if (!token) {
+        showLoginModal();
+        return;
+    }
+    const isBookmarked = btn.classList.contains('active-bookmark');
+    const action = isBookmarked ? 'unbookmark' : 'bookmark';
+    try {
+        const res = await fetch(`/api/v1/statuses/${statusId}/${action}`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const icon = btn.querySelector('.material-icons, .material-icons-outlined');
+            if (isBookmarked) {
+                btn.classList.remove('active-bookmark');
+                if (icon) {
+                    icon.textContent = 'bookmark_border';
+                    icon.className = 'material-icons-outlined';
+                }
+            } else {
+                btn.classList.add('active-bookmark');
+                if (icon) {
+                    icon.textContent = 'bookmark';
+                    icon.className = 'material-icons';
+                }
+            }
+        }
+    } catch (e) {
+        console.error("Error al marcador", e);
+    }
+}
+
+async function deleteToot(statusId, btn) {
+    if (!confirm('¿Estás seguro de que deseas eliminar este toot?')) return;
+    try {
+        const res = await fetch(`/api/v1/statuses/${statusId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const card = btn.closest('.toot-card');
+            if (card) {
+                card.remove();
+            }
+        } else {
+            alert('No se pudo eliminar la publicación.');
+        }
+    } catch (e) {
+        console.error("Error al eliminar", e);
+    }
+}
+
+function extractHandlesFromToot(toot) {
+    const handleMap = new Map(); // usernameKey -> { handle, avatar }
+    if (!toot) return [];
+
+    function addCandidate(rawHandle, avatar = '') {
+        if (!rawHandle) return;
+        const clean = rawHandle.trim().replace(/^@+/, '').replace(/[\.,;:!\?\)\]]+$/, '');
+        if (!clean || clean.includes('#')) return;
+        const parts = clean.split('@');
+        // Un nombre de usuario de Fediverse solo contiene caracteres válidos (sin # ni caracteres especiales)
+        if (!/^[a-zA-Z0-9_.-]+$/.test(parts[0])) return;
+        if (parts.length > 1 && !/^[a-zA-Z0-9.-]+$/.test(parts[1])) return;
+
+        const userKey = parts[0].toLowerCase();
+        const hasDomain = parts.length > 1 && parts[1].length > 0;
+
+        if (!handleMap.has(userKey)) {
+            handleMap.set(userKey, { handle: clean, avatar: avatar });
+        } else {
+            const existing = handleMap.get(userKey);
+            // Si el nuevo tiene dominio y el existente no, preferir el que tiene dominio
+            if (hasDomain && !existing.handle.includes('@')) {
+                existing.handle = clean;
+            }
+            if (avatar && !existing.avatar) {
+                existing.avatar = avatar;
+            }
+        }
+    }
+
+    // 1. De toot.mentions (objeto Mastodon estándar)
+    if (Array.isArray(toot.mentions)) {
+        toot.mentions.forEach(m => {
+            if (m && (m.acct || m.username)) {
+                addCandidate(m.acct || m.username, m.avatar || '');
+            }
+        });
+    }
+
+    // 2. De enlaces en el contenido HTML
+    if (toot.content && typeof toot.content === 'string') {
+        const div = document.createElement('div');
+        div.innerHTML = toot.content;
+        const links = div.querySelectorAll('a.mention, a[href*="/@"], a[href*="/users/"], a[href*="/u/"]');
+        links.forEach(a => {
+            // Ignorar enlaces a hashtags (Mastodon suele usar class="mention hashtag" o rel="tag")
+            if (a.classList.contains('hashtag') || a.rel === 'tag') return;
+            const href = a.getAttribute('href') || '';
+            if (href.includes('/tags/') || href.includes('/tagged/')) return;
+
+            const text = a.textContent.trim().replace(/^@+/, '');
+            if (text && !text.includes('#')) {
+                try {
+                    const url = new URL(a.href, window.location.origin);
+                    const host = url.hostname;
+                    if (text.includes('@')) {
+                        addCandidate(text);
+                    } else if (host && host !== window.location.hostname) {
+                        addCandidate(`${text}@${host}`);
+                    } else {
+                        addCandidate(text);
+                    }
+                } catch (e) {
+                    addCandidate(text);
+                }
+            }
+        });
+
+        // Menciones en texto plano
+        const textContent = div.textContent || '';
+        const textMatches = textContent.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g);
+        if (textMatches) {
+            textMatches.forEach(m => addCandidate(m));
+        }
+    }
+
+    // 3. De toot.text si existe
+    if (toot.text && typeof toot.text === 'string') {
+        const textMatches = toot.text.match(/@([a-zA-Z0-9_.-]+(?:@[a-zA-Z0-9_.-]+)?)/g);
+        if (textMatches) {
+            textMatches.forEach(m => addCandidate(m));
+        }
+    }
+
+    return Array.from(handleMap.values());
+}
+
+function getCurrentUserHandles() {
+    const list = new Set();
+    const myProfile = (typeof currentProfileData !== 'undefined' && currentProfileData) || (typeof window !== 'undefined' && window.currentProfileData);
+    if (myProfile) {
+        if (myProfile.username) list.add(myProfile.username.toLowerCase());
+        if (myProfile.acct) list.add(myProfile.acct.toLowerCase());
+    }
+    if (typeof window !== 'undefined' && window.KUTSOCIAL_OWNER && window.KUTSOCIAL_OWNER.username) {
+        list.add(window.KUTSOCIAL_OWNER.username.toLowerCase());
+    }
+    const myUserEl = document.getElementById('my-username');
+    if (myUserEl && myUserEl.innerText) {
+        const u = myUserEl.innerText.replace(/^@+/, '').trim().toLowerCase();
+        if (u && u !== 'cargando' && u !== 'cargando...') {
+            list.add(u);
+            list.add(u.split('@')[0]);
+        }
+    }
+    return list;
+}
+
+function renderReplyParticipants() {
+    const container = document.getElementById('composer-reply-participants');
+    if (!container) return;
+
+    if (!replyParticipants || replyParticipants.length === 0) {
+        container.innerHTML = '';
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'flex';
+    container.innerHTML = '';
+
+    replyParticipants.forEach(p => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = `reply-participant-chip ${p.selected ? 'selected' : 'unselected'}`;
+        chip.title = `@${p.handle} (Clic para ${p.selected ? 'quitar de la respuesta' : 'incluir en la respuesta'})`;
+        chip.onclick = (e) => {
+            e.preventDefault();
+            toggleReplyParticipant(p.handle);
+        };
+
+        // Avatar
+        if (p.avatar) {
+            const img = document.createElement('img');
+            img.src = typeof proxyUrl === 'function' ? proxyUrl(p.avatar) : p.avatar;
+            img.alt = p.nick;
+            img.className = 'reply-chip-avatar';
+            img.onerror = () => {
+                img.style.display = 'none';
+                if (placeholder) placeholder.style.display = 'flex';
+            };
+            chip.appendChild(img);
+        }
+
+        const placeholder = document.createElement('div');
+        placeholder.className = 'reply-chip-avatar-placeholder';
+        placeholder.textContent = (p.nick[0] || '?').toUpperCase();
+        if (p.avatar) placeholder.style.display = 'none';
+        chip.appendChild(placeholder);
+
+        // Nick (sin @dominio en la vista para mantenerlo compacto)
+        const label = document.createElement('span');
+        label.className = 'chip-handle';
+        label.textContent = `@${p.nick}`;
+        chip.appendChild(label);
+
+        // Distintivo Autor si es el autor de este post específico
+        if (p.isAuthor) {
+            const authorTag = document.createElement('span');
+            authorTag.className = 'chip-author-tag';
+            authorTag.textContent = 'Autor';
+            chip.appendChild(authorTag);
+        }
+
+        // Icono check / add
+        const icon = document.createElement('span');
+        icon.className = 'material-icons-outlined';
+        icon.style.fontSize = '13px';
+        icon.style.opacity = '0.7';
+        icon.textContent = p.selected ? 'check' : 'add';
+        chip.appendChild(icon);
+
+        container.appendChild(chip);
+    });
+
+    // Botones rápidos si hay más de 1 participante
+    if (replyParticipants.length > 1) {
+        const allBtn = document.createElement('button');
+        allBtn.type = 'button';
+        allBtn.className = 'reply-quick-btn';
+        allBtn.textContent = 'Todos';
+        allBtn.title = 'Incluir a todos los participantes';
+        allBtn.onclick = (e) => {
+            e.preventDefault();
+            toggleAllReplyParticipants(true);
+        };
+        container.appendChild(allBtn);
+
+        const noneBtn = document.createElement('button');
+        noneBtn.type = 'button';
+        noneBtn.className = 'reply-quick-btn';
+        noneBtn.textContent = 'Ninguno';
+        noneBtn.title = 'Quitar a todos de la respuesta';
+        noneBtn.onclick = (e) => {
+            e.preventDefault();
+            toggleAllReplyParticipants(false);
+        };
+        container.appendChild(noneBtn);
+    }
+
+    // Botón para añadir usuario manual
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.id = 'btn-add-reply-participant';
+    addBtn.className = 'reply-add-btn';
+    addBtn.title = 'Mencionar a otro usuario en esta respuesta';
+    addBtn.innerHTML = '<span class="material-icons-outlined" style="font-size: 13px;">person_add</span> Añadir';
+    addBtn.onclick = (e) => {
+        e.preventDefault();
+        showAddReplyParticipantInput();
+    };
+    container.appendChild(addBtn);
+
+    const inputBox = document.createElement('div');
+    inputBox.id = 'reply-add-input-box';
+    inputBox.style.display = 'none';
+    inputBox.style.alignItems = 'center';
+    inputBox.style.gap = '4px';
+    inputBox.innerHTML = `
+        <input type="text" id="reply-add-input" placeholder="usuario[@dominio]" class="reply-input-mini" onkeydown="if(event.key==='Enter'){event.preventDefault();submitAddReplyParticipant();}else if(event.key==='Escape'){event.preventDefault();closeAddReplyParticipantInput();}">
+        <button type="button" onclick="submitAddReplyParticipant()" class="reply-add-ok-btn" title="Añadir">✓</button>
+        <button type="button" onclick="closeAddReplyParticipantInput()" class="reply-add-cancel-btn" title="Cancelar">✕</button>
+    `;
+    container.appendChild(inputBox);
+}
+
+function toggleReplyParticipant(handle) {
+    const p = replyParticipants.find(item => item.handle.toLowerCase() === handle.toLowerCase());
+    if (!p) return;
+
+    p.selected = !p.selected;
+    renderReplyParticipants();
+    syncComposerMentionsWithParticipants();
+}
+
+function toggleAllReplyParticipants(selectAll) {
+    replyParticipants.forEach(p => {
+        p.selected = selectAll;
+    });
+    renderReplyParticipants();
+    syncComposerMentionsWithParticipants();
+}
+
+function showAddReplyParticipantInput() {
+    const box = document.getElementById('reply-add-input-box');
+    const btn = document.getElementById('btn-add-reply-participant');
+    if (box) box.style.display = 'inline-flex';
+    if (btn) btn.style.display = 'none';
+    const input = document.getElementById('reply-add-input');
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+}
+
+function closeAddReplyParticipantInput() {
+    const box = document.getElementById('reply-add-input-box');
+    const btn = document.getElementById('btn-add-reply-participant');
+    if (box) box.style.display = 'none';
+    if (btn) btn.style.display = 'inline-flex';
+}
+
+function submitAddReplyParticipant() {
+    const input = document.getElementById('reply-add-input');
+    if (!input) return;
+    const raw = input.value.trim().replace(/^@+/, '');
+    if (!raw || raw.includes('#')) {
+        closeAddReplyParticipantInput();
+        return;
+    }
+
+    const parts = raw.split('@');
+    if (!/^[a-zA-Z0-9_.-]+$/.test(parts[0])) {
+        closeAddReplyParticipantInput();
+        return;
+    }
+    const userKey = parts[0].toLowerCase();
+    const existing = replyParticipants.find(p => p.handle.split('@')[0].toLowerCase() === userKey);
+    if (existing) {
+        existing.selected = true;
+    } else {
+        replyParticipants.push({
+            handle: raw,
+            nick: raw.split('@')[0],
+            displayName: raw.split('@')[0],
+            avatar: '',
+            isAuthor: false,
+            selected: true
+        });
+    }
+
+    closeAddReplyParticipantInput();
+    renderReplyParticipants();
+    syncComposerMentionsWithParticipants();
+}
+
+function syncComposerMentionsWithParticipants() {
+    const textarea = document.getElementById('composer-text');
+    if (!textarea) return;
+
+    let text = textarea.value;
+
+    // Remover menciones desmarcadas
+    const unselected = replyParticipants.filter(p => !p.selected);
+    unselected.forEach(p => {
+        const escaped = p.handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('(^|\\s)@' + escaped + '(?=\\s|$)', 'gi');
+        text = text.replace(re, '$1');
+        // También intentar por nick si alguien escribió solo @nick
+        const escapedNick = p.nick.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const reNick = new RegExp('(^|\\s)@' + escapedNick + '(?=\\s|$)', 'gi');
+        text = text.replace(reNick, '$1');
+    });
+
+    text = text.replace(/^\s+/, '').replace(/[ \t]{2,}/g, ' ');
+
+    // Asegurar que las menciones seleccionadas estén presentes al inicio
+    const selected = replyParticipants.filter(p => p.selected);
+    selected.forEach(p => {
+        const escaped = p.handle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp('(^|\\s)@' + escaped + '(?=\\s|$)', 'i');
+        const escapedNick = p.nick.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const reNick = new RegExp('(^|\\s)@' + escapedNick + '(?=\\s|$)', 'i');
+        if (p.handle !== p.nick && !re.test(text) && reNick.test(text)) {
+            text = text.replace(reNick, '$1@' + p.handle);
+        } else if (!re.test(text)) {
+            text = `@${p.handle} ` + text;
+        }
+    });
+
+    textarea.value = text.replace(/^\s+/, '');
+    if (textarea.value && !textarea.value.endsWith(' ')) {
+        textarea.value += ' ';
+    }
+    updateCharCount();
+}
+
+function initReplyToToot(tootOrId, handle, visibility = 'public', extraToot = null) {
+    let toot = null;
+    let id = null;
+
+    if (typeof tootOrId === 'object' && tootOrId !== null) {
+        toot = tootOrId;
+        id = toot.id;
+        handle = (toot.account && toot.account.acct) ? toot.account.acct : handle;
+        visibility = toot.visibility || visibility || 'public';
+    } else {
+        id = tootOrId;
+        if (extraToot && typeof extraToot === 'object') {
+            toot = extraToot;
+        } else {
+            const card = document.querySelector(`[data-toot-id="${id}"]`);
+            if (card && card._toot) {
+                toot = card._toot;
+            }
+        }
+    }
+
+    replyToId = id;
+    editTootId = null;
+
+    // Construir participantes deduplicados
+    replyParticipants = [];
+    const currentUserHandles = getCurrentUserHandles();
+    function isMe(h) {
+        if (!h) return false;
+        const lower = h.toLowerCase().replace(/^@+/, '');
+        const userOnly = lower.split('@')[0];
+        return currentUserHandles.has(lower) || currentUserHandles.has(userOnly);
+    }
+
+    const authorRaw = (toot && toot.account ? (toot.account.acct || toot.account.username) : (handle || '')).replace(/^@+/, '');
+    const authorUserKey = authorRaw.split('@')[0].toLowerCase();
+    const authorNick = authorRaw.split('@')[0];
+    const authorAvatar = (toot && toot.account && toot.account.avatar) ? toot.account.avatar : '';
+    const authorDisplayName = (toot && toot.account && toot.account.display_name) ? toot.account.display_name : authorNick;
+
+    const myProfile = (typeof currentProfileData !== 'undefined' && currentProfileData) || (typeof window !== 'undefined' && window.currentProfileData);
+    const isAuthorMe = isMe(authorRaw) || (toot && toot.account && myProfile && String(toot.account.id) === String(myProfile.id));
+
+    // Si el autor del post no es uno mismo, agregarlo como Autor
+    if (authorRaw && !authorRaw.includes('#') && !isAuthorMe) {
+        replyParticipants.push({
+            handle: authorRaw,
+            nick: authorNick,
+            displayName: authorDisplayName,
+            avatar: authorAvatar,
+            isAuthor: true,
+            selected: true
+        });
+    }
+
+    if (toot) {
+        const mentionsList = extractHandlesFromToot(toot);
+        mentionsList.forEach(item => {
+            if (!item.handle || item.handle.includes('#')) return;
+            // No incluirse a uno mismo
+            if (isMe(item.handle)) return;
+
+            const userKey = item.handle.split('@')[0].toLowerCase();
+            // No duplicar al autor (si vino con dominio completo, actualizar al autor)
+            if (!isAuthorMe && userKey === authorUserKey) {
+                const authorP = replyParticipants.find(p => p.isAuthor);
+                if (authorP && !authorP.handle.includes('@') && item.handle.includes('@')) {
+                    authorP.handle = item.handle;
+                }
+                return;
+            }
+
+            // Evitar duplicados por nombre de usuario
+            if (replyParticipants.some(p => p.nick.toLowerCase() === userKey)) {
+                return;
+            }
+
+            replyParticipants.push({
+                handle: item.handle,
+                nick: item.handle.split('@')[0],
+                displayName: item.handle.split('@')[0],
+                avatar: item.avatar || '',
+                isAuthor: false,
+                selected: true
+            });
+        });
+    }
+
+    renderReplyParticipants();
+
+    const ctx = document.getElementById('composer-context');
+    if (ctx) ctx.style.display = 'flex';
+    const ctxIcon = document.getElementById('composer-context-icon');
+    if (ctxIcon) ctxIcon.textContent = isAuthorMe ? 'forum' : 'reply';
+    const ctxText = document.getElementById('composer-context-text');
+    if (ctxText) {
+        if (isAuthorMe) {
+            ctxText.innerText = replyParticipants.length > 0 ? 'Respondiendo en tu publicación a:' : 'Continuando tu hilo:';
+        } else {
+            ctxText.innerText = 'Respondiendo a:';
+        }
+    }
+
+    const textarea = document.getElementById('composer-text');
+    if (textarea) {
+        const initialMentions = replyParticipants.filter(p => p.selected).map(p => `@${p.handle}`).join(' ');
+        textarea.value = initialMentions ? initialMentions + ' ' : '';
+        updateCharCount();
+    }
+
+    // Heredar la visibilidad de la publicación padre
+    const visSelect = document.getElementById('composer-visibility');
+    if (visSelect) {
+        visSelect.value = visibility;
+        if (typeof updateComposerVisibilityIcon === 'function') {
+            updateComposerVisibilityIcon();
+        }
+    }
+
+    const modalComposer = document.getElementById('modal-composer');
+    if (modalComposer) {
+        const modalTitle = document.getElementById('modal-composer-title');
+        if (modalTitle) {
+            if (isAuthorMe) {
+                modalTitle.innerText = replyParticipants.length > 0 ? 'Responder en tu publicación' : 'Continuar hilo';
+            } else {
+                modalTitle.innerText = `Responder a @${authorNick}`;
+            }
+        }
+        modalComposer.style.display = 'flex';
+        if (textarea) {
+            setTimeout(() => {
+                textarea.focus();
+                textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+            }, 50);
+        }
+    } else {
+        const tabFeed = document.getElementById('tab-feed');
+        if (tabFeed) {
+            showTab('feed');
+            if (textarea) {
+                textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                textarea.focus();
+                textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+            }
+        }
+    }
+}
+
+function initEditToot(id, content, sensitive, spoilerText, mediaAttachments = []) {
+    editTootId = id;
+    replyToId = null;
+    replyParticipants = [];
+    const participantsContainer = document.getElementById('composer-reply-participants');
+    if (participantsContainer) {
+        participantsContainer.innerHTML = '';
+        participantsContainer.style.display = 'none';
+    }
+
+    const ctx = document.getElementById('composer-context');
+    if (ctx) ctx.style.display = 'flex';
+    const ctxIcon = document.getElementById('composer-context-icon');
+    if (ctxIcon) ctxIcon.textContent = 'edit';
+    const ctxText = document.getElementById('composer-context-text');
+    if (ctxText) ctxText.innerText = 'Editando tu publicación';
+
+    const textarea = document.getElementById('composer-text');
+    textarea.value = content;
+    textarea.focus();
+    updateCharCount();
+
+    const container = document.getElementById('composer-cw-container');
+    const btn = document.getElementById('composer-cw-btn');
+    if (sensitive) {
+        container.style.display = 'block';
+        btn.classList.add('active');
+        document.getElementById('composer-cw-text').value = spoilerText || '';
+    } else {
+        container.style.display = 'none';
+        btn.classList.remove('active');
+        document.getElementById('composer-cw-text').value = '';
+    }
+
+    // Cargar media_attachments existentes para edición
+    const previewContainer = document.getElementById('composer-media-preview');
+    if (previewContainer) {
+        previewContainer.innerHTML = '';
+        composerUploadedMediaIds = [];
+        if (mediaAttachments && mediaAttachments.length > 0) {
+            mediaAttachments.forEach(media => {
+                composerUploadedMediaIds.push(media.id);
+                
+                const previewId = 'media-editing-' + media.id + '-' + Math.random().toString(36).substr(2, 9);
+                const tempDiv = document.createElement('div');
+                tempDiv.id = previewId;
+                tempDiv.className = 'media-preview-item';
+                tempDiv.style = "display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; position: relative; margin-bottom: 8px; width: 100%; box-sizing: border-box;";
+                
+                let previewHTML = '';
+                const type = media.type || 'image';
+                if (type === 'video') {
+                    previewHTML = `
+                        <div style="width: 50px; height: 50px; border-radius: 6px; overflow: hidden; position: relative; flex-shrink: 0; background: #000;">
+                            <video src="${media.url}" muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+                            <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                        </div>
+                    `;
+                } else if (type === 'audio') {
+                    previewHTML = `
+                        <div style="width: 50px; height: 50px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
+                            <span class="material-icons-outlined" style="font-size: 24px; color: var(--text-muted);">audiotrack</span>
+                            <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                        </div>
+                    `;
+                } else {
+                    previewHTML = `
+                        <div style="width: 50px; height: 50px; border-radius: 6px; background-image: url(${media.url}); background-size: cover; background-position: center; position: relative; flex-shrink: 0;">
+                            <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                        </div>
+                    `;
+                }
+
+                const description = media.description || '';
+                tempDiv.innerHTML = `
+                    ${previewHTML}
+                    <input type="text" placeholder="Texto alternativo (Alt)..." style="flex-grow: 1; font-size: 12px; padding: 6px 10px; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: white; border-radius: 6px; margin: 0; min-width: 0;" value="${description.replace(/"/g, '&quot;')}" oninput="updateMediaAltText('${media.id}', this.value)">
+                `;
+                
+                previewContainer.appendChild(tempDiv);
+                
+                const removeBtn = tempDiv.querySelector('.remove-media-btn');
+                removeBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    removeComposerMedia(media.id, previewId);
+                };
+            });
+        }
+    }
+
+    const modalComposer = document.getElementById('modal-composer');
+    if (modalComposer) {
+        const modalTitle = document.getElementById('modal-composer-title');
+        if (modalTitle) modalTitle.innerText = `Editar publicación`;
+        modalComposer.style.display = 'flex';
+        if (textarea) textarea.focus();
+    } else {
+        const tabFeed = document.getElementById('tab-feed');
+        if (tabFeed) {
+            showTab('feed');
+            if (textarea) {
+                textarea.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                textarea.focus();
+            }
+        }
+    }
+}
+
+function closeComposerModal() {
+    cancelComposerContext();
+}
+
+function cancelComposerContext() {
+    if (isComposerZenActive()) {
+        toggleComposerZen(false);
+    }
+    replyToId = null;
+    editTootId = null;
+    quoteTootId = null;
+    replyParticipants = [];
+    const participantsContainer = document.getElementById('composer-reply-participants');
+    if (participantsContainer) {
+        participantsContainer.innerHTML = '';
+        participantsContainer.style.display = 'none';
+    }
+    const ctx = document.getElementById('composer-context');
+    if (ctx) ctx.style.display = 'none';
+    const textarea = document.getElementById('composer-text');
+    if (textarea) textarea.value = '';
+    const cwContainer = document.getElementById('composer-cw-container');
+    if (cwContainer) cwContainer.style.display = 'none';
+    const cwBtn = document.getElementById('composer-cw-btn');
+    if (cwBtn) cwBtn.classList.remove('active');
+    const cwText = document.getElementById('composer-cw-text');
+    if (cwText) cwText.value = '';
+    
+    // Limpiar archivos multimedia subidos
+    composerUploadedMediaIds = [];
+    const previewContainer = document.getElementById('composer-media-preview');
+    if (previewContainer) previewContainer.innerHTML = '';
+    
+    // Cerrar y limpiar encuesta
+    if (typeof closeComposerPoll === 'function') closeComposerPoll();
+    
+    // Restablecer visibilidad por defecto a public
+    const visSelect = document.getElementById('composer-visibility');
+    if (visSelect) {
+        visSelect.value = 'public';
+        if (typeof updateComposerVisibilityIcon === 'function') {
+            updateComposerVisibilityIcon();
+        }
+    }
+    
+    updateCharCount();
+    
+    const modalComposer = document.getElementById('modal-composer');
+    if (modalComposer) {
+        modalComposer.style.display = 'none';
+    }
+}
+
+function toggleComposerCW() {
+    const container = document.getElementById('composer-cw-container');
+    const btn = document.getElementById('composer-cw-btn');
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        btn.classList.add('active');
+    } else {
+        container.style.display = 'none';
+        btn.classList.remove('active');
+        document.getElementById('composer-cw-text').value = '';
+    }
+}
+
+let altTextTimeout = {};
+async function updateMediaAltText(mediaId, value) {
+    if (altTextTimeout[mediaId]) {
+        clearTimeout(altTextTimeout[mediaId]);
+    }
+    altTextTimeout[mediaId] = setTimeout(async () => {
+        try {
+            await fetch(`/api/v1/media/${mediaId}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: `description=${encodeURIComponent(value.trim())}`
+            });
+        } catch (err) {
+            console.error('Error al guardar el texto alternativo:', err);
+        }
+    }, 500);
+}
+
+async function uploadFileDirectly(file) {
+    if (!file.type.startsWith('image/') && !file.type.startsWith('video/') && !file.type.startsWith('audio/')) {
+        alert('Solo se admiten imágenes, videos o audios.');
+        return;
+    }
+    const previewContainer = document.getElementById('composer-media-preview');
+    if (!previewContainer) return;
+    
+    const previewId = 'media-uploading-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    const tempDiv = document.createElement('div');
+    tempDiv.id = previewId;
+    tempDiv.className = 'media-preview-item';
+    tempDiv.style = "display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; position: relative; margin-bottom: 8px; width: 100%; box-sizing: border-box;";
+    tempDiv.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); padding: 5px;">Subiendo...</div>';
+    previewContainer.appendChild(tempDiv);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const response = await fetch('/api/v1/media', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
+
+        if (response.ok) {
+            const media = await response.json();
+            composerUploadedMediaIds.push(media.id);
+            
+            let previewHTML = '';
+            if (media.type === 'video') {
+                previewHTML = `
+                    <div style="width: 50px; height: 50px; border-radius: 6px; overflow: hidden; position: relative; flex-shrink: 0; background: #000;">
+                        <video src="${media.url}" muted style="width: 100%; height: 100%; object-fit: cover;"></video>
+                        <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                    </div>
+                `;
+            } else if (media.type === 'audio') {
+                previewHTML = `
+                    <div style="width: 50px; height: 50px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); display: flex; align-items: center; justify-content: center; position: relative; flex-shrink: 0;">
+                        <span class="material-icons-outlined" style="font-size: 24px; color: var(--text-muted);">audiotrack</span>
+                        <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                    </div>
+                `;
+            } else {
+                previewHTML = `
+                    <div style="width: 50px; height: 50px; border-radius: 6px; background-image: url(${media.url}); background-size: cover; background-position: center; position: relative; flex-shrink: 0;">
+                        <button class="remove-media-btn" style="position: absolute; top: -5px; right: -5px; background: var(--error); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 5; margin-top: 0; box-shadow: none;">✕</button>
+                    </div>
+                `;
+            }
+
+            tempDiv.innerHTML = `
+                ${previewHTML}
+                <input type="text" placeholder="Texto alternativo (Alt)..." style="flex-grow: 1; font-size: 12px; padding: 6px 10px; height: 32px; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); color: white; border-radius: 6px; margin: 0; min-width: 0;" oninput="updateMediaAltText('${media.id}', this.value)">
+            `;
+            
+            const removeBtn = tempDiv.querySelector('.remove-media-btn');
+            removeBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                removeComposerMedia(media.id, previewId);
+            };
+        } else {
+            tempDiv.remove();
+            alert('Error al subir imagen: ' + file.name);
+        }
+    } catch (e) {
+        tempDiv.remove();
+        alert('Error de conexión al subir imagen: ' + file.name);
+    }
+}
+
+async function handleComposerFileUpload() {
+    const fileInput = document.getElementById('composer-file-input');
+    const files = fileInput.files;
+    if (!files.length) return;
+
+    for (let i = 0; i < files.length; i++) {
+        await uploadFileDirectly(files[i]);
+    }
+    fileInput.value = '';
+}
+
+function removeComposerMedia(mediaId, previewElementId) {
+    composerUploadedMediaIds = composerUploadedMediaIds.filter(id => id !== mediaId);
+    const el = document.getElementById(previewElementId);
+    if (el) el.remove();
+}
+
+function toggleComposerPoll() {
+    const container = document.getElementById('composer-poll-container');
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        isPollActive = true;
+    } else {
+        closeComposerPoll();
+    }
+}
+
+function closeComposerPoll() {
+    const container = document.getElementById('composer-poll-container');
+    if (container) {
+        container.style.display = 'none';
+    }
+    isPollActive = false;
+    const inputsContainer = document.getElementById('poll-options-inputs');
+    if (inputsContainer) {
+        inputsContainer.innerHTML = `
+            <input type="text" class="poll-option-field" placeholder="Opción 1" maxlength="25" style="padding:8px;">
+            <input type="text" class="poll-option-field" placeholder="Opción 2" maxlength="25" style="padding:8px;">
+        `;
+    }
+}
+
+function addPollOptionField() {
+    const inputsContainer = document.getElementById('poll-options-inputs');
+    const currentFieldsCount = inputsContainer.querySelectorAll('.poll-option-field').length;
+    if (currentFieldsCount >= 4) {
+        alert('Las encuestas pueden tener un máximo de 4 opciones.');
+        return;
+    }
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'poll-option-field';
+    input.placeholder = `Opción ${currentFieldsCount + 1}`;
+    input.maxLength = 25;
+    input.style = 'padding:8px;';
+    inputsContainer.appendChild(input);
+}
+
+async function voteInPoll(pollId, choiceIndex, btn) {
+    if (!token) {
+        showLoginModal();
+        return;
+    }
+    try {
+        const response = await fetch(`/api/v1/polls/${pollId}/votes`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                choices: [choiceIndex]
+            })
+        });
+
+        if (response.ok) {
+            if (document.getElementById('tab-thread-view').style.display === 'block') {
+                if (activeThreadId) {
+                    viewTootThread(activeThreadId);
+                }
+            } else {
+                loadTimeline();
+            }
+        } else {
+            const errData = await response.json();
+            alert('Error al votar: ' + (errData.error || 'No se pudo registrar el voto.'));
+        }
+    } catch (e) {
+        alert('Error al conectar con el servidor para votar.');
+    }
+}
+
+function renderEmojiPicker() {
+    const grid = document.getElementById('emoji-picker-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    popularEmojis.forEach(emoji => {
+        const btn = document.createElement('button');
+        btn.innerText = emoji;
+        btn.style = "background: none; border: none; font-size: 20px; cursor: pointer; padding: 4px; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: background 0.1s;";
+        btn.onmouseover = () => btn.style.background = 'rgba(255,255,255,0.1)';
+        btn.onmouseout = () => btn.style.background = 'none';
+        btn.onclick = (e) => {
+            e.preventDefault();
+            insertEmojiAtCursor(emoji);
+        };
+        grid.appendChild(btn);
+    });
+}
+
+function toggleEmojiPicker(event) {
+    event.stopPropagation();
+    const container = document.getElementById('emoji-picker-container');
+    if (container.style.display === 'none') {
+        renderEmojiPicker();
+        const btn = document.getElementById('emoji-picker-btn');
+        container.style.display = 'block';
+        container.style.top = (btn.offsetTop - container.offsetHeight - 5) + 'px';
+        container.style.left = btn.offsetLeft + 'px';
+    } else {
+        container.style.display = 'none';
+    }
+}
+
+function insertEmojiAtCursor(emoji) {
+    const textarea = document.getElementById('composer-text');
+    if (!textarea) return;
+    const startPos = textarea.selectionStart;
+    const endPos = textarea.selectionEnd;
+    const text = textarea.value;
+    textarea.value = text.substring(0, startPos) + emoji + text.substring(endPos);
+    const newCursorPos = startPos + emoji.length;
+    textarea.selectionStart = newCursorPos;
+    textarea.selectionEnd = newCursorPos;
+    textarea.focus();
+    updateCharCount();
+}
+
+// Cerrar selector al hacer click fuera
+document.addEventListener('click', function(e) {
+    const container = document.getElementById('emoji-picker-container');
+    if (container && container.style.display !== 'none') {
+        if (!container.contains(e.target) && e.target.id !== 'emoji-picker-btn') {
+            container.style.display = 'none';
+        }
+    }
+});
+
+function toggleCWSpoiler(btn) {
+    const container = btn.nextElementSibling;
+    if (container.style.display === 'none') {
+        container.style.display = 'block';
+        btn.innerText = 'Ocultar';
+    } else {
+        container.style.display = 'none';
+        btn.innerText = 'Mostrar más';
+    }
+}
+
+// Funciones para alternar la visibilidad de imágenes/videos (Sensibilidad/NSFW) y popups ALT
+function toggleMediaVisibility(btn) {
+    const card = btn.closest('.toot-media-card');
+    const wrapper = card.querySelector('.media-wrapper');
+    const placeholder = card.querySelector('.media-placeholder');
+    
+    if (wrapper.style.display === 'none') {
+        wrapper.style.display = 'block';
+        placeholder.style.display = 'none';
+        btn.innerText = 'Hide';
+        const altBtn = card.querySelector('.media-alt-btn');
+        if (altBtn) altBtn.style.display = 'block';
+    } else {
+        wrapper.style.display = 'none';
+        placeholder.style.display = 'flex';
+        btn.innerText = 'Show';
+        const altBtn = card.querySelector('.media-alt-btn');
+        if (altBtn) altBtn.style.display = 'none';
+        const altPopup = card.querySelector('.media-alt-popup');
+        if (altPopup) altPopup.style.display = 'none';
+    }
+}
+
+function revealMediaFromPlaceholder(placeholder) {
+    const card = placeholder.closest('.toot-media-card');
+    const btn = card.querySelector('.media-toggle-btn');
+    const wrapper = card.querySelector('.media-wrapper');
+    
+    wrapper.style.display = 'block';
+    placeholder.style.display = 'none';
+    btn.innerText = 'Hide';
+    const altBtn = card.querySelector('.media-alt-btn');
+    if (altBtn) altBtn.style.display = 'block';
+}
+
+function toggleAltTextPopup(btn, event) {
+    event.stopPropagation();
+    const card = btn.closest('.toot-media-card');
+    const popup = card.querySelector('.media-alt-popup');
+    if (popup.style.display === 'none' || !popup.style.display) {
+        popup.style.display = 'block';
+    } else {
+        popup.style.display = 'none';
+    }
+}
+
+function closeAltTextPopup(btn, event) {
+    event.stopPropagation();
+    const popup = btn.closest('.media-alt-popup');
+    popup.style.display = 'none';
+}
+
+function showProfileTechnicalInfo(event) {
+    if (event) event.stopPropagation();
+    if (!lastLoadedProfile) return;
+
+    const content = document.getElementById('profile-tech-info-content');
+    content.innerHTML = `
+        <div><strong>ID local:</strong> <code style="background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-family: monospace;">${lastLoadedProfile.id}</code></div>
+        <div><strong>Nombre de usuario:</strong> <code style="background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-family: monospace;">${lastLoadedProfile.username}</code></div>
+        <div><strong>Dirección Fediverso:</strong> <code style="background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px; font-family: monospace;">@${lastLoadedProfile.acct}</code></div>
+        <div><strong>URL del Perfil:</strong> <a href="${lastLoadedProfile.url}" target="_blank" style="color: var(--primary); word-break: break-all;">${lastLoadedProfile.url}</a></div>
+        <div><strong>Fecha de Registro:</strong> <span>${new Date(lastLoadedProfile.created_at).toLocaleString()}</span></div>
+        <div><strong>Estado de Cuenta:</strong> <span>${lastLoadedProfile.locked ? '🔒 Privada (Aprobación manual)' : '🔓 Pública'}</span></div>
+        <div><strong>Seguidores:</strong> <span>${lastLoadedProfile.followers_count}</span></div>
+        <div><strong>Seguidos:</strong> <span>${lastLoadedProfile.following_count}</span></div>
+        <div><strong>Publicaciones:</strong> <span>${lastLoadedProfile.statuses_count}</span></div>
+    `;
+
+    document.getElementById('modal-profile-tech-info').style.display = 'flex';
+}
+
+function closeProfileTechInfoModal() {
+    document.getElementById('modal-profile-tech-info').style.display = 'none';
+}
+
+async function performSearch(query) {
+    if (!query || !query.trim()) return;
+    query = query.trim();
+    
+    if (!document.getElementById('tab-search-results')) {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        window.location.href = base + '/search-results?q=' + encodeURIComponent(query);
+        return;
+    }
+    
+    showTab('search-results');
+    
+    const accountsContainer = document.getElementById('search-accounts-container');
+    const hashtagsContainer = document.getElementById('search-hashtags-container');
+    const statusesContainer = document.getElementById('search-statuses-container');
+    
+    accountsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0;">🔍 Buscando perfiles...</div>';
+    if (hashtagsContainer) {
+        hashtagsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0;">🔍 Buscando hashtags...</div>';
+    }
+    statusesContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; text-align: center; padding: 20px 0;">🔍 Buscando publicaciones...</div>';
+    
+    try {
+        const res = await fetch(`/api/v2/search?q=${encodeURIComponent(query)}&resolve=true`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) throw new Error('Error al buscar en el servidor.');
+        const data = await res.json();
+        
+        // 1. Mostrar perfiles
+        accountsContainer.innerHTML = '';
+        if (!data.accounts || data.accounts.length === 0) {
+            accountsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; padding: 10px 0; text-align: center;">No se encontraron perfiles.</div>';
+        } else {
+            data.accounts.forEach(acc => {
+                const accDiv = document.createElement('div');
+                accDiv.style = "display: flex; align-items: center; gap: 12px; border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 16px; cursor: pointer; background: rgba(255,255,255,0.02); transition: all 0.2s ease;";
+                accDiv.onmouseover = () => {
+                    accDiv.style.background = 'rgba(255,255,255,0.06)';
+                    accDiv.style.borderColor = 'var(--primary)';
+                };
+                accDiv.onmouseout = () => {
+                    accDiv.style.background = 'rgba(255,255,255,0.02)';
+                    accDiv.style.borderColor = 'var(--border-color)';
+                };
+                accDiv.onclick = () => viewProfile(acc.id);
+                
+                accDiv.innerHTML = `
+                    <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover;">
+                    <div class="user-info" style="display: flex; flex-direction: column; gap: 2px;">
+                        <div class="user-name" style="font-weight: 600; color: var(--text-color); font-size: 15px;">${escapeHTML(acc.display_name || acc.username)}</div>
+                        <div class="user-handle" style="font-size: 13px; color: var(--text-muted);">@${escapeHTML(acc.acct)}</div>
+                    </div>
+                `;
+                accountsContainer.appendChild(accDiv);
+            });
+        }
+
+        // 1.5 Mostrar hashtags
+        if (hashtagsContainer) {
+            hashtagsContainer.innerHTML = '';
+            if (!data.hashtags || data.hashtags.length === 0) {
+                hashtagsContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; padding: 10px 0; text-align: center;">No se encontraron hashtags.</div>';
+            } else {
+                data.hashtags.forEach(tag => {
+                    const tagDiv = document.createElement('div');
+                    tagDiv.style = "display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 16px; cursor: pointer; background: rgba(255,255,255,0.02); transition: all 0.2s ease;";
+                    tagDiv.onmouseover = () => {
+                        tagDiv.style.background = 'rgba(255,255,255,0.06)';
+                        tagDiv.style.borderColor = 'var(--primary)';
+                    };
+                    tagDiv.onmouseout = () => {
+                        tagDiv.style.background = 'rgba(255,255,255,0.02)';
+                        tagDiv.style.borderColor = 'var(--border-color)';
+                    };
+                    tagDiv.onclick = () => viewHashtagTimeline(tag.name);
+                    
+                    tagDiv.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="material-icons-outlined" style="color: var(--primary);">tag</span>
+                            <span style="font-weight: 600; color: var(--text-color); font-size: 15px;">#${escapeHTML(tag.name)}</span>
+                        </div>
+                        <div style="font-size: 12px; color: var(--text-muted);">Ver línea de tiempo</div>
+                    `;
+                    hashtagsContainer.appendChild(tagDiv);
+                });
+            }
+        }
+        
+        // 2. Mostrar publicaciones
+        statusesContainer.innerHTML = '';
+        if (!data.statuses || data.statuses.length === 0) {
+            statusesContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 14px; padding: 10px 0; text-align: center;">No se encontraron publicaciones.</div>';
+        } else {
+            data.statuses.forEach(toot => {
+                const card = createThreadTootElement(toot, false);
+                statusesContainer.appendChild(card);
+            });
+        }
+    } catch (err) {
+        accountsContainer.innerHTML = `<div style="color: var(--error); font-size: 14px; text-align: center; padding: 10px 0;">Error: ${escapeHTML(err.message)}</div>`;
+        if (hashtagsContainer) {
+            hashtagsContainer.innerHTML = '';
+        }
+        statusesContainer.innerHTML = '';
+    }
+}
+
+function escapeJSString(str) {
+    if (!str) return '';
+    let text = str.replace(/<p>/g, '').replace(/<\/p>/g, '').replace(/<br\s*\/?>/g, '\n');
+    return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+}
+
+// ==========================================
+// --- GESTIÓN DE LISTAS (LISTS JS) ---
+// ==========================================
+let allLists = [];
+let selectedListId = null;
+let listActiveSubView = 'feed';
+
+async function loadLists() {
+    if (!document.getElementById('tab-lists')) {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        window.location.href = base + '/lists';
+        return;
+    }
+    try {
+        const res = await fetch('/api/v1/lists', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            allLists = await res.json();
+            window.KUTSOCIAL_USER_LISTS = allLists;
+        } else if (window.KUTSOCIAL_USER_LISTS) {
+            allLists = window.KUTSOCIAL_USER_LISTS;
+        } else {
+            allLists = [];
+        }
+    } catch (e) {
+        if (window.KUTSOCIAL_USER_LISTS) {
+            allLists = window.KUTSOCIAL_USER_LISTS;
+        } else {
+            allLists = [];
+        }
+    }
+    renderListsSidebar();
+    
+    if (allLists.length > 0) {
+        if (selectedListId && allLists.some(l => l.id === selectedListId)) {
+            selectList(selectedListId);
+        } else {
+            selectList(allLists[0].id);
+        }
+    } else {
+        document.getElementById('list-no-selection').style.display = 'block';
+        document.getElementById('list-detail-view').style.display = 'none';
+        selectedListId = null;
+    }
+}
+
+function renderListsSidebar() {
+    const sidebar = document.getElementById('lists-sidebar');
+    if (!sidebar) return;
+    sidebar.innerHTML = '';
+    if (allLists.length === 0) {
+        sidebar.innerHTML = '<div style="font-size: 13px; color: var(--text-muted); padding: 25px 10px; text-align: center;">No tienes listas creadas ni importadas.</div>';
+        return;
+    }
+    allLists.forEach(l => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'list-nav-btn' + (selectedListId === l.id ? ' active' : '');
+        btn.setAttribute('data-list-id', l.id);
+        btn.onclick = () => selectList(l.id);
+        btn.innerHTML = `
+            <span style="display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary); flex-shrink: 0;">list</span>
+                <span style="overflow: hidden; text-overflow: ellipsis;">${escapeHTML(l.title)}</span>
+            </span>
+            <span class="material-icons-outlined" style="font-size: 16px; opacity: 0.4; flex-shrink: 0;">chevron_right</span>
+        `;
+        sidebar.appendChild(btn);
+    });
+}
+
+async function selectList(id) {
+    selectedListId = id;
+    listActiveSubView = 'feed';
+    document.querySelectorAll('#lists-sidebar .list-nav-btn').forEach((btn) => {
+        const btnId = parseInt(btn.getAttribute('data-list-id'));
+        if (btnId === id) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    const list = allLists.find(l => l.id === id);
+    if (!list) return;
+
+    const noSel = document.getElementById('list-no-selection');
+    const detail = document.getElementById('list-detail-view');
+    const titleEl = document.getElementById('selected-list-title');
+    if (noSel) noSel.style.display = 'none';
+    if (detail) detail.style.display = 'block';
+    if (titleEl) titleEl.innerText = list.title;
+    
+    loadListTimelineView();
+}
+
+function loadListTimelineView() {
+    listActiveSubView = 'feed';
+    const btnTimeline = document.getElementById('btn-list-timeline');
+    const btnMembers = document.getElementById('btn-list-members');
+    if (btnTimeline) btnTimeline.classList.add('active');
+    if (btnMembers) btnMembers.classList.remove('active');
+    
+    document.getElementById('list-members-container').style.display = 'none';
+    const feedContainer = document.getElementById('list-feed-container');
+    feedContainer.style.display = 'block';
+    feedContainer.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">Cargando publicaciones de la lista...</div>';
+
+    fetch(`/api/v1/timelines/list/${selectedListId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(toots => {
+        feedContainer.innerHTML = '';
+        if (toots.length === 0) {
+            feedContainer.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted); background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px;">No hay publicaciones de miembros de esta lista.</div>';
+            return;
+        }
+        toots.forEach(toot => {
+            const card = createThreadTootElement(toot, false);
+            feedContainer.appendChild(card);
+        });
+    })
+    .catch(e => {
+        feedContainer.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--error);">Error al cargar timeline de la lista.</div>';
+    });
+}
+
+function loadListMembersView() {
+    listActiveSubView = 'members';
+    const btnTimeline = document.getElementById('btn-list-timeline');
+    const btnMembers = document.getElementById('btn-list-members');
+    if (btnTimeline) btnTimeline.classList.remove('active');
+    if (btnMembers) btnMembers.classList.add('active');
+    
+    document.getElementById('list-feed-container').style.display = 'none';
+    const membersContainer = document.getElementById('list-members-container');
+    membersContainer.style.display = 'flex';
+    membersContainer.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">Cargando miembros...</div>';
+
+    fetch(`/api/v1/lists/${selectedListId}/accounts`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(accounts => {
+        membersContainer.innerHTML = '';
+        if (accounts.length === 0) {
+            membersContainer.innerHTML = '<div style="text-align:center; padding: 40px; color: var(--text-muted); background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 16px;">Esta lista está vacía. Añade miembros desde sus perfiles.</div>';
+            return;
+        }
+        accounts.forEach(acc => {
+            const div = document.createElement('div');
+            div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 16px; background: var(--card-bg); min-width: 0; gap: 15px;";
+            div.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 12px; cursor: pointer; min-width: 0; flex: 1;" onclick="viewProfile('${acc.id}')">
+                    <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 36px; height: 36px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">
+                    <div class="user-info">
+                        <div class="user-name" style="font-size: 14px; font-weight: 600;">${escapeHTML(acc.display_name || acc.username)}</div>
+                        <div class="user-handle" style="font-size: 12px; color: var(--text-muted);">@${escapeHTML(acc.acct)}</div>
+                    </div>
+                </div>
+                <button type="button" class="btn-delete-item" onclick="removeFromList('${acc.id}', this)" title="Eliminar miembro de la lista" style="width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; padding: 0; margin: 0; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; color: var(--error); cursor: pointer;">
+                    <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
+                </button>
+            `;
+            membersContainer.appendChild(div);
+        });
+    })
+    .catch(e => {
+        membersContainer.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--error);">Error al cargar miembros de la lista.</div>';
+    });
+}
+
+async function removeFromList(accountId, btn) {
+    btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px; animation: spin 1s linear infinite;">sync</span>';
+    btn.disabled = true;
+    try {
+        const res = await fetch(`/api/v1/lists/${selectedListId}/accounts`, {
+            method: 'DELETE',
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ account_ids: [accountId] })
+        });
+        if (res.ok) {
+            loadListMembersView();
+        } else {
+            btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px;">delete</span>';
+            btn.disabled = false;
+        }
+    } catch (e) {
+        btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px;">delete</span>';
+        btn.disabled = false;
+    }
+}
+
+async function deleteSelectedList() {
+    if (!confirm('¿Seguro que deseas eliminar esta lista?')) return;
+    try {
+        const res = await fetch(`/api/v1/lists/${selectedListId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            selectedListId = null;
+            await loadLists();
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function showCreateListModal() {
+    document.getElementById('list-modal-title').innerText = 'Nueva Lista';
+    document.getElementById('list-modal-input-title').value = '';
+    document.getElementById('modal-manage-list').style.display = 'flex';
+}
+
+function closeListModal() {
+    document.getElementById('modal-manage-list').style.display = 'none';
+}
+
+function showImportListsModal() {
+    const modal = document.getElementById('modal-import-lists');
+    if (modal) {
+        const statusDiv = document.getElementById('lists-import-status');
+        if (statusDiv) statusDiv.innerText = '';
+        const fileInput = document.getElementById('lists-import-file');
+        if (fileInput) fileInput.value = '';
+        modal.style.display = 'flex';
+    }
+}
+
+function closeImportListsModal() {
+    const modal = document.getElementById('modal-import-lists');
+    if (modal) modal.style.display = 'none';
+}
+
+async function handleListsImport(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    const fileInput = document.getElementById('lists-import-file');
+    const statusDiv = document.getElementById('lists-import-status');
+    const submitBtn = document.getElementById('lists-import-submit-btn');
+
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        if (statusDiv) {
+            statusDiv.innerText = 'Selecciona un archivo CSV.';
+            statusDiv.style.color = 'var(--error)';
+        }
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('type', 'lists');
+    formData.append('file', fileInput.files[0]);
+
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'Importando...';
+    }
+    if (statusDiv) {
+        statusDiv.innerText = 'Procesando listas...';
+        statusDiv.style.color = 'var(--text-muted)';
+    }
+
+    try {
+        const response = await fetch('/api/v1/import', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (statusDiv) {
+                statusDiv.innerText = `✓ Listas importadas: ${data.imported || 0} registros procesados.`;
+                statusDiv.style.color = 'var(--secondary)';
+            }
+            await loadLists();
+            setTimeout(() => {
+                closeImportListsModal();
+            }, 1200);
+        } else {
+            const data = await response.json().catch(() => ({}));
+            if (statusDiv) {
+                statusDiv.innerText = 'Error al importar: ' + (data.error || 'Intenta de nuevo.');
+                statusDiv.style.color = 'var(--error)';
+            }
+        }
+    } catch (err) {
+        if (statusDiv) {
+            statusDiv.innerText = 'Error de conexión al importar listas.';
+            statusDiv.style.color = 'var(--error)';
+        }
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'Subir e Importar';
+        }
+    }
+}
+
+async function saveListModal() {
+    const title = document.getElementById('list-modal-input-title').value.trim();
+    if (!title) return alert('El nombre de la lista es requerido');
+    
+    try {
+        const res = await fetch('/api/v1/lists', {
+            method: 'POST',
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ title: title, replies_policy: 'followed' })
+        });
+        if (res.ok) {
+            const newList = await res.json();
+            selectedListId = newList.id;
+            closeListModal();
+            await loadLists();
+        } else {
+            alert('Error al crear la lista');
+        }
+    } catch (e) {
+        alert('Error de conexión');
+    }
+}
+
+// ==========================================
+// --- GESTIÓN DE COLECCIONES (COLLECTIONS JS) ---
+// ==========================================
+let allCollections = [];
+let selectedCollectionId = null;
+
+async function loadCollections() {
+    if (!document.getElementById('tab-collections')) {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        window.location.href = base + '/collections';
+        return;
+    }
+    try {
+        const res = await fetch('/api/v1/collections', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            allCollections = await res.json();
+            window.KUTSOCIAL_USER_COLLECTIONS = allCollections;
+        } else if (window.KUTSOCIAL_USER_COLLECTIONS) {
+            allCollections = window.KUTSOCIAL_USER_COLLECTIONS;
+        } else {
+            allCollections = [];
+        }
+    } catch (e) {
+        if (window.KUTSOCIAL_USER_COLLECTIONS) {
+            allCollections = window.KUTSOCIAL_USER_COLLECTIONS;
+        } else {
+            allCollections = [];
+        }
+    }
+    renderCollectionsSidebar();
+    
+    if (allCollections.length > 0) {
+        if (selectedCollectionId && allCollections.some(c => c.id === selectedCollectionId)) {
+            selectCollection(selectedCollectionId);
+        } else {
+            selectCollection(allCollections[0].id);
+        }
+    } else {
+        document.getElementById('collection-no-selection').style.display = 'block';
+        document.getElementById('collection-detail-view').style.display = 'none';
+        selectedCollectionId = null;
+    }
+}
+
+function renderCollectionsSidebar() {
+    const sidebar = document.getElementById('collections-sidebar');
+    if (!sidebar) return;
+    sidebar.innerHTML = '';
+    if (allCollections.length === 0) {
+        sidebar.innerHTML = '<div style="font-size: 13px; color: var(--text-muted); padding: 25px 10px; text-align: center;">No tienes colecciones.</div>';
+        return;
+    }
+    allCollections.forEach(c => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'list-nav-btn' + (selectedCollectionId === c.id ? ' active' : '');
+        btn.setAttribute('data-collection-id', c.id);
+        btn.onclick = () => selectCollection(c.id);
+        btn.innerHTML = `
+            <span style="display: flex; align-items: center; gap: 10px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span class="material-icons-outlined" style="font-size: 18px; color: var(--primary); flex-shrink: 0;">folder</span>
+                <span style="overflow: hidden; text-overflow: ellipsis;">${escapeHTML(c.title || c.name)}</span>
+            </span>
+            <span class="material-icons-outlined" style="font-size: 16px; opacity: 0.4; flex-shrink: 0;">chevron_right</span>
+        `;
+        sidebar.appendChild(btn);
+    });
+}
+
+async function selectCollection(id) {
+    selectedCollectionId = id;
+    document.querySelectorAll('#collections-sidebar .list-nav-btn').forEach((btn) => {
+        const btnId = parseInt(btn.getAttribute('data-collection-id'));
+        if (btnId === id) {
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('active');
+        }
+    });
+
+    const collection = allCollections.find(c => c.id === id);
+    if (!collection) return;
+
+    const noSel = document.getElementById('collection-no-selection');
+    const detail = document.getElementById('collection-detail-view');
+    const titleEl = document.getElementById('selected-collection-title');
+    const descEl = document.getElementById('selected-collection-desc');
+    if (noSel) noSel.style.display = 'none';
+    if (detail) detail.style.display = 'block';
+    if (titleEl) titleEl.innerText = collection.title || collection.name;
+    if (descEl) descEl.innerText = collection.description || 'Sin descripción';
+    
+    loadCollectionAccounts();
+}
+
+function loadCollectionAccounts() {
+    const container = document.getElementById('collection-accounts-container');
+    container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando cuentas...</div>';
+
+    fetch(`/api/v1/collections/${selectedCollectionId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => res.json())
+    .then(data => {
+        container.innerHTML = '';
+        const accounts = data.items || data.accounts || [];
+        if (accounts.length === 0) {
+            container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Esta colección está vacía. Añade cuentas desde sus perfiles.</div>';
+            return;
+        }
+        accounts.forEach(acc => {
+            const div = document.createElement('div');
+            div.style = "display: flex; justify-content: space-between; align-items: center; border: 1px solid var(--border-color); border-radius: 12px; padding: 10px 14px; background: rgba(255,255,255,0.02); min-width: 0; gap: 15px;";
+            div.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; flex: 1;" onclick="viewProfile('${acc.id}')">
+                    <img class="user-avatar" src="${acc.avatar || '/assets/default-avatar.png'}" alt="Avatar" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover; flex-shrink: 0;">
+                    <div class="user-info">
+                        <div class="user-name" style="font-size: 14px;">${escapeHTML(acc.display_name || acc.username)}</div>
+                        <div class="user-handle">@${escapeHTML(acc.acct)}</div>
+                    </div>
+                </div>
+                <button class="btn-delete-item" onclick="removeFromCollection('${acc.id}', this)" title="Eliminar cuenta de la colección">
+                    <span class="material-icons-outlined" style="font-size: 16px;">delete</span>
+                </button>
+            `;
+            container.appendChild(div);
+        });
+    })
+    .catch(e => {
+        container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar cuentas de la colección.</div>';
+    });
+}
+
+async function removeFromCollection(accountId, btn) {
+    btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px; animation: spin 1s linear infinite;">sync</span>';
+    btn.disabled = true;
+    try {
+        const res = await fetch(`/api/v1/collections/${selectedCollectionId}/items`, {
+            method: 'DELETE',
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ account_ids: [accountId] })
+        });
+        if (res.ok) {
+            loadCollectionAccounts();
+        } else {
+            btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px;">delete</span>';
+            btn.disabled = false;
+        }
+    } catch (e) {
+        btn.innerHTML = '<span class="material-icons-outlined" style="font-size: 16px;">delete</span>';
+        btn.disabled = false;
+    }
+}
+
+async function deleteSelectedCollection() {
+    if (!confirm('¿Seguro que deseas eliminar esta colección?')) return;
+    try {
+        const res = await fetch(`/api/v1/collections/${selectedCollectionId}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            selectedCollectionId = null;
+            await loadCollections();
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function showCreateCollectionModal() {
+    document.getElementById('collection-modal-title').innerText = 'Nueva Colección';
+    document.getElementById('collection-modal-input-title').value = '';
+    document.getElementById('collection-modal-input-desc').value = '';
+    document.getElementById('modal-manage-collection').style.display = 'flex';
+}
+
+function closeCollectionModal() {
+    document.getElementById('modal-manage-collection').style.display = 'none';
+}
+
+async function saveCollectionModal() {
+    const title = document.getElementById('collection-modal-input-title').value.trim();
+    const desc = document.getElementById('collection-modal-input-desc').value.trim();
+    if (!title) return alert('El nombre de la colección es requerido');
+    
+    try {
+        const res = await fetch('/api/v1/collections', {
+            method: 'POST',
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ title: title, description: desc })
+        });
+        if (res.ok) {
+            const newColl = await res.json();
+            selectedCollectionId = newColl.id;
+            closeCollectionModal();
+            await loadCollections();
+        } else {
+            alert('Error al crear la colección');
+        }
+    } catch (e) {
+        alert('Error de conexión');
+    }
+}
+
+// ==========================================
+// --- HASHTAGS SEGUIDOS (FOLLOWED HASHTAGS JS) ---
+// ==========================================
+let followedTags = [];
+
+async function loadFollowedHashtags() {
+    if (!document.getElementById('tab-followed-hashtags')) {
+        const base = window.KUTSOCIAL_BASE_PATH || '';
+        window.location.href = base + '/followed-hashtags';
+        return;
+    }
+    
+    const container = document.getElementById('followed-hashtags-container');
+    if (!container) return;
+    
+    if (container.children.length === 0) {
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--text-muted);">Cargando...</div>';
+    }
+    
+    try {
+        const res = await fetch('/api/v1/followed_tags', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            const data = await res.json();
+            followedTags = data.map(tagObj => tagObj.name);
+            window.KUTSOCIAL_USER_HASHTAGS = followedTags;
+        } else {
+            followedTags = window.KUTSOCIAL_USER_HASHTAGS || [];
+        }
+    } catch (e) {
+        console.error("Error al cargar hashtags seguidos:", e);
+        followedTags = window.KUTSOCIAL_USER_HASHTAGS || [];
+    }
+    
+    container.innerHTML = '';
+    
+    if (followedTags.length === 0) {
+        container.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 20px; color: var(--text-muted);">No sigues ningún hashtag todavía.</div>';
+    } else {
+        followedTags.forEach(tag => {
+            const div = document.createElement('div');
+            div.className = 'tag-follow-card';
+            div.innerHTML = `
+                <div class="tag-follow-info" onclick="viewHashtagTimeline('${tag}')">
+                    <span class="tag-follow-name">#${escapeHTML(tag)}</span>
+                    <span class="tag-follow-sub">Ver publicaciones</span>
+                </div>
+                <button type="button" class="btn-unfollow-tag" onclick="unfollowHashtag('${tag}', this.parentElement)" title="Dejar de seguir hashtag">✕</button>
+            `;
+            container.appendChild(div);
+        });
+    }
+}
+
+async function followHashtagFromInput() {
+    const input = document.getElementById('hashtag-follow-input');
+    const hashtag = input.value.trim().replace(/^#/, '');
+    if (!hashtag) return;
+    
+    try {
+        const res = await fetch(`/api/v1/tags/${encodeURIComponent(hashtag)}/follow`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            input.value = '';
+            loadFollowedHashtags();
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function followHashtag(name) {
+    try {
+        const res = await fetch(`/api/v1/tags/${encodeURIComponent(name)}/follow`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            loadFollowedHashtags();
+            return true;
+        }
+    } catch (e) {
+        console.error(e);
+    }
+    return false;
+}
+
+async function unfollowHashtag(name, cardElement) {
+    let btn = null;
+    if (cardElement) {
+        btn = cardElement.tagName === 'BUTTON' ? cardElement : cardElement.querySelector('.btn-unfollow-tag') || cardElement.querySelector('button');
+        if (btn) {
+            btn.innerHTML = '…';
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+        }
+    }
+    try {
+        const res = await fetch(`/api/v1/tags/${encodeURIComponent(name)}/unfollow`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (res.ok) {
+            loadFollowedHashtags();
+        } else if (btn) {
+            btn.innerHTML = '✕';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+    } catch (e) {
+        if (btn) {
+            btn.innerHTML = '✕';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+    }
+}
+
+function viewHashtagTimeline(name) {
+    switchTimeline('tag_' + name);
+}
+
+// ==========================================
+// --- MODAL ORGANIZAR (ORGANIZE ACCOUNT MODAL JS) ---
+// ==========================================
+let organizeAccountId = null;
+
+async function openManageListsModal() {
+    organizeAccountId = activeProfileViewId;
+    if (!organizeAccountId) return;
+
+    const handleText = document.getElementById('profile-view-handle').innerText;
+    document.getElementById('organize-account-handle').innerText = handleText;
+
+    const listsContainer = document.getElementById('organize-lists-checkboxes');
+    listsContainer.innerHTML = '<div style="font-size:12px; color:var(--text-muted);">Cargando listas...</div>';
+    
+    const collsContainer = document.getElementById('organize-collections-checkboxes');
+    collsContainer.innerHTML = '<div style="font-size:12px; color:var(--text-muted);">Cargando colecciones...</div>';
+
+    document.getElementById('modal-organize-account').style.display = 'flex';
+
+    try {
+        const listRes = await fetch('/api/v1/lists', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const lists = await listRes.json();
+        
+        const collRes = await fetch('/api/v1/collections', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const collData = await collRes.json();
+        const colls = collData.items || [];
+
+        listsContainer.innerHTML = '';
+        if (lists.length === 0) {
+            listsContainer.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style: italic;">No tienes listas creadas.</div>';
+        } else {
+            for (const list of lists) {
+                const inList = await checkAccountInList(list.id, organizeAccountId);
+                const label = document.createElement('label');
+                label.style = "display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; padding: 4px 0;";
+                label.innerHTML = `
+                    <input type="checkbox" ${inList ? 'checked' : ''} onchange="toggleAccountListMembership('${list.id}', '${organizeAccountId}', this)">
+                    <span>${escapeHTML(list.title)}</span>
+                `;
+                listsContainer.appendChild(label);
+            }
+        }
+
+        collsContainer.innerHTML = '';
+        if (colls.length === 0) {
+            collsContainer.innerHTML = '<div style="font-size:12px; color:var(--text-muted); font-style: italic;">No tienes colecciones creadas.</div>';
+        } else {
+            for (const coll of colls) {
+                const inColl = await checkAccountInCollection(coll.id, organizeAccountId);
+                const label = document.createElement('label');
+                label.style = "display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: 14px; padding: 4px 0;";
+                label.innerHTML = `
+                    <input type="checkbox" ${inColl ? 'checked' : ''} onchange="toggleAccountCollectionMembership('${coll.id}', '${organizeAccountId}', this)">
+                    <span>${escapeHTML(coll.title || coll.name)}</span>
+                `;
+                collsContainer.appendChild(label);
+            }
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+async function checkAccountInList(listId, accId) {
+    try {
+        const res = await fetch(`/api/v1/lists/${listId}/accounts`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const accs = await res.json();
+        return accs.some(a => String(a.id) === String(accId));
+    } catch (e) {
+        return false;
+    }
+}
+
+async function checkAccountInCollection(collId, accId) {
+    try {
+        const res = await fetch(`/api/v1/collections/${collId}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        const accs = data.items || data.accounts || [];
+        return accs.some(a => String(a.id) === String(accId));
+    } catch (e) {
+        return false;
+    }
+}
+
+async function toggleAccountListMembership(listId, accId, checkbox) {
+    checkbox.disabled = true;
+    const method = checkbox.checked ? 'POST' : 'DELETE';
+    try {
+        const res = await fetch(`/api/v1/lists/${listId}/accounts`, {
+            method: method,
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ account_ids: [accId] })
+        });
+        if (!res.ok) checkbox.checked = !checkbox.checked;
+    } catch (e) {
+        checkbox.checked = !checkbox.checked;
+    } finally {
+        checkbox.disabled = false;
+    }
+}
+
+async function toggleAccountCollectionMembership(collId, accId, checkbox) {
+    checkbox.disabled = true;
+    const method = checkbox.checked ? 'POST' : 'DELETE';
+    try {
+        const res = await fetch(`/api/v1/collections/${collId}/items`, {
+            method: method,
+            headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ account_ids: [accId] })
+        });
+        if (!res.ok) checkbox.checked = !checkbox.checked;
+    } catch (e) {
+        checkbox.checked = !checkbox.checked;
+    } finally {
+        checkbox.disabled = false;
+    }
+}
+
+function closeOrganizeModal() {
+    document.getElementById('modal-organize-account').style.display = 'none';
+}
+
+function escapeHTML(str) {
+    if (!str) return '';
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function replaceCustomEmojis(text, emojis) {
+    if (!text || !emojis || emojis.length === 0) {
+        return text;
+    }
+    let result = text;
+    emojis.forEach(emoji => {
+        const shortcode = emoji.shortcode;
+        const url = emoji.url;
+        if (shortcode && url) {
+            const escapedShortcode = shortcode.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+            const regex = new RegExp(':' + escapedShortcode + ':', 'g');
+            result = result.replace(regex, `<img class="custom-emoji" src="${proxyUrl(url)}" alt=":${shortcode}:" title=":${shortcode}:" style="height: 1.2em; vertical-align: middle; max-height: 20px;">`);
+        }
+    });
+    return result;
+}
+
+function escapeJSString(str) {
+    if (!str) return '';
+    let text = str.replace(/<p>/g, '').replace(/<\/p>/g, '').replace(/<br\s*\/?>/g, '\n');
+    return text.replace(/\\/g, '\\\\').replace(/`/g, '\\`').replace(/\$/g, '\\$');
+}
+
+// Interceptar clicks en links de hashtag dentro de toots
+document.addEventListener('click', function(e) {
+    const link = e.target.closest('.toot-content a');
+    if (!link) return;
+    
+    const href = link.getAttribute('href') || '';
+    const text = link.textContent.trim();
+    
+    if (link.classList.contains('hashtag') || text.startsWith('#') || href.includes('/tags/')) {
+        let tag = text.replace(/^#/, '');
+        if (!tag && href.includes('/tags/')) {
+            const match = href.match(/\/tags\/([^/?#]+)/);
+            if (match) tag = match[1];
+        }
+        if (tag) {
+            e.preventDefault();
+            viewHashtagTimeline(tag);
+        }
+    }
+});
+
+// --- VISOR DE IMÁGENES EN POPUP (MODAL / LIGHTBOX CON GALERÍA) ---
+let currentLightboxImages = [];
+let currentLightboxIndex = 0;
+
+function handleGalleryImageClick(e, imgElem) {
+    if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+    const container = imgElem.closest('.toot-card, .quote-toot-embed-container') || imgElem.parentElement;
+    const gallery = container ? Array.from(container.querySelectorAll('img.toot-gallery-img')) : [imgElem];
+    const urls = gallery.map(i => i.src);
+    const index = Math.max(0, gallery.indexOf(imgElem));
+    openImageViewerModal(urls, index);
+}
+
+function updateImageViewer() {
+    const modal = document.getElementById('modal-image-viewer');
+    const img = document.getElementById('image-viewer-img');
+    const prevBtn = document.getElementById('image-viewer-prev');
+    const nextBtn = document.getElementById('image-viewer-next');
+    const counter = document.getElementById('image-viewer-counter');
+
+    if (!modal || !img) return;
+    if (currentLightboxImages.length === 0) return;
+
+    if (currentLightboxIndex < 0) currentLightboxIndex = currentLightboxImages.length - 1;
+    if (currentLightboxIndex >= currentLightboxImages.length) currentLightboxIndex = 0;
+
+    img.src = currentLightboxImages[currentLightboxIndex];
+
+    if (currentLightboxImages.length > 1) {
+        if (prevBtn) prevBtn.style.display = 'flex';
+        if (nextBtn) nextBtn.style.display = 'flex';
+        if (counter) {
+            counter.style.display = 'block';
+            counter.innerText = `${currentLightboxIndex + 1} / ${currentLightboxImages.length}`;
+        }
+    } else {
+        if (prevBtn) prevBtn.style.display = 'none';
+        if (nextBtn) nextBtn.style.display = 'none';
+        if (counter) counter.style.display = 'none';
+    }
+}
+
+function openImageViewerModal(urlOrImages, index = 0) {
+    const modal = document.getElementById('modal-image-viewer');
+    if (!modal) return;
+
+    if (Array.isArray(urlOrImages)) {
+        currentLightboxImages = urlOrImages;
+        currentLightboxIndex = index;
+    } else if (typeof urlOrImages === 'string') {
+        currentLightboxImages = [urlOrImages];
+        currentLightboxIndex = 0;
+    } else {
+        currentLightboxImages = [];
+        currentLightboxIndex = 0;
+    }
+
+    updateImageViewer();
+    modal.style.display = 'flex';
+}
+
+function prevImageViewerModal(e) {
+    if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+    if (currentLightboxImages.length > 1) {
+        currentLightboxIndex--;
+        updateImageViewer();
+    }
+}
+
+function nextImageViewerModal(e) {
+    if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+    }
+    if (currentLightboxImages.length > 1) {
+        currentLightboxIndex++;
+        updateImageViewer();
+    }
+}
+
+function closeImageViewerModal(event) {
+    const modal = document.getElementById('modal-image-viewer');
+    const img = document.getElementById('image-viewer-img');
+    if (modal && img) {
+        if (!event || event.target === modal || event.target.id === 'image-viewer-close') {
+            modal.style.display = 'none';
+            img.src = '';
+            currentLightboxImages = [];
+            currentLightboxIndex = 0;
+        }
+    }
+}
+
+// Navegación con teclado en visor de imágenes (Flechas izquierda/derecha, Escape)
+document.addEventListener('keydown', function(e) {
+    const modal = document.getElementById('modal-image-viewer');
+    if (modal && modal.style.display === 'flex') {
+        if (e.key === 'Escape') {
+            closeImageViewerModal();
+            return;
+        }
+        if (e.key === 'ArrowLeft') {
+            prevImageViewerModal(e);
+            return;
+        }
+        if (e.key === 'ArrowRight') {
+            nextImageViewerModal(e);
+            return;
+        }
+    }
+    if (e.key === 'Escape') {
+        if (isComposerZenActive()) {
+            toggleComposerZen(false);
+            return;
+        }
+    }
+});
+
+// ==========================================
+// SECCIÓN: PONERSE AL DÍA (CATCH UP)
+// ==========================================
+
+const catchupSteps = [1, 2, 4, 6, 12, 18, 24, 48, 72];
+let catchupToots = [];
+let catchupFilter = 'all'; // 'all', 'original', 'reply', 'reblog'
+let catchupAuthorFilter = null; // ID del autor (string)
+let catchupSort = 'date_asc'; // 'date_asc', 'date_desc', 'replies', 'favs', 'reblogs'
+
+function toggleCatchUpHelp(e) {
+    if (e) e.preventDefault();
+    const panel = document.getElementById('catchup-help');
+    if (panel) {
+        const isHidden = panel.style.display === 'none';
+        panel.style.display = isHidden ? 'block' : 'none';
+    }
+}
+
+function initCatchUpTab() {
+    const activeView = document.getElementById('catchup-active-view');
+    const setupView = document.getElementById('catchup-setup-view');
+    
+    renderCatchUpHistory();
+    
+    if (catchupToots.length > 0) {
+        setupView.style.display = 'none';
+        activeView.style.display = 'block';
+    } else {
+        setupView.style.display = 'block';
+        activeView.style.display = 'none';
+        updateCatchUpSliderLabel();
+    }
+}
+
+function updateCatchUpSliderLabel() {
+    const slider = document.getElementById('catchup-range-slider');
+    if (!slider) return;
+    
+    const index = parseInt(slider.value);
+    const hours = catchupSteps[index];
+    
+    let text = `las últimas ${hours} horas`;
+    if (hours === 1) {
+        text = 'la última 1 hora';
+    } else if (hours === 24) {
+        text = 'las últimas 24 horas (1 día)';
+    } else if (hours === 48) {
+        text = 'las últimas 48 horas (2 días)';
+    } else if (hours === 72) {
+        text = 'las últimas 72 horas (3 días)';
+    }
+    
+    document.getElementById('catchup-slider-text').innerText = text;
+    
+    const date = new Date(Date.now() - hours * 60 * 60 * 1000);
+    document.getElementById('catchup-slider-date').innerText = date.toLocaleDateString('es-ES', {
+        weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function backToCatchUpSetup() {
+    document.getElementById('catchup-active-view').style.display = 'none';
+    document.getElementById('catchup-setup-view').style.display = 'block';
+}
+
+async function startCatchUp() {
+    const slider = document.getElementById('catchup-range-slider');
+    if (!slider) return;
+    
+    const index = parseInt(slider.value);
+    const hours = catchupSteps[index];
+    
+    const feed = document.getElementById('catchup-feed');
+    feed.innerHTML = '<div style="text-align:center; padding: 40px 20px; color: var(--text-muted);"><span class="material-icons-outlined spin" style="font-size: 24px; vertical-align: middle; margin-right: 8px; animation: spin 1s infinite linear;">sync</span> Cargando publicaciones de tu red...</div>';
+    
+    document.getElementById('catchup-setup-view').style.display = 'none';
+    document.getElementById('catchup-active-view').style.display = 'block';
+    
+    // Set labels
+    const endDate = new Date();
+    const startDate = new Date(Date.now() - hours * 60 * 60 * 1000);
+    
+    const timeRangeStr = `${startDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} – ${endDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+    document.getElementById('catchup-active-time-range').innerText = timeRangeStr;
+    document.getElementById('catchup-chart-start-time').innerText = startDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('catchup-chart-end-time').innerText = endDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+    try {
+        const res = await fetch(`/api/v1/timelines/catchup?hours=${hours}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) {
+            throw new Error('Fallo al obtener publicaciones');
+        }
+        
+        catchupToots = await res.json();
+        
+        // Guardar en el historial
+        const historyEntry = {
+            id: Date.now().toString(),
+            label: timeRangeStr,
+            hours: hours,
+            count: catchupToots.length,
+            toots: catchupToots,
+            timestamp: Date.now()
+        };
+        let history = getCatchUpHistory();
+        history.unshift(historyEntry);
+        if (history.length > 5) {
+            history = history.slice(0, 5);
+        }
+        saveCatchUpHistory(history);
+        
+        // Reset states
+        catchupFilter = 'all';
+        catchupAuthorFilter = null;
+        catchupSort = 'date_asc';
+        
+        // Reset button classes
+        document.querySelectorAll('.btn-cu-filter').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('tab-cu-all').classList.add('active');
+        
+        document.querySelectorAll('.btn-cu-sort').forEach(btn => btn.classList.remove('active'));
+        document.getElementById('sort-cu-date_asc').classList.add('active');
+        
+        document.getElementById('catchup-author-filter-indicator').style.display = 'none';
+        
+        processAndRenderCatchUp(hours);
+    } catch (e) {
+        console.error(e);
+        feed.innerHTML = `<div style="text-align:center; padding: 40px 20px; color: var(--error);">Error al cargar: ${e.message}. Por favor intenta de nuevo.</div>`;
+    }
+}
+
+function processAndRenderCatchUp(hours = 6) {
+    if (!catchupToots || catchupToots.length === 0) {
+        document.getElementById('badge-cu-all').innerText = '0';
+        document.getElementById('badge-cu-original').innerText = '0';
+        document.getElementById('badge-cu-reply').innerText = '0';
+        document.getElementById('badge-cu-reblog').innerText = '0';
+        
+        document.getElementById('catchup-chart-info').innerText = '0 publicaciones';
+        document.getElementById('catchup-bars').innerHTML = '<div style="width:100%; text-align:center; font-size:12px; color:var(--text-muted); padding: 10px 0;">Sin actividad registrada en este lapso</div>';
+        document.getElementById('catchup-users-row').innerHTML = '<div style="font-size:12px; color:var(--text-muted); padding:5px 0;">Ninguno</div>';
+        document.getElementById('catchup-feed').innerHTML = '<div style="text-align:center; padding:40px 20px; color:var(--text-muted);">No hay publicaciones de tus seguidos en este periodo de tiempo.</div>';
+        return;
+    }
+
+    // 1. Calcular filtros y números totales
+    let origCount = 0;
+    let replyCount = 0;
+    let reblogCount = 0;
+    
+    // Autores más activos
+    const authorCounts = {};
+    const authorMetadata = {};
+    
+    // Histogram Bins Setup
+    const numBins = 12;
+    const bins = Array(numBins).fill(0);
+    const endTime = Date.now();
+    const startTime = endTime - hours * 60 * 60 * 1000;
+    const binDuration = (endTime - startTime) / numBins;
+
+    catchupToots.forEach(toot => {
+        const hasReblog = !!toot.reblog;
+        const actualToot = hasReblog ? toot.reblog : toot;
+        const isReply = !!actualToot.in_reply_to_id;
+        
+        if (hasReblog) {
+            reblogCount++;
+        } else if (isReply) {
+            replyCount++;
+        } else {
+            origCount++;
+        }
+        
+        const author = actualToot.account;
+        authorCounts[author.id] = (authorCounts[author.id] || 0) + 1;
+        authorMetadata[author.id] = author;
+        
+        const tootTime = new Date(toot.created_at).getTime();
+        const binIndex = Math.floor((tootTime - startTime) / binDuration);
+        if (binIndex >= 0 && binIndex < numBins) {
+            bins[binIndex]++;
+        }
+    });
+
+    document.getElementById('badge-cu-all').innerText = catchupToots.length;
+    document.getElementById('badge-cu-original').innerText = origCount;
+    document.getElementById('badge-cu-reply').innerText = replyCount;
+    document.getElementById('badge-cu-reblog').innerText = reblogCount;
+    
+    document.getElementById('catchup-chart-info').innerText = `${catchupToots.length} publicaciones`;
+
+    // 2. Renderizar Histograma
+    const maxBinVal = Math.max(...bins);
+    const barsContainer = document.getElementById('catchup-bars');
+    barsContainer.innerHTML = '';
+    bins.forEach((count, i) => {
+        const heightPct = maxBinVal > 0 ? (count / maxBinVal) * 100 : 0;
+        const binStart = new Date(startTime + i * binDuration);
+        const binEnd = new Date(startTime + (i + 1) * binDuration);
+        
+        const timeTip = `${binStart.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })} – ${binEnd.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}: ${count} posts`;
+        
+        const wrapper = document.createElement('div');
+        wrapper.className = 'cu-chart-bar-container';
+        wrapper.title = timeTip;
+        wrapper.innerHTML = `<div class="cu-chart-bar" style="height: ${Math.max(heightPct, 4)}%; opacity: ${count > 0 ? 1 : 0.2};"></div>`;
+        barsContainer.appendChild(wrapper);
+    });
+
+    // 3. Renderizar burbujas de Autores más Activos
+    const sortedAuthors = Object.keys(authorCounts).sort((a, b) => authorCounts[b] - authorCounts[a]);
+    const usersRow = document.getElementById('catchup-users-row');
+    usersRow.innerHTML = '';
+    sortedAuthors.forEach(authorId => {
+        const author = authorMetadata[authorId];
+        const count = authorCounts[authorId];
+        
+        const bubble = document.createElement('div');
+        bubble.className = `cu-user-bubble ${catchupAuthorFilter === authorId ? 'active' : ''}`;
+        bubble.setAttribute('data-author-id', authorId);
+        bubble.title = `@${author.acct} (${count} posts)`;
+        bubble.innerHTML = `
+            <img src="${author.avatar || '/assets/default-avatar.png'}" alt="${author.display_name}">
+            <span class="badge">${count}</span>
+            <span class="name">${author.display_name}</span>
+        `;
+        bubble.onclick = () => filterCatchUpByAuthor(authorId, author.acct);
+        usersRow.appendChild(bubble);
+    });
+
+    renderCatchUpFeed();
+}
+
+function setCatchUpFilter(filter) {
+    catchupFilter = filter;
+    document.querySelectorAll('.btn-cu-filter').forEach(btn => btn.classList.remove('active'));
+    
+    let btnId = 'tab-cu-all';
+    if (filter === 'original') btnId = 'tab-cu-original';
+    else if (filter === 'reply') btnId = 'tab-cu-reply';
+    else if (filter === 'reblog') btnId = 'tab-cu-reblog';
+    
+    const activeBtn = document.getElementById(btnId);
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    renderCatchUpFeed();
+}
+
+function setCatchUpSort(sort) {
+    catchupSort = sort;
+    document.querySelectorAll('.btn-cu-sort').forEach(btn => btn.classList.remove('active'));
+    
+    const activeBtn = document.getElementById('sort-cu-' + sort);
+    if (activeBtn) activeBtn.classList.add('active');
+    
+    renderCatchUpFeed();
+}
+
+function filterCatchUpByAuthor(authorId, acct) {
+    if (catchupAuthorFilter === authorId) {
+        clearCatchUpAuthorFilter();
+        return;
+    }
+    
+    catchupAuthorFilter = authorId;
+    
+    document.querySelectorAll('.cu-user-bubble').forEach(b => {
+        if (b.getAttribute('data-author-id') === authorId) {
+            b.classList.add('active');
+        } else {
+            b.classList.remove('active');
+        }
+    });
+    
+    const indicator = document.getElementById('catchup-author-filter-indicator');
+    const nameSpan = document.getElementById('catchup-filtered-author-name');
+    nameSpan.innerText = `@${acct}`;
+    indicator.style.display = 'flex';
+    
+    renderCatchUpFeed();
+}
+
+function clearCatchUpAuthorFilter() {
+    catchupAuthorFilter = null;
+    document.querySelectorAll('.cu-user-bubble').forEach(b => b.classList.remove('active'));
+    document.getElementById('catchup-author-filter-indicator').style.display = 'none';
+    renderCatchUpFeed();
+}
+
+function renderCatchUpFeed() {
+    const feed = document.getElementById('catchup-feed');
+    feed.innerHTML = '';
+
+    let filtered = catchupToots.filter(toot => {
+        if (catchupAuthorFilter) {
+            const actualToot = toot.reblog || toot;
+            if (String(actualToot.account.id) !== String(catchupAuthorFilter)) {
+                return false;
+            }
+        }
+        
+        if (catchupFilter === 'original') {
+            return !toot.reblog && !toot.in_reply_to_id;
+        } else if (catchupFilter === 'reply') {
+            return !toot.reblog && !!toot.in_reply_to_id;
+        } else if (catchupFilter === 'reblog') {
+            return !!toot.reblog;
+        }
+        
+        return true;
+    });
+
+    filtered.sort((a, b) => {
+        const idA = parseInt(a.id);
+        const idB = parseInt(b.id);
+        
+        const actA = a.reblog || a;
+        const actB = b.reblog || b;
+
+        if (catchupSort === 'date_asc') {
+            return idA - idB;
+        } else if (catchupSort === 'date_desc') {
+            return idB - idA;
+        } else if (catchupSort === 'replies') {
+            return (actB.replies_count || 0) - (actA.replies_count || 0);
+        } else if (catchupSort === 'favs') {
+            return (actB.favourites_count || 0) - (actA.favourites_count || 0);
+        } else if (catchupSort === 'reblogs') {
+            return (actB.reblogs_count || 0) - (actA.reblogs_count || 0);
+        }
+        return 0;
+    });
+
+    if (filtered.length === 0) {
+        feed.innerHTML = '<div style="text-align:center; padding: 40px 20px; color: var(--text-muted);">Ninguna publicación coincide con los filtros aplicados.</div>';
+        return;
+    }
+
+    filtered.forEach(toot => {
+        const card = createThreadTootElement(toot, false);
+        feed.appendChild(card);
+    });
+}
+
+function getCatchUpHistory() {
+    try {
+        return JSON.parse(localStorage.getItem('kutsocial_catchup_history')) || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveCatchUpHistory(history) {
+    let saved = false;
+    while (history.length > 0 && !saved) {
+        try {
+            localStorage.setItem('kutsocial_catchup_history', JSON.stringify(history));
+            saved = true;
+        } catch (e) {
+            history.pop();
+        }
+    }
+}
+
+function renderCatchUpHistory() {
+    const historyList = document.getElementById('catchup-history-list');
+    const historySection = document.getElementById('catchup-history-section');
+    if (!historyList || !historySection) return;
+    
+    const history = getCatchUpHistory();
+    if (history.length === 0) {
+        historySection.style.display = 'none';
+        return;
+    }
+    
+    historySection.style.display = 'block';
+    historyList.innerHTML = '';
+    
+    history.forEach(item => {
+        const row = document.createElement('div');
+        row.style.display = 'flex';
+        row.style.alignItems = 'center';
+        row.style.gap = '10px';
+        row.style.background = 'rgba(255, 255, 255, 0.02)';
+        row.style.border = '1px solid var(--border-color)';
+        row.style.borderRadius = '20px';
+        row.style.padding = '6px 14px';
+        row.style.fontSize = '13.5px';
+        row.style.width = '100%';
+        row.style.maxWidth = '460px';
+        row.style.justifyContent = 'space-between';
+        
+        row.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                <span class="material-icons-outlined" style="font-size: 16px; color: var(--text-muted); flex-shrink: 0;">history</span>
+                <a href="#" onclick="loadCatchUpFromHistory('${item.id}'); return false;" style="color: #818cf8; text-decoration: none; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">${item.label}</a>
+                <span style="color: var(--text-muted); font-size: 12.5px; flex-shrink: 0;">(${item.count} publicaciones)</span>
+            </div>
+            <button onclick="deleteCatchUpFromHistory('${item.id}')" style="background: rgba(239, 68, 68, 0.1) !important; border: 1px solid rgba(239, 68, 68, 0.2) !important; color: var(--error) !important; border-radius: 50% !important; width: 22px !important; height: 22px !important; display: flex !important; align-items: center !important; justify-content: center !important; font-size: 10px !important; cursor: pointer !important; padding: 0 !important; margin: 0 !important; box-shadow: none !important; transition: all 0.2s !important; flex-shrink: 0 !important;">✕</button>
+        `;
+        historyList.appendChild(row);
+    });
+}
+
+function loadCatchUpFromHistory(id) {
+    const history = getCatchUpHistory();
+    const item = history.find(entry => entry.id === id);
+    if (!item) return;
+    
+    catchupToots = item.toots || [];
+    catchupFilter = 'all';
+    catchupAuthorFilter = null;
+    catchupSort = 'date_asc';
+    
+    document.getElementById('catchup-setup-view').style.display = 'none';
+    document.getElementById('catchup-active-view').style.display = 'block';
+    
+    document.getElementById('catchup-active-time-range').innerText = item.label;
+    
+    const timestamp = parseInt(item.timestamp || Date.now());
+    const hours = item.hours || 6;
+    const endDate = new Date(timestamp);
+    const startDate = new Date(timestamp - hours * 60 * 60 * 1000);
+    
+    document.getElementById('catchup-chart-start-time').innerText = startDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('catchup-chart-end-time').innerText = endDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+
+    document.querySelectorAll('.btn-cu-filter').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('tab-cu-all').classList.add('active');
+    
+    document.querySelectorAll('.btn-cu-sort').forEach(btn => btn.classList.remove('active'));
+    document.getElementById('sort-cu-date_asc').classList.add('active');
+    
+    document.getElementById('catchup-author-filter-indicator').style.display = 'none';
+    
+    processAndRenderCatchUp(hours);
+}
+
+function deleteCatchUpFromHistory(id) {
+    let history = getCatchUpHistory();
+    history = history.filter(entry => entry.id !== id);
+    saveCatchUpHistory(history);
+    renderCatchUpHistory();
+}
+
+function updateComposerVisibilityIcon() {
+    const select = document.getElementById('composer-visibility');
+    const icon = document.getElementById('composer-visibility-icon');
+    if (!select || !icon) return;
+    
+    const val = select.value;
+    if (val === 'public') {
+        icon.innerText = 'public';
+    } else if (val === 'unlisted') {
+        icon.innerText = 'lock_open';
+    } else if (val === 'private') {
+        icon.innerText = 'lock';
+    } else if (val === 'direct') {
+        icon.innerText = 'mail';
+    }
+}
+
+// ==========================================
+// GIPHY GIF Picker support
+// ==========================================
+function openGifModal() {
+    const modal = document.getElementById('modal-gif-picker');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    document.getElementById('gif-search-input').value = '';
+    document.getElementById('gif-search-input').focus();
+    loadTrendingGifs();
+}
+
+function closeGifModal() {
+    const modal = document.getElementById('modal-gif-picker');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+async function fetchGiphy(endpoint, params = {}) {
+    const apiKey = window.GIPHY_API_KEY || 'dc6zaTOxFJmzC';
+    const urlParams = new URLSearchParams({
+        api_key: apiKey,
+        rating: 'g',
+        limit: '24',
+        ...params
+    });
+    
+    const url = `https://api.giphy.com/v1/gifs/${endpoint}?${urlParams.toString()}`;
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error('GIPHY API returned status ' + response.status);
+    }
+    return await response.json();
+}
+
+async function loadTrendingGifs() {
+    const container = document.getElementById('gif-results-container');
+    if (!container) return;
+    container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--text-muted); font-size: 13.5px; padding: 20px;">Cargando tendencias...</div>';
+    
+    try {
+        const data = await fetchGiphy('trending');
+        renderGifs(data.data);
+    } catch (err) {
+        console.error('Error al cargar tendencias de GIPHY:', err);
+        container.innerHTML = `<div style="grid-column: span 3; text-align: center; color: var(--error); font-size: 13.5px; padding: 20px; line-height: 1.5;">Error al cargar tendencias de GIPHY (${err.message}).<br><span style="font-size: 12px; color: var(--text-muted);">Asegúrate de configurar una API Key de GIPHY válida en el <a href="/admin/dashboard/general" style="color: #818cf8; text-decoration: underline;">Panel de Administración</a>.</span></div>`;
+    }
+}
+
+async function searchGifs() {
+    const query = document.getElementById('gif-search-input').value.trim();
+    if (!query) {
+        loadTrendingGifs();
+        return;
+    }
+    
+    const container = document.getElementById('gif-results-container');
+    if (!container) return;
+    container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--text-muted); font-size: 13.5px; padding: 20px;">Buscando...</div>';
+    
+    try {
+        const data = await fetchGiphy('search', { q: query });
+        if (data.data.length === 0) {
+            container.innerHTML = '<div style="grid-column: span 3; text-align: center; color: var(--text-muted); font-size: 13.5px; padding: 20px;">No se encontraron resultados.</div>';
+        } else {
+            renderGifs(data.data);
+        }
+    } catch (err) {
+        console.error('Error al buscar en GIPHY:', err);
+        container.innerHTML = `<div style="grid-column: span 3; text-align: center; color: var(--error); font-size: 13.5px; padding: 20px; line-height: 1.5;">Error al buscar en GIPHY (${err.message}).<br><span style="font-size: 12px; color: var(--text-muted);">Asegúrate de configurar una API Key de GIPHY válida en el <a href="/admin/dashboard/general" style="color: #818cf8; text-decoration: underline;">Panel de Administración</a>.</span></div>`;
+    }
+}
+
+function renderGifs(gifs) {
+    const container = document.getElementById('gif-results-container');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    gifs.forEach(gif => {
+        const previewUrl = gif.images.fixed_width_downsampled?.url || gif.images.fixed_height_small?.url || gif.images.original.url;
+        const originalUrl = gif.images.original.url;
+        
+        const img = document.createElement('img');
+        img.src = previewUrl;
+        img.alt = gif.title || 'GIF';
+        img.style = 'width: 100%; height: 100px; object-fit: cover; border-radius: 6px; cursor: pointer; transition: transform 0.2s, filter 0.2s;';
+        img.onmouseover = () => {
+            img.style.transform = 'scale(1.05)';
+            img.style.filter = 'brightness(1.1)';
+        };
+        img.onmouseout = () => {
+            img.style.transform = 'scale(1)';
+            img.style.filter = 'brightness(1)';
+        };
+        img.onclick = () => selectGif(originalUrl, gif.title || 'Giphy GIF');
+        
+        container.appendChild(img);
+    });
+}
+
+async function selectGif(gifUrl, title) {
+    closeGifModal();
+    
+    const previewContainer = document.getElementById('composer-media-preview');
+    if (!previewContainer) return;
+    
+    const previewId = 'media-uploading-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    const tempDiv = document.createElement('div');
+    tempDiv.id = previewId;
+    tempDiv.className = 'media-preview-item';
+    tempDiv.style = "display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 6px; position: relative; margin-bottom: 8px; width: 100%; box-sizing: border-box;";
+    tempDiv.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); padding: 5px;">Descargando y subiendo GIF...</div>';
+    previewContainer.appendChild(tempDiv);
+    
+    try {
+        const response = await fetch(gifUrl);
+        if (!response.ok) throw new Error('Failed to fetch GIF from GIPHY source');
+        const blob = await response.blob();
+        
+        const file = new File([blob], "giphy.gif", { type: "image/gif" });
+        
+        tempDiv.remove();
+        
+        await uploadFileDirectly(file);
+        
+    } catch (err) {
+        console.error('Error al procesar/subir GIF de GIPHY:', err);
+        tempDiv.remove();
+        alert('Error al descargar o subir el GIF seleccionado.');
+    }
+}
