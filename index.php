@@ -136,7 +136,7 @@ $renderFrontend = function() {
     $db = Database::connect();
     
     // Obtener datos del usuario propietario local (único usuario del cliente)
-    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' AND username = 'iam' LIMIT 1");
+    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' AND username = 'iam' ORDER BY id ASC LIMIT 1");
     $localUser = $stmtOwner->fetch();
     if (!$localUser) {
         $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' ORDER BY id ASC LIMIT 1");
@@ -235,7 +235,7 @@ $renderFrontend = function() {
                 $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
                 $stmt->execute([$uname, $udomain]);
             } else {
-                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') ORDER BY CASE WHEN password_hash IS NOT NULL AND password_hash != '' THEN 0 ELSE 1 END ASC, id ASC LIMIT 1");
                 $stmt->execute([$uname]);
             }
             $activeProfileViewId = $stmt->fetchColumn() ?: null;
@@ -321,7 +321,7 @@ $renderFrontend = function() {
                 }
             }
 
-            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
+            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' AND username = 'iam' ORDER BY id ASC LIMIT 1");
             $owner = $stmt->fetch();
             if (!$owner) {
                 $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");
@@ -353,7 +353,7 @@ $renderPagesFrontend = function() {
     $db = Database::connect();
     
     // Obtener datos del usuario propietario local
-    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' AND username = 'iam' LIMIT 1");
+    $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' AND username = 'iam' ORDER BY id ASC LIMIT 1");
     $localUser = $stmtOwner->fetch();
     if (!$localUser) {
         $stmtOwner = $db->query("SELECT * FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' ORDER BY id ASC LIMIT 1");
@@ -492,7 +492,7 @@ $renderPagesFrontend = function() {
                 $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND domain = ? LIMIT 1");
                 $stmt->execute([$uname, $udomain]);
             } else {
-                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                $stmt = $db->prepare("SELECT id FROM accounts WHERE username = ? AND (domain IS NULL OR domain = '') ORDER BY CASE WHEN password_hash IS NOT NULL AND password_hash != '' THEN 0 ELSE 1 END ASC, id ASC LIMIT 1");
                 $stmt->execute([$uname]);
             }
             $activeProfileViewId = $stmt->fetchColumn() ?: null;
@@ -584,7 +584,7 @@ $renderPagesFrontend = function() {
                 }
             }
 
-            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') AND username = 'iam' LIMIT 1");
+            $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' AND username = 'iam' ORDER BY id ASC LIMIT 1");
             $owner = $stmt->fetch();
             if (!$owner) {
                 $stmt = $db->query("SELECT id, username, locked, display_name, indexable FROM accounts WHERE (domain IS NULL OR domain = '') ORDER BY id ASC LIMIT 1");

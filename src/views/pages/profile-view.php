@@ -1,6 +1,6 @@
 <div id="tab-profile-view" data-account-id="<?= htmlspecialchars((string)($activeProfileViewId ?? ($localUser['id'] ?? ''))) ?>" style="<?= ($section === 'profile-view') ? 'display: block;' : 'display: none;' ?>">
     <!-- Back Header -->
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px; cursor: pointer; color: var(--text-muted); font-weight: 500;" onclick="goBackToFeed()">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px 18px 4px 18px; margin-bottom: 10px; cursor: pointer; color: var(--text-muted); font-weight: 500;" onclick="goBackToFeed()">
         <span style="font-size: 18px;">←</span> <span>Atrás</span>
     </div>
 

@@ -3929,7 +3929,7 @@ async function viewProfile(accountId, fromHashChange = false) {
             actionBtn.style.background = 'var(--primary)';
             actionBtn.onclick = () => showLoginModal();
             document.getElementById('profile-view-manage-lists-btn').style.display = 'none';
-        } else if (currentProfileData && String(account.id) === String(currentProfileData.id)) {
+        } else if ((currentProfileData && String(account.id) === String(currentProfileData.id)) || (token && window.KUTSOCIAL_OWNER && String(account.id) === String(window.KUTSOCIAL_OWNER.id))) {
             actionBtn.innerText = 'Editar perfil';
             actionBtn.style.background = 'rgba(255,255,255,0.06)';
             actionBtn.onclick = () => openEditProfileModal();

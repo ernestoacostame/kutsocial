@@ -1,5 +1,5 @@
 {
-  "version": "2.1.16",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.16/kutsocial-v2.1.16.zip",
-  "changelog": "Acelera getNotifications() usando índices GIN/FULLTEXT para menciones y formatStatusesBatch()"
+  "version": "2.1.17",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.17/kutsocial-v2.1.17.zip",
+  "changelog": "Prioriza la cuenta local real en /@usuario (evita duplicado fantasma), evita botón Seguir en perfil propio y añade margen al botón Atrás"
 }
