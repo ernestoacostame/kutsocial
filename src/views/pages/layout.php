@@ -25,28 +25,17 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
     
     <link rel="stylesheet" href="/assets/pages.css?v=<?= $ver ?>">
     <link id="ui-theme-mastodon-css" rel="stylesheet" href="/assets/theme-mastodon.css?v=<?= $ver ?>" <?= $uiTheme === 'mastodon' ? '' : 'disabled' ?>>
+    <?php if ($uiTheme === 'mastodon'): ?>
     <script>
     (function() {
         try {
-            var saved = localStorage.getItem('kutsocial_ui_theme');
-            if (saved === 'classic' || saved === 'mastodon') {
-                document.documentElement.setAttribute('data-ui-theme', saved);
-                var link = document.getElementById('ui-theme-mastodon-css');
-                if (link) link.disabled = (saved !== 'mastodon');
+            if (localStorage.getItem('kutsocial_m5_sidebar_collapsed') === '1') {
+                document.documentElement.classList.add('m5-sidebar-collapsed');
             }
         } catch (e) {}
     })();
-    function setUiTheme(theme) {
-        if (theme !== 'classic' && theme !== 'mastodon') return;
-        document.documentElement.setAttribute('data-ui-theme', theme);
-        var link = document.getElementById('ui-theme-mastodon-css');
-        if (link) link.disabled = (theme !== 'mastodon');
-        try { localStorage.setItem('kutsocial_ui_theme', theme); } catch (e) {}
-        document.querySelectorAll('.sidebar-theme-btn').forEach(function(btn) {
-            btn.classList.toggle('active', btn.getAttribute('data-theme') === theme);
-        });
-    }
     </script>
+    <?php endif; ?>
     <style>
     #tab-<?= htmlspecialchars($section) ?> { display: <?= in_array($section, ['lists', 'collections']) ? 'flex' : 'block' ?>; }
     #tab-users-list { display: none; }
@@ -90,107 +79,194 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
         <!-- Sidebar Izquierdo -->
         <aside class="sidebar">
             <div>
+                <?php if ($uiTheme === 'mastodon'): ?>
+                <!-- Cabecera estilo Mastodon 5.0 -->
+                <div class="m5-sidebar-header">
+                    <a href="<?= $basePath ?>/home" class="m5-brand">
+                        <img src="/kutsocial_logo.svg" alt="Logo" class="m5-brand-logo">
+                        <div class="m5-brand-text">
+                            <span class="m5-brand-title">KutSocial</span>
+                            <span class="m5-brand-sub">powered by KutSocial</span>
+                        </div>
+                    </a>
+                    <button type="button" id="m5-sidebar-toggle" class="m5-collapse-btn" onclick="toggleM5Sidebar()" title="Contraer / Expandir barra lateral">
+                        <span class="material-icons-outlined m5-icon-close">close</span>
+                        <span class="material-icons-outlined m5-icon-open">menu</span>
+                    </button>
+                </div>
+
+                <!-- Barra de iconos superior (horizontal expandida, vertical al cerrar) -->
+                <div class="m5-icon-bar">
+                    <?php if (in_array('home', $enabledNavItems, true)): ?>
+                    <a href="<?= $basePath ?>/home" class="m5-icon-btn <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>" title="<?= __('nav_home') ?>">
+                        <span class="material-icons-outlined">home</span>
+                    </a>
+                    <?php endif; ?>
+                    <button type="button" class="m5-icon-btn" onclick="toggleM5SearchPopover()" title="<?= __('search_placeholder') ?>">
+                        <span class="material-icons-outlined">search</span>
+                    </button>
+                    <?php if (in_array('direct', $enabledNavItems, true)): ?>
+                    <a href="<?= $basePath ?>/direct" class="m5-icon-btn <?= ($section === 'feed' && $currentTimeline === 'direct') ? 'active' : '' ?>" title="<?= __('nav_direct') ?>">
+                        <span class="material-icons-outlined">mail_outline</span>
+                    </a>
+                    <?php endif; ?>
+                    <?php if (in_array('notifications', $enabledNavItems, true)): ?>
+                    <a href="<?= $basePath ?>/notifications" class="m5-icon-btn <?= ($section === 'notifications') ? 'active' : '' ?>" title="<?= __('nav_notifications') ?>" style="position: relative;">
+                        <span class="material-icons-outlined">notifications</span>
+                        <span id="m5-notif-dot" class="m5-notif-dot" style="display: none;"></span>
+                    </a>
+                    <?php endif; ?>
+                    <div class="m5-account-wrap" style="position: relative;">
+                        <button type="button" class="m5-icon-btn m5-avatar-btn" onclick="toggleM5AccountMenu(event)" title="<?= __('nav_profile') ?>">
+                            <img id="m5-my-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.svg') ?>" alt="Avatar">
+                        </button>
+                        <div id="m5-account-menu" class="m5-popover-menu" style="display: none;">
+                            <div class="m5-account-menu-header">
+                                <img src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.svg') ?>" alt="Avatar">
+                                <div style="min-width: 0;">
+                                    <div class="m5-menu-name"><?= htmlspecialchars($localUser['display_name'] ?: ($localUser['username'] ?? '')) ?></div>
+                                    <div class="m5-menu-handle">@<?= htmlspecialchars($localUser['username'] ?? '') ?></div>
+                                </div>
+                            </div>
+                            <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" class="m5-menu-item">
+                                <span class="material-icons-outlined">person</span> <span><?= __('nav_profile') ?></span>
+                            </a>
+                            <a href="<?= $basePath ?>/profile" class="m5-menu-item">
+                                <span class="material-icons-outlined">tune</span> <span><?= __('nav_settings') ?></span>
+                            </a>
+                            <?php if (in_array('collections', $enabledNavItems, true)): ?>
+                            <a href="<?= $basePath ?>/collections" class="m5-menu-item">
+                                <span class="material-icons-outlined">folder</span> <span><?= __('nav_collections') ?></span>
+                            </a>
+                            <?php endif; ?>
+                            <?php if (in_array('admin', $enabledNavItems, true)): ?>
+                            <a href="/admin/update" class="m5-menu-item">
+                                <span class="material-icons-outlined">settings</span> <span><?= __('nav_admin') ?></span>
+                            </a>
+                            <?php endif; ?>
+                            <div class="m5-menu-divider"></div>
+                            <div class="m5-menu-lang">
+                                <span style="font-size: 12px; color: var(--text-muted);"><?= __('language') ?></span>
+                                <div style="display: flex; gap: 4px;">
+                                    <a href="/lang/es" class="sidebar-lang-btn <?= \KutSocial\I18n::getLang() === 'es' ? 'active' : '' ?>">ES</a>
+                                    <a href="/lang/en" class="sidebar-lang-btn <?= \KutSocial\I18n::getLang() === 'en' ? 'active' : '' ?>">EN</a>
+                                </div>
+                            </div>
+                            <button type="button" class="m5-menu-item m5-menu-danger" onclick="logout()">
+                                <span class="material-icons-outlined">logout</span> <span><?= __('logout', 'Cerrar sesión') ?></span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Botón principal New Post -->
+                <button type="button" class="m5-new-post-btn" onclick="openM5NewPost()" title="<?= __('publish', 'Publicar') ?>">
+                    <span class="material-icons-outlined">edit_square</span>
+                    <span class="m5-new-post-label"><?= __('publish', 'Publicar') ?></span>
+                </button>
+                <?php else: ?>
                 <div class="nav-logo" style="display: flex; align-items: center; gap: 10px;">
                     <img src="/kutsocial_logo.svg" alt="Logo" style="width: 28px; height: 28px;">
                     <span>KutSocial</span>
                 </div>
+                <?php endif; ?>
 
                 <ul class="nav-menu">
                     <?php if (in_array('home', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/home" id="nav-home" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">home</span> <?= __('nav_home') ?>
+                        <a href="<?= $basePath ?>/home" id="nav-home" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>" title="<?= __('nav_home') ?>">
+                            <span class="material-icons-outlined">home</span> <span class="nav-label"><?= __('nav_home') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('catchup', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/catchup" id="nav-catchup" class="nav-link <?= ($section === 'catchup') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">bolt</span> <?= __('nav_catchup') ?>
+                        <a href="<?= $basePath ?>/catchup" id="nav-catchup" class="nav-link <?= ($section === 'catchup') ? 'active' : '' ?>" title="<?= __('nav_catchup') ?>">
+                            <span class="material-icons-outlined">bolt</span> <span class="nav-label"><?= __('nav_catchup') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('local', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/local" id="nav-local" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'local') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">groups</span> <?= __('nav_local') ?>
+                        <a href="<?= $basePath ?>/local" id="nav-local" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'local') ? 'active' : '' ?>" title="<?= __('nav_local') ?>">
+                            <span class="material-icons-outlined">groups</span> <span class="nav-label"><?= __('nav_local') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('public', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/public" id="nav-public" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'public') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">public</span> <?= __('nav_public') ?>
+                        <a href="<?= $basePath ?>/public" id="nav-public" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'public') ? 'active' : '' ?>" title="<?= __('nav_public') ?>">
+                            <span class="material-icons-outlined">public</span> <span class="nav-label"><?= __('nav_public') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('notifications', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/notifications" id="nav-notifications" class="nav-link <?= ($section === 'notifications') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">notifications</span> <?= __('nav_notifications') ?>
+                        <a href="<?= $basePath ?>/notifications" id="nav-notifications" class="nav-link <?= ($section === 'notifications') ? 'active' : '' ?>" title="<?= __('nav_notifications') ?>">
+                            <span class="material-icons-outlined">notifications</span> <span class="nav-label"><?= __('nav_notifications') ?></span>
                             <span id="nav-notifications-count" class="notification-badge" style="display: none; background: var(--error, #ef4444); color: white; border-radius: 10px; padding: 2px 6px; font-size: 11px; font-weight: bold; margin-left: auto;">0</span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('bookmarks', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/bookmarks" id="nav-bookmarks" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'bookmarks') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">bookmark_border</span> <?= __('nav_bookmarks') ?>
+                        <a href="<?= $basePath ?>/bookmarks" id="nav-bookmarks" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'bookmarks') ? 'active' : '' ?>" title="<?= __('nav_bookmarks') ?>">
+                            <span class="material-icons-outlined">bookmark_border</span> <span class="nav-label"><?= __('nav_bookmarks') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('direct', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/direct" id="nav-direct" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'direct') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">mail_outline</span> <?= __('nav_direct') ?>
+                        <a href="<?= $basePath ?>/direct" id="nav-direct" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'direct') ? 'active' : '' ?>" title="<?= __('nav_direct') ?>">
+                            <span class="material-icons-outlined">mail_outline</span> <span class="nav-label"><?= __('nav_direct') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('lists', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/lists" id="nav-lists" class="nav-link <?= ($section === 'lists') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">list</span> <?= __('nav_lists') ?>
+                        <a href="<?= $basePath ?>/lists" id="nav-lists" class="nav-link <?= ($section === 'lists') ? 'active' : '' ?>" title="<?= __('nav_lists') ?>">
+                            <span class="material-icons-outlined">list</span> <span class="nav-label"><?= __('nav_lists') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('collections', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/collections" id="nav-collections" class="nav-link <?= ($section === 'collections') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">folder</span> <?= __('nav_collections') ?>
+                        <a href="<?= $basePath ?>/collections" id="nav-collections" class="nav-link <?= ($section === 'collections') ? 'active' : '' ?>" title="<?= __('nav_collections') ?>">
+                            <span class="material-icons-outlined">folder</span> <span class="nav-label"><?= __('nav_collections') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('hashtags', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/followed-hashtags" id="nav-hashtags" class="nav-link <?= ($section === 'followed-hashtags') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">tag</span> <?= __('nav_hashtags') ?>
+                        <a href="<?= $basePath ?>/followed-hashtags" id="nav-hashtags" class="nav-link <?= ($section === 'followed-hashtags') ? 'active' : '' ?>" title="<?= __('nav_hashtags') ?>">
+                            <span class="material-icons-outlined">tag</span> <span class="nav-label"><?= __('nav_hashtags') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('profile', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">person</span> <?= __('nav_profile') ?>
+                        <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>" title="<?= __('nav_profile') ?>">
+                            <span class="material-icons-outlined">person</span> <span class="nav-label"><?= __('nav_profile') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('settings', $enabledNavItems, true)): ?>
                     <li class="nav-item">
-                        <a href="<?= $basePath ?>/profile" id="nav-settings" class="nav-link <?= ($section === 'profile') ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">tune</span> <?= __('nav_settings') ?>
+                        <a href="<?= $basePath ?>/profile" id="nav-settings" class="nav-link <?= ($section === 'profile') ? 'active' : '' ?>" title="<?= __('nav_settings') ?>">
+                            <span class="material-icons-outlined">tune</span> <span class="nav-label"><?= __('nav_settings') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('admin', $enabledNavItems, true)): ?>
                     <li class="nav-item" id="nav-admin-settings">
-                        <a href="/admin/update" class="nav-link">
-                            <span class="material-icons-outlined">settings</span> <?= __('nav_admin') ?>
+                        <a href="/admin/update" class="nav-link" title="<?= __('nav_admin') ?>">
+                            <span class="material-icons-outlined">settings</span> <span class="nav-label"><?= __('nav_admin') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <li class="nav-item" id="nav-item-owner" style="display: none;">
-                        <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-owner-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>">
-                            <span class="material-icons-outlined">verified_user</span> <?= __('nav_owner') ?>
+                        <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-owner-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>" title="<?= __('nav_owner') ?>">
+                            <span class="material-icons-outlined">verified_user</span> <span class="nav-label"><?= __('nav_owner') ?></span>
                         </a>
                     </li>
                 </ul>
@@ -205,25 +281,6 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                         <a href="/lang/en" class="sidebar-lang-btn <?= \KutSocial\I18n::getLang() === 'en' ? 'active' : '' ?>">EN</a>
                     </div>
                 </div>
-
-                <!-- Selector de Tema en Sidebar -->
-                <div class="sidebar-lang-selector" style="margin-top: 6px;">
-                    <span class="sidebar-lang-label">
-                        <span class="material-icons-outlined">palette</span> <?= __('ui_theme_label', 'Tema') ?>
-                    </span>
-                    <div class="sidebar-lang-options">
-                        <button type="button" data-theme="classic" onclick="setUiTheme('classic')" class="sidebar-lang-btn sidebar-theme-btn <?= $uiTheme === 'classic' ? 'active' : '' ?>"><?= __('ui_theme_classic_short', 'Clásico') ?></button>
-                        <button type="button" data-theme="mastodon" onclick="setUiTheme('mastodon')" class="sidebar-lang-btn sidebar-theme-btn <?= $uiTheme === 'mastodon' ? 'active' : '' ?>">Mastodon</button>
-                    </div>
-                </div>
-                <script>
-                (function() {
-                    var current = document.documentElement.getAttribute('data-ui-theme') || 'classic';
-                    document.querySelectorAll('.sidebar-theme-btn').forEach(function(btn) {
-                        btn.classList.toggle('active', btn.getAttribute('data-theme') === current);
-                    });
-                })();
-                </script>
             </div>
 
             <!-- Perfil del usuario actual -->
@@ -688,5 +745,87 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
     <?php endif; ?>
 
     <script src="/assets/pages.js?v=<?= htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0') ?>"></script>
+    <?php if ($uiTheme === 'mastodon'): ?>
+    <!-- Modal Buscador Mastodon 5.0 -->
+    <div id="m5-search-modal" class="modal-overlay" style="display: none; z-index: 2600;" onclick="if(event.target === this) toggleM5SearchPopover(false)">
+        <div class="modal-card" style="max-width: 520px; width: 92%; padding: 18px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span class="material-icons-outlined" style="color: var(--text-muted);">search</span>
+                <input type="text" id="m5-search-input" class="modal-input" placeholder="<?= __('search_placeholder') ?>" style="flex: 1; margin: 0; border-radius: 9999px; padding: 10px 16px;" onkeydown="if(event.key==='Enter'){ toggleM5SearchPopover(false); performSearch(this.value); } else if(event.key==='Escape'){ toggleM5SearchPopover(false); }">
+                <button type="button" class="modal-close-btn" onclick="toggleM5SearchPopover(false)" aria-label="<?= __('close') ?>">&times;</button>
+            </div>
+        </div>
+    </div>
+    <script>
+    function toggleM5Sidebar() {
+        var collapsed = document.documentElement.classList.toggle('m5-sidebar-collapsed');
+        try { localStorage.setItem('kutsocial_m5_sidebar_collapsed', collapsed ? '1' : '0'); } catch (e) {}
+    }
+    function toggleM5AccountMenu(e) {
+        if (e) e.stopPropagation();
+        var menu = document.getElementById('m5-account-menu');
+        if (!menu) return;
+        menu.style.display = (menu.style.display === 'none' || !menu.style.display) ? 'block' : 'none';
+    }
+    function toggleM5SearchPopover(force) {
+        var modal = document.getElementById('m5-search-modal');
+        if (!modal) return;
+        var show = (typeof force === 'boolean') ? force : (modal.style.display === 'none' || !modal.style.display);
+        modal.style.display = show ? 'flex' : 'none';
+        if (show) {
+            setTimeout(function() {
+                var inp = document.getElementById('m5-search-input');
+                if (inp) inp.focus();
+            }, 40);
+        }
+    }
+    function openM5NewPost() {
+        var feedComposer = document.querySelector('#tab-feed > .composer-card #composer-textarea');
+        if (feedComposer && document.getElementById('tab-feed') && document.getElementById('tab-feed').style.display !== 'none') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            setTimeout(function() { feedComposer.focus(); }, 180);
+            return;
+        }
+        var modal = document.getElementById('modal-composer');
+        if (modal) {
+            var title = document.getElementById('modal-composer-title');
+            if (title) title.textContent = '<?= __('publish', 'Publicar') ?>';
+            modal.style.display = 'flex';
+            setTimeout(function() {
+                var ta = modal.querySelector('textarea');
+                if (ta) ta.focus();
+            }, 60);
+        } else {
+            window.location.href = '<?= $basePath ?>/home';
+        }
+    }
+    document.addEventListener('click', function(e) {
+        var menu = document.getElementById('m5-account-menu');
+        if (menu && menu.style.display === 'block' && !e.target.closest('.m5-account-wrap')) {
+            menu.style.display = 'none';
+        }
+    });
+    // Sincronizar badge de notificaciones y avatar en barra superior M5
+    (function() {
+        var badge = document.getElementById('nav-notifications-count');
+        var dot = document.getElementById('m5-notif-dot');
+        if (badge && dot && window.MutationObserver) {
+            var syncNotif = function() {
+                var visible = badge.style.display !== 'none' && parseInt(badge.textContent || '0', 10) > 0;
+                dot.style.display = visible ? 'block' : 'none';
+            };
+            syncNotif();
+            new MutationObserver(syncNotif).observe(badge, { attributes: true, childList: true, characterData: true });
+        }
+        var mainAv = document.getElementById('my-avatar');
+        var m5Av = document.getElementById('m5-my-avatar');
+        if (mainAv && m5Av && window.MutationObserver) {
+            new MutationObserver(function() {
+                if (mainAv.src) m5Av.src = mainAv.src;
+            }).observe(mainAv, { attributes: true, attributeFilter: ['src'] });
+        }
+    })();
+    </script>
+    <?php endif; ?>
 </body>
 </html>

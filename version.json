@@ -1,5 +1,5 @@
 {
-  "version": "2.1.3",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.3/kutsocial-v2.1.3.zip",
-  "changelog": "Añade selector de tema (KutSocial Clásico vs Mastodon 5.0 Moderno) en Admin y Sidebar"
+  "version": "2.1.4",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.4/kutsocial-v2.1.4.zip",
+  "changelog": "Rediseña el tema Mastodon 5.0 con barra superior de iconos, barra vertical colapsable y selector solo en Admin > General"
 }
