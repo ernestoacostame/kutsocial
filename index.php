@@ -508,6 +508,12 @@ $renderPagesFrontend = function() {
 
     $basePath = (str_starts_with($uri, '/p/') || $uri === '/p') ? '/p' : '';
     $enabledNavItems = \KutSocial\Controllers\AdminController::getEnabledNavItems();
+    $stmtTheme = $db->prepare("SELECT value FROM options WHERE options.key = 'ui_theme' LIMIT 1");
+    $stmtTheme->execute();
+    $uiTheme = $stmtTheme->fetchColumn() ?: 'classic';
+    if (!in_array($uiTheme, ['classic', 'mastodon'], true)) {
+        $uiTheme = 'classic';
+    }
     $path = __DIR__ . '/src/views/pages/layout.php';
     if (file_exists($path)) {
         ob_start();

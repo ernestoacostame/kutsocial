@@ -526,6 +526,13 @@ class AdminController {
         $stmtLang->execute();
         $siteLanguage = $stmtLang->fetchColumn() ?: 'es';
 
+        $stmtTheme = $db->prepare("SELECT value FROM options WHERE options.key = 'ui_theme' LIMIT 1");
+        $stmtTheme->execute();
+        $uiTheme = $stmtTheme->fetchColumn() ?: 'classic';
+        if (!in_array($uiTheme, ['classic', 'mastodon'], true)) {
+            $uiTheme = 'classic';
+        }
+
         $rollbacks = $updater->getAvailableRollbacks();
         $updatesHistory = [];
         try {
@@ -597,6 +604,13 @@ class AdminController {
             }
             Database::upsertOption($db, 'site_language', $siteLanguage);
             I18n::setLang($siteLanguage);
+
+            // Guardar tema de la interfaz
+            $uiTheme = trim($_POST['ui_theme'] ?? 'classic');
+            if (!in_array($uiTheme, ['classic', 'mastodon'], true)) {
+                $uiTheme = 'classic';
+            }
+            Database::upsertOption($db, 'ui_theme', $uiTheme);
 
             // Guardar preferencias SMTP y Atribución
             $smtpHost = trim($_POST['smtp_host'] ?? '');

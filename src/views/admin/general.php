@@ -11,6 +11,16 @@
         <p class="help-text"><?= __('admin_language_desc') ?></p>
     </div>
 
+    <!-- Tema de la Interfaz -->
+    <div class="form-group" style="margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+        <label for="ui_theme"><?= __('admin_ui_theme_setting', 'Tema de la Interfaz (Por defecto)') ?></label>
+        <select name="ui_theme" id="ui_theme" style="max-width: 320px;">
+            <option value="classic" <?= ($uiTheme ?? 'classic') === 'classic' ? 'selected' : '' ?>><?= __('admin_ui_theme_classic', 'KutSocial Clásico') ?></option>
+            <option value="mastodon" <?= ($uiTheme ?? 'classic') === 'mastodon' ? 'selected' : '' ?>><?= __('admin_ui_theme_mastodon', 'Mastodon 5.0 (Moderno)') ?></option>
+        </select>
+        <p class="help-text"><?= __('admin_ui_theme_desc', 'Elige la apariencia predeterminada de la interfaz web. Cada usuario también puede alternar entre ambos temas desde el menú lateral.') ?></p>
+    </div>
+
     <div class="form-group">
         <label for="max_toot_chars"><?= __('admin_toot_limit_title') ?></label>
         <input type="number" name="max_toot_chars" id="max_toot_chars" value="<?= htmlspecialchars($maxChars) ?>" min="500" max="9999" required>

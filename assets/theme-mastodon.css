@@ -1,0 +1,263 @@
+/* ==========================================================================
+   KutSocial · Tema Mastodon 5.0 (Modern Dark)
+   Activado cuando html[data-ui-theme="mastodon"]
+   ========================================================================== */
+
+html[data-ui-theme="mastodon"] {
+    --bg-color: #0b0b0f;
+    --surface-bg: #131318;
+    --surface-elevated: #191921;
+    --card-bg: #131318;
+    --border-color: rgba(255, 255, 255, 0.085);
+    --primary: #8c86ff;
+    --primary-hover: #a5a0ff;
+    --pill-bg: #c4c0ff;
+    --pill-bg-hover: #d8d5ff;
+    --pill-text: #111116;
+    --secondary: #34d399;
+    --text-color: #f4f4f6;
+    --text-muted: #9898a8;
+    --sidebar-width: 256px;
+}
+
+html[data-ui-theme="mastodon"] body {
+    background-color: var(--bg-color);
+    background-image: none;
+    color: var(--text-color);
+}
+
+/* Layout principal */
+html[data-ui-theme="mastodon"] .app-layout {
+    max-width: 1180px;
+    padding: 16px 20px;
+    gap: 24px;
+}
+
+/* Sidebar izquierdo */
+html[data-ui-theme="mastodon"] .sidebar {
+    top: 16px;
+    height: calc(100vh - 32px);
+}
+
+html[data-ui-theme="mastodon"] .nav-logo {
+    background: none;
+    -webkit-background-clip: initial;
+    -webkit-text-fill-color: #ffffff;
+    color: #ffffff;
+    font-size: 20px;
+    letter-spacing: -0.02em;
+    padding: 4px 10px 12px 10px;
+    margin-bottom: 6px;
+}
+
+html[data-ui-theme="mastodon"] .nav-link {
+    border-radius: 9999px;
+    padding: 10px 14px;
+    font-size: 14.5px;
+    font-weight: 500;
+    color: #c8c8d6;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+html[data-ui-theme="mastodon"] .nav-link:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+    transform: none;
+}
+
+html[data-ui-theme="mastodon"] .nav-link.active {
+    background: rgba(196, 192, 255, 0.14);
+    color: #e0ddff;
+    font-weight: 600;
+    border-color: transparent;
+}
+
+html[data-ui-theme="mastodon"] .nav-link.active .material-icons-outlined,
+html[data-ui-theme="mastodon"] .nav-link.active .material-icons {
+    color: #c4c0ff;
+}
+
+/* Selectores de idioma y tema en sidebar */
+html[data-ui-theme="mastodon"] .sidebar-lang-selector {
+    background: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 8px 10px;
+    margin-top: 8px;
+}
+
+html[data-ui-theme="mastodon"] .sidebar-lang-btn.active {
+    background: var(--pill-bg);
+    color: var(--pill-text);
+    font-weight: 700;
+}
+
+/* Perfil resumido abajo del sidebar */
+html[data-ui-theme="mastodon"] .user-profile-summary {
+    background: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 10px 12px;
+}
+
+html[data-ui-theme="mastodon"] .user-profile-summary:hover {
+    background: var(--surface-elevated);
+}
+
+/* Columna central estilo Mastodon 5.0 */
+html[data-ui-theme="mastodon"] .main-content {
+    max-width: 650px;
+    background: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    overflow: visible;
+    padding-bottom: 12px;
+}
+
+/* Composer integrado arriba del feed */
+html[data-ui-theme="mastodon"] #tab-feed > .composer-card {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(19, 19, 24, 0.92);
+    backdrop-filter: blur(16px);
+}
+
+html[data-ui-theme="mastodon"] .composer-card {
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 16px 16px 0 0;
+    box-shadow: none;
+    margin-bottom: 0;
+    padding: 18px 20px;
+}
+
+html[data-ui-theme="mastodon"] .composer-card.zen-mode {
+    background: #111116;
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+}
+
+/* Botones principales tipo píldora lavanda Mastodon 5 */
+html[data-ui-theme="mastodon"] .btn-publish,
+html[data-ui-theme="mastodon"] .btn-submit,
+html[data-ui-theme="mastodon"] #login-form button[type="submit"],
+html[data-ui-theme="mastodon"] .sidebar-scroll-top-btn {
+    background: var(--pill-bg);
+    color: var(--pill-text);
+    border-radius: 9999px;
+    font-weight: 700;
+    border: none;
+    box-shadow: none;
+}
+
+html[data-ui-theme="mastodon"] .btn-publish:hover,
+html[data-ui-theme="mastodon"] .btn-submit:hover,
+html[data-ui-theme="mastodon"] #login-form button[type="submit"]:hover,
+html[data-ui-theme="mastodon"] .sidebar-scroll-top-btn:hover {
+    background: var(--pill-bg-hover);
+    color: var(--pill-text);
+}
+
+/* Feed continuo separado por líneas finas (como Mastodon 5) */
+html[data-ui-theme="mastodon"] .feed-container {
+    gap: 0;
+}
+
+html[data-ui-theme="mastodon"] .toot-card {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+    border-radius: 0;
+    box-shadow: none;
+    margin-bottom: 0;
+    padding: 16px 20px;
+    transition: background-color 0.12s ease;
+}
+
+html[data-ui-theme="mastodon"] .toot-card:last-child {
+    border-bottom: none;
+}
+
+html[data-ui-theme="mastodon"] .toot-card:not(.toot-main):hover {
+    background: rgba(255, 255, 255, 0.025);
+    border-color: var(--border-color);
+}
+
+html[data-ui-theme="mastodon"] .toot-avatar-link img,
+html[data-ui-theme="mastodon"] .user-avatar {
+    border-radius: 10px;
+}
+
+html[data-ui-theme="mastodon"] .toot-content a {
+    color: #b8b2ff;
+}
+
+html[data-ui-theme="mastodon"] .toot-media-grid img,
+html[data-ui-theme="mastodon"] .toot-media-single img,
+html[data-ui-theme="mastodon"] .link-card {
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+html[data-ui-theme="mastodon"] .toot-action-btn {
+    color: var(--text-muted);
+    border-radius: 9999px;
+}
+
+html[data-ui-theme="mastodon"] .toot-action-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffffff;
+}
+
+/* Barra lateral derecha */
+html[data-ui-theme="mastodon"] .widget-card {
+    background: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: none;
+}
+
+html[data-ui-theme="mastodon"] .sidebar-search-input {
+    background: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 9999px;
+    padding: 10px 16px 10px 40px;
+}
+
+html[data-ui-theme="mastodon"] .sidebar-search-input:focus {
+    border-color: var(--pill-bg);
+    background: var(--surface-elevated);
+}
+
+/* Cabeceras de sección y tarjetas secundarias */
+html[data-ui-theme="mastodon"] .section-header,
+html[data-ui-theme="mastodon"] .profile-header-card,
+html[data-ui-theme="mastodon"] .catchup-header,
+html[data-ui-theme="mastodon"] .notifications-header {
+    border-bottom: 1px solid var(--border-color);
+    padding: 16px 20px;
+    margin-bottom: 0;
+}
+
+html[data-ui-theme="mastodon"] .login-card,
+html[data-ui-theme="mastodon"] .modal-content {
+    background: var(--surface-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+}
+
+/* Responsive móvil */
+@media (max-width: 768px) {
+    html[data-ui-theme="mastodon"] .app-layout {
+        padding: 0;
+        gap: 0;
+    }
+    html[data-ui-theme="mastodon"] .main-content {
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+}

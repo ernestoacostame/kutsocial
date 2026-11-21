@@ -1,8 +1,13 @@
 <?php
 $basePath = $basePath ?? '';
+$uiTheme = $uiTheme ?? 'classic';
+if (!in_array($uiTheme, ['classic', 'mastodon'], true)) {
+    $uiTheme = 'classic';
+}
+$ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0');
 ?>
 <!DOCTYPE html>
-<html lang="<?= htmlspecialchars(class_exists('\KutSocial\I18n') ? \KutSocial\I18n::getLang() : 'es') ?>">
+<html lang="<?= htmlspecialchars(class_exists('\KutSocial\I18n') ? \KutSocial\I18n::getLang() : 'es') ?>" data-ui-theme="<?= htmlspecialchars($uiTheme) ?>">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -18,7 +23,30 @@ $basePath = $basePath ?? '';
     <!-- DOMPurify para Saneamiento XSS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
     
-    <link rel="stylesheet" href="/assets/pages.css?v=<?= htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0') ?>">
+    <link rel="stylesheet" href="/assets/pages.css?v=<?= $ver ?>">
+    <link id="ui-theme-mastodon-css" rel="stylesheet" href="/assets/theme-mastodon.css?v=<?= $ver ?>" <?= $uiTheme === 'mastodon' ? '' : 'disabled' ?>>
+    <script>
+    (function() {
+        try {
+            var saved = localStorage.getItem('kutsocial_ui_theme');
+            if (saved === 'classic' || saved === 'mastodon') {
+                document.documentElement.setAttribute('data-ui-theme', saved);
+                var link = document.getElementById('ui-theme-mastodon-css');
+                if (link) link.disabled = (saved !== 'mastodon');
+            }
+        } catch (e) {}
+    })();
+    function setUiTheme(theme) {
+        if (theme !== 'classic' && theme !== 'mastodon') return;
+        document.documentElement.setAttribute('data-ui-theme', theme);
+        var link = document.getElementById('ui-theme-mastodon-css');
+        if (link) link.disabled = (theme !== 'mastodon');
+        try { localStorage.setItem('kutsocial_ui_theme', theme); } catch (e) {}
+        document.querySelectorAll('.sidebar-theme-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.getAttribute('data-theme') === theme);
+        });
+    }
+    </script>
     <style>
     #tab-<?= htmlspecialchars($section) ?> { display: <?= in_array($section, ['lists', 'collections']) ? 'flex' : 'block' ?>; }
     #tab-users-list { display: none; }
@@ -177,6 +205,25 @@ $basePath = $basePath ?? '';
                         <a href="/lang/en" class="sidebar-lang-btn <?= \KutSocial\I18n::getLang() === 'en' ? 'active' : '' ?>">EN</a>
                     </div>
                 </div>
+
+                <!-- Selector de Tema en Sidebar -->
+                <div class="sidebar-lang-selector" style="margin-top: 6px;">
+                    <span class="sidebar-lang-label">
+                        <span class="material-icons-outlined">palette</span> <?= __('ui_theme_label', 'Tema') ?>
+                    </span>
+                    <div class="sidebar-lang-options">
+                        <button type="button" data-theme="classic" onclick="setUiTheme('classic')" class="sidebar-lang-btn sidebar-theme-btn <?= $uiTheme === 'classic' ? 'active' : '' ?>"><?= __('ui_theme_classic_short', 'Clásico') ?></button>
+                        <button type="button" data-theme="mastodon" onclick="setUiTheme('mastodon')" class="sidebar-lang-btn sidebar-theme-btn <?= $uiTheme === 'mastodon' ? 'active' : '' ?>">Mastodon</button>
+                    </div>
+                </div>
+                <script>
+                (function() {
+                    var current = document.documentElement.getAttribute('data-ui-theme') || 'classic';
+                    document.querySelectorAll('.sidebar-theme-btn').forEach(function(btn) {
+                        btn.classList.toggle('active', btn.getAttribute('data-theme') === current);
+                    });
+                })();
+                </script>
             </div>
 
             <!-- Perfil del usuario actual -->

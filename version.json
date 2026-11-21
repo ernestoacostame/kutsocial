@@ -1,5 +1,5 @@
 {
-  "version": "2.1.2",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.2/kutsocial-v2.1.2.zip",
-  "changelog": "Añade limpieza de caché (data/cache/) con filtro por antigüedad en Mantenimiento"
+  "version": "2.1.3",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.3/kutsocial-v2.1.3.zip",
+  "changelog": "Añade selector de tema (KutSocial Clásico vs Mastodon 5.0 Moderno) en Admin y Sidebar"
 }
