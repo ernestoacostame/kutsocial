@@ -206,6 +206,42 @@ class AdminController {
     }
 
     /**
+     * Generate or return the per-session CSRF token for admin forms.
+     */
+    public static function getCsrfToken(): string {
+        self::startSecureSession();
+        if (empty($_SESSION['admin_csrf_token'])) {
+            $_SESSION['admin_csrf_token'] = bin2hex(random_bytes(32));
+        }
+        return $_SESSION['admin_csrf_token'];
+    }
+
+    /**
+     * Validate CSRF token on admin POST requests.
+     */
+    private static function verifyCsrf(): void {
+        $token = (string)($_POST['csrf_token'] ?? $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '');
+        $sessionToken = (string)($_SESSION['admin_csrf_token'] ?? '');
+        if ($sessionToken === '' || $token === '' || !hash_equals($sessionToken, $token)) {
+            $accept = (string)($_SERVER['HTTP_ACCEPT'] ?? '');
+            if (str_contains($accept, 'application/json') || ($_SERVER['REQUEST_URI'] ?? '') === '/admin/update/action') {
+                header('Content-Type: application/json; charset=utf-8');
+                http_response_code(403);
+                echo json_encode(['error' => 'Token CSRF inválido o expirado.']);
+                exit;
+            }
+            $_SESSION['admin_error_msg'] = 'Token CSRF inválido o expirado.';
+            $referer = $_SERVER['HTTP_REFERER'] ?? '/admin/dashboard';
+            $path = parse_url($referer, PHP_URL_PATH) ?: '/admin/dashboard';
+            if (!str_starts_with($path, '/admin/')) {
+                $path = '/admin/dashboard';
+            }
+            header("Location: " . $path);
+            exit;
+        }
+    }
+
+    /**
      * Helper to verify if the admin is logged in.
      */
     private static function checkAuth(): ?array {
@@ -221,7 +257,7 @@ class AdminController {
             exit;
         }
 
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE id = ? AND domain IS NULL LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE id = ? AND domain IS NULL AND role IN ('admin', 'owner') LIMIT 1");
         $stmt->execute([$adminId]);
         $user = $stmt->fetch();
         if (!$user) {
@@ -357,7 +393,7 @@ class AdminController {
                 exit;
             }
 
-            $stmt = $db->prepare("SELECT * FROM accounts WHERE id = ? AND domain IS NULL LIMIT 1");
+            $stmt = $db->prepare("SELECT * FROM accounts WHERE id = ? AND domain IS NULL AND role IN ('admin', 'owner') LIMIT 1");
             $stmt->execute([$tempId]);
             $user = $stmt->fetch();
 
@@ -381,7 +417,7 @@ class AdminController {
         $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
 
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL AND role IN ('admin', 'owner') LIMIT 1");
         $stmt->execute([$username]);
         $user = $stmt->fetch();
 
@@ -424,7 +460,11 @@ class AdminController {
         self::clearRememberCookie();
         unset($_SESSION['admin_account_id']);
         unset($_SESSION['temp_admin_id']);
-        $redirect = $_GET['redirect'] ?? '/admin/login';
+        unset($_SESSION['admin_csrf_token']);
+        $redirect = (string)($_GET['redirect'] ?? '/admin/login');
+        if (!str_starts_with($redirect, '/') || str_starts_with($redirect, '//') || str_contains($redirect, "\r") || str_contains($redirect, "\n")) {
+            $redirect = '/admin/login';
+        }
         header("Location: " . $redirect);
         exit;
     }
@@ -530,6 +570,7 @@ class AdminController {
      */
     public static function handleSettings(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $maxChars = (int)($_POST['max_toot_chars'] ?? 500);
@@ -626,6 +667,7 @@ class AdminController {
      */
     public static function handlePassword(): void {
         $admin = self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $currPass = $_POST['current_password'] ?? '';
@@ -650,6 +692,7 @@ class AdminController {
      */
     public static function handleSessionDuration(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $days = (int)($_POST['admin_session_days'] ?? 30);
@@ -702,6 +745,7 @@ class AdminController {
      */
     public static function setup2FA(): void {
         $admin = self::checkAuth();
+        self::verifyCsrf();
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
 
@@ -719,6 +763,7 @@ class AdminController {
      */
     public static function verify2FA(): void {
         $admin = self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $secret = trim($_POST['secret'] ?? '');
@@ -746,6 +791,7 @@ class AdminController {
      */
     public static function disable2FA(): void {
         $admin = self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $confirmPassword = $_POST['confirm_password'] ?? '';
@@ -765,6 +811,7 @@ class AdminController {
      */
     public static function addBlock(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $type = trim($_POST['type'] ?? '');
@@ -792,6 +839,7 @@ class AdminController {
      */
     public static function removeBlock(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $id = (int)($_POST['id'] ?? 0);
@@ -809,6 +857,7 @@ class AdminController {
      */
     public static function resolveReport(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $id = (int)($_POST['id'] ?? 0);
@@ -826,6 +875,7 @@ class AdminController {
      */
     public static function deleteReport(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $id = (int)($_POST['id'] ?? 0);
@@ -843,10 +893,11 @@ class AdminController {
      */
     public static function addRelay(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $inboxUrl = trim($_POST['inbox_url'] ?? '');
-        if (!filter_var($inboxUrl, FILTER_VALIDATE_URL)) {
+        if (!filter_var($inboxUrl, FILTER_VALIDATE_URL) || !\KutSocial\SecurityHelper::isSafeExternalUrl($inboxUrl)) {
             $_SESSION['admin_error_msg'] = __raw('msg_admin_relay_url_invalid', 'La dirección URL del relay no es válida.');
             header("Location: /admin/dashboard/relays");
             exit;
@@ -876,6 +927,7 @@ class AdminController {
      */
     public static function removeRelay(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $id = (int)($_POST['id'] ?? 0);
@@ -909,6 +961,7 @@ class AdminController {
      */
     public static function handleUpdateAction(): void {
         self::checkAuth();
+        self::verifyCsrf();
         header('Content-Type: application/json; charset=utf-8');
 
         $action = $_POST['action'] ?? $_GET['action'] ?? '';
@@ -1021,6 +1074,7 @@ class AdminController {
      */
     public static function createUser(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $username = trim($_POST['username'] ?? '');
@@ -1095,6 +1149,7 @@ class AdminController {
      */
     public static function deleteUser(): void {
         $admin = self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $id = (int)($_POST['id'] ?? 0);
@@ -1143,6 +1198,7 @@ class AdminController {
      */
     public static function changeUserRole(): void {
         $admin = self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $id = (int)($_POST['id'] ?? 0);
@@ -1202,6 +1258,7 @@ class AdminController {
      */
     public static function runMaintenanceClean(): void {
         self::checkAuth();
+        self::verifyCsrf();
         $db = Database::connect();
 
         $cleanOrphans = isset($_POST['clean_orphans']) && $_POST['clean_orphans'] == '1';

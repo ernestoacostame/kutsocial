@@ -649,6 +649,87 @@ class Database {
                     DELETE FROM accounts_fts WHERE rowid = old.id;
                     INSERT INTO accounts_fts(rowid, username, display_name, note) VALUES (new.id, new.username, new.display_name, new.note);
                 END"
+            ],
+            27 => [
+                "CREATE TABLE IF NOT EXISTS oauth_apps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_name TEXT NOT NULL,
+                    client_id TEXT NOT NULL UNIQUE,
+                    client_secret_hash TEXT NOT NULL,
+                    redirect_uris TEXT NOT NULL,
+                    scopes TEXT DEFAULT 'read write follow push',
+                    website TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )",
+                "CREATE TABLE IF NOT EXISTS oauth_codes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    code_hash TEXT NOT NULL UNIQUE,
+                    client_id TEXT NOT NULL,
+                    account_id INTEGER NOT NULL,
+                    redirect_uri TEXT NOT NULL,
+                    scopes TEXT DEFAULT 'read write follow push',
+                    expires_at INTEGER NOT NULL,
+                    used_at INTEGER DEFAULT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+                )",
+                "CREATE TABLE IF NOT EXISTS oauth_tokens (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    client_id TEXT,
+                    account_id INTEGER NOT NULL,
+                    scopes TEXT DEFAULT 'read write follow push',
+                    expires_at INTEGER NOT NULL,
+                    revoked_at INTEGER DEFAULT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+                )",
+                "CREATE TABLE IF NOT EXISTS user_mutes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL,
+                    target_account_id INTEGER NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(account_id, target_account_id),
+                    FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+                    FOREIGN KEY(target_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+                )",
+                "CREATE TABLE IF NOT EXISTS user_blocks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL,
+                    target_account_id INTEGER NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(account_id, target_account_id),
+                    FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+                    FOREIGN KEY(target_account_id) REFERENCES accounts(id) ON DELETE CASCADE
+                )",
+                "CREATE INDEX IF NOT EXISTS idx_oauth_tokens_account_id ON oauth_tokens(account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_oauth_codes_expires ON oauth_codes(expires_at)",
+                "CREATE INDEX IF NOT EXISTS idx_user_mutes_account_id ON user_mutes(account_id)",
+                "CREATE INDEX IF NOT EXISTS idx_user_blocks_account_id ON user_blocks(account_id)"
+            ],
+            28 => [
+                "CREATE TABLE IF NOT EXISTS mentions (
+                    status_id INTEGER NOT NULL,
+                    account_id INTEGER NOT NULL,
+                    PRIMARY KEY(status_id, account_id)
+                )",
+                "CREATE INDEX IF NOT EXISTS idx_mentions_acc ON mentions(account_id, status_id DESC)",
+                "CREATE TABLE IF NOT EXISTS status_hashtags (
+                    status_id INTEGER NOT NULL,
+                    tag TEXT NOT NULL,
+                    PRIMARY KEY(status_id, tag)
+                )",
+                "CREATE INDEX IF NOT EXISTS idx_status_tags_tag ON status_hashtags(tag, status_id DESC)",
+                "CREATE TABLE IF NOT EXISTS notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_id INTEGER NOT NULL,
+                    type TEXT NOT NULL,
+                    from_account_id INTEGER NOT NULL,
+                    status_id INTEGER DEFAULT NULL,
+                    created_at TEXT NOT NULL,
+                    read_at TEXT DEFAULT NULL
+                )",
+                "CREATE INDEX IF NOT EXISTS idx_notif_acc_id ON notifications(account_id, id DESC)"
             ]
         ];
     }

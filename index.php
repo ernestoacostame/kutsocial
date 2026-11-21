@@ -32,6 +32,29 @@ if (!file_exists(__DIR__ . '/config.php')) {
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/version.php';
 
+// Servir /assets/pages.css y /assets/pages.js con caché inmutable y ETag sin tocar la BD
+$rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+if ($rawPath === '/assets/pages.css' || $rawPath === '/assets/pages.js') {
+    $isCss = ($rawPath === '/assets/pages.css');
+    $assetFile = __DIR__ . '/src/views/pages/' . ($isCss ? 'pages.css' : 'pages.js');
+    if (is_file($assetFile)) {
+        $ver = defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0';
+        $etag = '"' . md5($ver . ':' . @filemtime($assetFile) . ':' . @filesize($assetFile)) . '"';
+        header('Content-Type: ' . ($isCss ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8'));
+        header('Cache-Control: public, max-age=31536000, immutable');
+        header('ETag: ' . $etag);
+        $ifNoneMatch = $_SERVER['HTTP_IF_NONE_MATCH'] ?? '';
+        if ($ifNoneMatch !== '' && (trim($ifNoneMatch) === $etag || str_contains($ifNoneMatch, $etag))) {
+            http_response_code(304);
+            exit;
+        }
+        readfile($assetFile);
+        exit;
+    }
+    http_response_code(404);
+    exit;
+}
+
 // Autocargar clases del núcleo por si config.php no tiene autoloader
 spl_autoload_register(function ($class) {
     $prefix = 'KutSocial\\';
@@ -244,21 +267,26 @@ $renderFrontend = function() {
             'display_name' => $localUser['display_name'] ?: $localUser['username']
         ] : null, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
+        $jsFlags = JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP;
+        $jsLang = json_encode($currentLang, $jsFlags);
+        $jsThreadId = $activeThreadId ? json_encode((string)$activeThreadId, $jsFlags) : 'null';
+        $jsGiphyKey = json_encode($giphyApiKey, $jsFlags);
+
         $jsGlobals = "
     <script>
-        window.KUTSOCIAL_LANG = '{$currentLang}';
+        window.KUTSOCIAL_LANG = {$jsLang};
         window.KUTSOCIAL_I18N = {$i18nStrings};
         window.KUTSOCIAL_VERSION = '{$version}';
         window.KUTSOCIAL_CURRENT_USER = {$currentUserData};
         window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
         window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
         window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
-        window.KUTSOCIAL_ACTIVE_THREAD_ID = " . ($activeThreadId ? "'$activeThreadId'" : "null") . ";
+        window.KUTSOCIAL_ACTIVE_THREAD_ID = {$jsThreadId};
         window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_HASHTAGS = " . json_encode($userHashtags, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_SHOW_RIGHT_SIDEBAR = " . ($showRightSidebar ? 'true' : 'false') . ";
-        window.GIPHY_API_KEY = '{$giphyApiKey}';
+        window.GIPHY_API_KEY = {$jsGiphyKey};
     </script>
         ";
         $html = str_replace('<head>', "<head>\n" . $jsGlobals, $html);
@@ -270,16 +298,21 @@ $renderFrontend = function() {
                 $stmtAdmin = $db->prepare("SELECT id FROM accounts WHERE id = ? LIMIT 1");
                 $stmtAdmin->execute([$adminId]);
                 if ($stmtAdmin->fetch()) {
-                    $secretStmt = $db->query("SELECT value FROM options WHERE key = 'jwt_secret' LIMIT 1");
-                    $secret = $secretStmt->fetchColumn();
-                    if (!$secret) {
-                        $secret = bin2hex(random_bytes(32));
-                        $ins = $db->prepare("INSERT INTO options (key, value) VALUES ('jwt_secret', ?)");
-                        $ins->execute([$secret]);
+                    $autoToken = $_SESSION['kutsocial_auto_token'] ?? '';
+                    $validAutoToken = false;
+                    if ($autoToken !== '') {
+                        $chkTok = $db->prepare("SELECT 1 FROM oauth_tokens WHERE token_hash = ? AND account_id = ? AND revoked_at IS NULL AND expires_at >= ? LIMIT 1");
+                        $chkTok->execute([hash('sha256', $autoToken), $adminId, time()]);
+                        $validAutoToken = (bool)$chkTok->fetchColumn();
                     }
-                    $hash = hash_hmac('sha256', $adminId, $secret);
-                    $autoToken = "token_" . $adminId . "_" . $hash;
-                    $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_AUTO_TOKEN = '{$autoToken}';</script>", $html);
+                    if (!$validAutoToken) {
+                        $autoToken = bin2hex(random_bytes(32));
+                        $insTok = $db->prepare("INSERT INTO oauth_tokens (token_hash, client_id, account_id, scopes, expires_at) VALUES (?, NULL, ?, 'read write follow push', ?)");
+                        $insTok->execute([hash('sha256', $autoToken), $adminId, time() + 86400]);
+                        $_SESSION['kutsocial_auto_token'] = $autoToken;
+                    }
+                    $autoTokenJson = json_encode($autoToken, $jsFlags);
+                    $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_AUTO_TOKEN = {$autoTokenJson};</script>", $html);
                 }
             }
 
@@ -491,22 +524,27 @@ $renderPagesFrontend = function() {
             'display_name' => $localUser['display_name'] ?: $localUser['username']
         ] : null, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
+        $jsFlags = JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP;
+        $jsLang = json_encode($currentLang, $jsFlags);
+        $jsThreadId = $activeThreadId ? json_encode((string)$activeThreadId, $jsFlags) : 'null';
+        $jsGiphyKey = json_encode($giphyApiKey, $jsFlags);
+
         $jsGlobals = "
     <script>
         window.KUTSOCIAL_BASE_PATH = '{$basePath}';
-        window.KUTSOCIAL_LANG = '{$currentLang}';
+        window.KUTSOCIAL_LANG = {$jsLang};
         window.KUTSOCIAL_I18N = {$i18nStrings};
         window.KUTSOCIAL_VERSION = '{$version}';
         window.KUTSOCIAL_CURRENT_USER = {$currentUserData};
         window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
         window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
         window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
-        window.KUTSOCIAL_ACTIVE_THREAD_ID = " . ($activeThreadId ? "'$activeThreadId'" : "null") . ";
+        window.KUTSOCIAL_ACTIVE_THREAD_ID = {$jsThreadId};
         window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_HASHTAGS = " . json_encode($userHashtags, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_SHOW_RIGHT_SIDEBAR = " . ($showRightSidebar ? 'true' : 'false') . ";
-        window.GIPHY_API_KEY = '{$giphyApiKey}';
+        window.GIPHY_API_KEY = {$jsGiphyKey};
     </script>
         ";
         $html = str_replace('<head>', "<head>\n" . $jsGlobals, $html);
@@ -517,16 +555,21 @@ $renderPagesFrontend = function() {
                 $stmtAdmin = $db->prepare("SELECT id FROM accounts WHERE id = ? LIMIT 1");
                 $stmtAdmin->execute([$adminId]);
                 if ($stmtAdmin->fetch()) {
-                    $secretStmt = $db->query("SELECT value FROM options WHERE key = 'jwt_secret' LIMIT 1");
-                    $secret = $secretStmt->fetchColumn();
-                    if (!$secret) {
-                        $secret = bin2hex(random_bytes(32));
-                        $ins = $db->prepare("INSERT INTO options (key, value) VALUES ('jwt_secret', ?)");
-                        $ins->execute([$secret]);
+                    $autoToken = $_SESSION['kutsocial_auto_token'] ?? '';
+                    $validAutoToken = false;
+                    if ($autoToken !== '') {
+                        $chkTok = $db->prepare("SELECT 1 FROM oauth_tokens WHERE token_hash = ? AND account_id = ? AND revoked_at IS NULL AND expires_at >= ? LIMIT 1");
+                        $chkTok->execute([hash('sha256', $autoToken), $adminId, time()]);
+                        $validAutoToken = (bool)$chkTok->fetchColumn();
                     }
-                    $hash = hash_hmac('sha256', $adminId, $secret);
-                    $autoToken = "token_" . $adminId . "_" . $hash;
-                    $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_AUTO_TOKEN = '{$autoToken}';</script>", $html);
+                    if (!$validAutoToken) {
+                        $autoToken = bin2hex(random_bytes(32));
+                        $insTok = $db->prepare("INSERT INTO oauth_tokens (token_hash, client_id, account_id, scopes, expires_at) VALUES (?, NULL, ?, 'read write follow push', ?)");
+                        $insTok->execute([hash('sha256', $autoToken), $adminId, time() + 86400]);
+                        $_SESSION['kutsocial_auto_token'] = $autoToken;
+                    }
+                    $autoTokenJson = json_encode($autoToken, $jsFlags);
+                    $html = str_replace('<head>', "<head>\n    <script>window.KUTSOCIAL_AUTO_TOKEN = {$autoTokenJson};</script>", $html);
                 }
             }
 
@@ -569,6 +612,7 @@ $router->post('/api/v1/apps', [MastodonApiController::class, 'createApp']);
 $router->get('/oauth/authorize', [MastodonApiController::class, 'showAuthorize']);
 $router->post('/oauth/authorize', [MastodonApiController::class, 'handleAuthorize']);
 $router->post('/oauth/token', [MastodonApiController::class, 'postToken']);
+$router->post('/oauth/revoke', [MastodonApiController::class, 'revokeToken']);
 $router->get('/api/v1/accounts/verify_credentials', [MastodonApiController::class, 'verifyCredentials']);
 $router->get('/api/v1/preferences', [MastodonApiController::class, 'getPreferences']);
 $router->get('/api/v1/collections', [MastodonApiController::class, 'getCollections']);
@@ -832,7 +876,6 @@ $router->post('/admin/users/delete', [AdminController::class, 'deleteUser']);
 $router->post('/admin/users/role', [AdminController::class, 'changeUserRole']);
 $router->post('/admin/maintenance/clean', [AdminController::class, 'runMaintenanceClean']);
 $router->post('/admin/update/action', [AdminController::class, 'handleUpdateAction']);
-$router->get('/admin/update/action', [AdminController::class, 'handleUpdateAction']);
 
 // Redirigir la antigua ruta del actualizador al dashboard
 $router->get('/admin/update', function() {

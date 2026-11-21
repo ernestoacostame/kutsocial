@@ -4,6 +4,7 @@
 <div style="margin-bottom: 40px; padding-bottom: 30px; border-bottom: 1px solid var(--border-color);">
     <h4 style="margin: 0 0 15px 0;"><?= __('admin_change_password') ?></h4>
     <form method="POST" action="/admin/security/password">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
         <div class="form-group">
             <label for="current_password"><?= __('admin_current_password') ?></label>
             <input type="password" name="current_password" id="current_password" required>
@@ -21,6 +22,7 @@
     <h4 style="margin: 0 0 10px 0;"><?= __('admin_session_duration_title') ?></h4>
     <p class="help-text" style="margin-bottom: 20px;"><?= __('admin_session_duration_desc') ?></p>
     <form method="POST" action="/admin/security/session_duration">
+        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
         <div style="display: flex; gap: 15px; align-items: flex-end; max-width: 520px; flex-wrap: wrap;">
             <div class="form-group" style="flex: 1; min-width: 260px; margin: 0;">
                 <label for="admin_session_days" style="margin-bottom: 8px; display: block;"><?= __('admin_session_duration_label') ?></label>
@@ -46,6 +48,7 @@
         <div class="alert alert-success" style="display: flex; justify-content: space-between; align-items: center;">
             <span>✓ <?= __('admin_2fa_active') ?></span>
             <form method="POST" action="/admin/security/2fa/disable" style="margin: 0;">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                 <input type="password" name="confirm_password" placeholder="<?= __('admin_current_password') ?>" style="width: 150px; padding: 6px; font-size: 13px; margin-right: 10px;" required>
                 <button type="submit" class="btn-danger" style="border: none;"><?= __('admin_2fa_disable_btn') ?></button>
             </form>
@@ -64,6 +67,7 @@
                 
                 <p style="font-size: 14.5px; margin-top: 25px;"><?= __('admin_2fa_step2') ?></p>
                 <form method="POST" action="/admin/security/2fa/verify" style="max-width: 250px; margin: 0 auto;">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="secret" id="setup-secret-val">
                     <input type="text" name="otp_code" placeholder="123456" pattern="\d{6}" maxlength="6" required style="text-align: center; font-size: 18px; letter-spacing: 5px; margin-bottom: 15px;">
                     <button type="submit" class="btn-submit"><?= __('admin_2fa_confirm_btn') ?></button>

@@ -104,7 +104,15 @@
 
         <?php if (!empty($checkUpdateAsync)): ?>
         // Consulta en segundo plano asíncrona si la caché expiró
-        fetch('/admin/update/action?action=check', { method: 'GET', headers: { 'Accept': 'application/json' } })
+        fetch('/admin/update/action', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRF-Token': '<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>'
+            },
+            body: 'action=check&csrf_token=' + encodeURIComponent('<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>')
+        })
             .then(function(res) { return res.json(); })
             .then(function(data) {
                 if (data && data.available && data.new_version) {

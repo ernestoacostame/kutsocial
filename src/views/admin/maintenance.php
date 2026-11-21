@@ -2,6 +2,7 @@
 <p class="help-text" style="margin-bottom: 25px;"><?= __('admin_maint_desc') ?></p>
 
 <form method="POST" action="/admin/maintenance/clean" onsubmit="return confirm('<?= __('admin_maint_confirm') ?>');">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
     
     <!-- Opción 1: Multimedia Huérfanos -->
     <div class="update-card" style="margin-bottom: 20px; display: flex; align-items: flex-start; gap: 15px;">

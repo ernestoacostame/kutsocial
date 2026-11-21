@@ -2,6 +2,7 @@
 <p class="help-text" style="margin-bottom: 25px;"><?= __('admin_relays_desc') ?></p>
 
 <form method="POST" action="/admin/relays" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 20px; border-radius: 10px; margin-bottom: 30px;">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
     <div style="display: grid; grid-template-columns: 1fr 140px; gap: 15px; align-items: flex-end;">
         <div class="form-group" style="margin: 0;">
             <label for="relay_inbox"><?= __('admin_relays_inbox_label') ?></label>
@@ -35,6 +36,7 @@
                     <td><?= date('d/m/Y H:i', strtotime($row['created_at'])) ?></td>
                     <td>
                         <form method="POST" action="/admin/relays/delete" style="margin:0;">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                             <input type="hidden" name="id" value="<?= $row['id'] ?>">
                             <button type="submit" class="btn-danger"><?= __('admin_relays_disconnect') ?></button>
                         </form>

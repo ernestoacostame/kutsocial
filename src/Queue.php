@@ -129,6 +129,11 @@ class Queue {
             $jobs = $stmt->fetchAll();
 
             $processed = 0;
+            $httpJobs = [];
+            $actorKeyCache = [];
+            $defaultAccount = null;
+            $defaultAccountLoaded = false;
+
             foreach ($jobs as $job) {
                 $processed++;
                 // Marcar como en proceso
@@ -141,92 +146,135 @@ class Queue {
                     continue;
                 }
 
-            try {
-                if ($job['activity_type'] === 'ImportFollow') {
-                    $payloadArr = json_decode($job['payload'], true);
-                    self::processImportFollow((int)$payloadArr['account_id'], $payloadArr['address'], !empty($payloadArr['mutual']));
-                    
-                    $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
-                    $okStmt->execute([$job['id']]);
-                    continue;
-                }
-
-                if ($job['activity_type'] === 'ImportFollower') {
-                    $payloadArr = json_decode($job['payload'], true);
-                    self::processImportFollower((int)$payloadArr['account_id'], $payloadArr['address'], !empty($payloadArr['mutual']));
-                    
-                    $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
-                    $okStmt->execute([$job['id']]);
-                    continue;
-                }
-
-                if ($job['activity_type'] === 'ImportListItem') {
-                    $payloadArr = json_decode($job['payload'], true);
-                    self::processImportListItem((int)$payloadArr['account_id'], (int)$payloadArr['list_id'], $payloadArr['address']);
-                    
-                    $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
-                    $okStmt->execute([$job['id']]);
-                    continue;
-                }
-
-                $payloadArr = json_decode($job['payload'], true);
-                $actorUrl = $payloadArr['actor'] ?? null;
-                
-                // Obtener llave privada del actor para firmar la petición
-                $privateKey = null;
-                $keyId = null;
-                if ($actorUrl) {
-                    // Extraer username del actor local: e.g. https://dominio.com/users/username
-                    $path = parse_url($actorUrl, PHP_URL_PATH);
-                    $path = rtrim($path, '/');
-                    $pathParts = explode('/', $path);
-                    $username = strtolower(end($pathParts));
-
-                    $accStmt = $db->prepare("SELECT private_key, id FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
-                    $accStmt->execute([$username]);
-                    $account = $accStmt->fetch();
-                    if ($account && !empty($account['private_key'])) {
-                        $privateKey = $account['private_key'];
-                        $keyId = $actorUrl . '#main-key';
+                if ($job['activity_type'] === 'ImportFollow' || $job['activity_type'] === 'ImportFollower' || $job['activity_type'] === 'ImportListItem') {
+                    try {
+                        $payloadArr = json_decode($job['payload'], true);
+                        if ($job['activity_type'] === 'ImportFollow') {
+                            self::processImportFollow((int)$payloadArr['account_id'], $payloadArr['address'], !empty($payloadArr['mutual']));
+                        } elseif ($job['activity_type'] === 'ImportFollower') {
+                            self::processImportFollower((int)$payloadArr['account_id'], $payloadArr['address'], !empty($payloadArr['mutual']));
+                        } else {
+                            self::processImportListItem((int)$payloadArr['account_id'], (int)$payloadArr['list_id'], $payloadArr['address']);
+                        }
+                        $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
+                        $okStmt->execute([$job['id']]);
+                    } catch (Exception $e) {
+                        $backoffSeconds = pow(3, $job['attempts'] + 1);
+                        $next = date('Y-m-d H:i:s', time() + $backoffSeconds);
+                        try {
+                            $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
+                            $failStmt->execute([$e->getMessage(), $next, $job['id']]);
+                        } catch (Exception $e2) {}
                     }
+                    continue;
                 }
 
-                // Si no se encuentra una llave privada local, intentar usar la de la cuenta de sistema
-                if (!$privateKey) {
-                    $accStmt = $db->prepare("SELECT private_key, username, domain FROM accounts WHERE private_key IS NOT NULL AND domain IS NULL LIMIT 1");
-                    $accStmt->execute();
-                    $account = $accStmt->fetch();
-                    if ($account) {
-                        $privateKey = $account['private_key'];
-                        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
-                        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
-                        $keyId = "$proto://$host/users/{$account['username']}#main-key";
-                    }
-                }
-
-                if (!$privateKey) {
-                    throw new Exception("No se encontró una clave privada para firmar la petición.");
-                }
-
-                self::sendSignedRequest($job['inbox_url'], $job['payload'], $privateKey, $keyId);
-
-                // Éxito
-                $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
-                $okStmt->execute([$job['id']]);
-            } catch (Exception $e) {
-                // Fallido, calcular siguiente intento (backoff exponencial sencillo)
-                $backoffSeconds = pow(3, $job['attempts'] + 1); // 9s, 27s, 81s, 243s...
-                $next = date('Y-m-d H:i:s', time() + $backoffSeconds);
-
-                try {
-                    $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
-                    $failStmt->execute([$e->getMessage(), $next, $job['id']]);
-                } catch (Exception $e2) {
-                    // Si falla incluso al marcar como fallido (ej. base de datos bloqueada temporalmente),
-                    // ignorar para que el worker no falle con un error fatal y pueda continuar en la siguiente ejecución.
-                }
+                $httpJobs[] = $job;
             }
-        }
+
+            // Procesar entregas HTTP en lotes concurrentes de 20 usando curl_multi_*
+            foreach (array_chunk($httpJobs, 20) as $batch) {
+                $mh = curl_multi_init();
+                $handles = [];
+
+                foreach ($batch as $job) {
+                    try {
+                        if (!\KutSocial\SecurityHelper::isSafeExternalUrl((string)$job['inbox_url'])) {
+                            throw new Exception("URL de inbox bloqueada por seguridad: " . $job['inbox_url']);
+                        }
+
+                        $payloadArr = json_decode($job['payload'], true);
+                        $actorUrl = $payloadArr['actor'] ?? null;
+
+                        $privateKey = null;
+                        $keyId = null;
+                        if ($actorUrl) {
+                            $path = rtrim((string)parse_url($actorUrl, PHP_URL_PATH), '/');
+                            $pathParts = explode('/', $path);
+                            $username = strtolower(end($pathParts));
+
+                            if (!array_key_exists($username, $actorKeyCache)) {
+                                $accStmt = $db->prepare("SELECT private_key, id FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
+                                $accStmt->execute([$username]);
+                                $actorKeyCache[$username] = $accStmt->fetch() ?: null;
+                            }
+                            $account = $actorKeyCache[$username];
+                            if ($account && !empty($account['private_key'])) {
+                                $privateKey = $account['private_key'];
+                                $keyId = $actorUrl . '#main-key';
+                            }
+                        }
+
+                        if (!$privateKey) {
+                            if (!$defaultAccountLoaded) {
+                                $accStmt = $db->prepare("SELECT private_key, username, domain FROM accounts WHERE private_key IS NOT NULL AND domain IS NULL LIMIT 1");
+                                $accStmt->execute();
+                                $defaultAccount = $accStmt->fetch() ?: null;
+                                $defaultAccountLoaded = true;
+                            }
+                            if ($defaultAccount) {
+                                $privateKey = $defaultAccount['private_key'];
+                                $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+                                $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+                                $keyId = "$proto://$host/users/{$defaultAccount['username']}#main-key";
+                            }
+                        }
+
+                        if (!$privateKey) {
+                            throw new Exception("No se encontró una clave privada para firmar la petición.");
+                        }
+
+                        $ch = self::createSignedCurlHandle($job['inbox_url'], $job['payload'], $privateKey, $keyId);
+                        curl_multi_add_handle($mh, $ch);
+                        $handles[] = ['job' => $job, 'ch' => $ch];
+                    } catch (Exception $e) {
+                        $backoffSeconds = pow(3, $job['attempts'] + 1);
+                        $next = date('Y-m-d H:i:s', time() + $backoffSeconds);
+                        try {
+                            $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
+                            $failStmt->execute([$e->getMessage(), $next, $job['id']]);
+                        } catch (Exception $e2) {}
+                    }
+                }
+
+                if (!empty($handles)) {
+                    $active = null;
+                    do {
+                        $mrc = curl_multi_exec($mh, $active);
+                        if ($active) {
+                            curl_multi_select($mh, 0.5);
+                        }
+                    } while ($active && $mrc === CURLM_OK);
+
+                    foreach ($handles as $item) {
+                        $job = $item['job'];
+                        $ch = $item['ch'];
+                        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        $err = curl_error($ch);
+                        $resp = curl_multi_getcontent($ch);
+
+                        curl_multi_remove_handle($mh, $ch);
+                        curl_close($ch);
+
+                        if ($httpCode >= 200 && $httpCode < 400 && $err === '') {
+                            try {
+                                $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
+                                $okStmt->execute([$job['id']]);
+                            } catch (Exception $e2) {}
+                        } else {
+                            $errMsg = "Error HTTP $httpCode: $err. Respuesta: " . substr((string)$resp, 0, 200);
+                            $backoffSeconds = pow(3, $job['attempts'] + 1);
+                            $next = date('Y-m-d H:i:s', time() + $backoffSeconds);
+                            try {
+                                $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
+                                $failStmt->execute([$errMsg, $next, $job['id']]);
+                            } catch (Exception $e2) {}
+                        }
+                    }
+                }
+
+                curl_multi_close($mh);
+            }
         } finally {
             if ($lockFp) {
                 @flock($lockFp, LOCK_UN);
@@ -238,9 +286,9 @@ class Queue {
     }
 
     /**
-     * Envía una petición ActivityPub firmada mediante HTTP Signatures.
+     * Crea un handle cURL firmado con HTTP Signatures para envío directo o en lote (curl_multi).
      */
-    private static function sendSignedRequest(string $url, string $body, string $privateKey, string $keyId): void {
+    private static function createSignedCurlHandle(string $url, string $body, string $privateKey, string $keyId) {
         $u = parse_url($url);
         if (empty($u['host'])) {
             throw new Exception("URL de inbox inválida: $url");
@@ -255,7 +303,7 @@ class Queue {
 
         // String a firmar (draft-cavage-12)
         $signingString = "(request-target): post $path\nhost: {$u['host']}\ndate: $date\ndigest: $digest";
-        
+
         $sig = '';
         if (!openssl_sign($signingString, $sig, $privateKey, OPENSSL_ALGO_SHA256)) {
             throw new Exception("Fallo en la firma RSA de la petición.");
@@ -282,12 +330,20 @@ class Queue {
             CURLOPT_USERAGENT => 'KutSocial/1.0 (+' . (($keyId) ? explode('#', $keyId)[0] : 'https://' . ($u['host'])) . ')',
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_CONNECTTIMEOUT => 3,
-            CURLOPT_TIMEOUT => 15,
+            CURLOPT_TIMEOUT => 10,
             CURLOPT_FAILONERROR => true,
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
             CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
         ]);
 
+        return $ch;
+    }
+
+    /**
+     * Envía una petición ActivityPub firmada mediante HTTP Signatures.
+     */
+    private static function sendSignedRequest(string $url, string $body, string $privateKey, string $keyId): void {
+        $ch = self::createSignedCurlHandle($url, $body, $privateKey, $keyId);
         $resp = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err = curl_error($ch);

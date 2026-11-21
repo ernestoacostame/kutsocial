@@ -156,6 +156,7 @@ class NotificationHelper {
                 $stmtParent->execute([$status['in_reply_to_id']]);
                 $parentUser = $stmtParent->fetch();
                 if ($parentUser && $parentUser['id'] != $author['id']) {
+                    self::recordNotification($db, (int)$parentUser['id'], 'mention', (int)$author['id'], $statusId);
                     if ($parentUser['email_notifications']) {
                         self::sendEmailNotification(
                             $parentUser,
@@ -210,6 +211,7 @@ class NotificationHelper {
                 $pattern = '/@' . preg_quote($user['username'], '/') . '(?![a-zA-Z0-9_\-])/i';
                 $urlPattern = '/\/users\/' . preg_quote($user['username'], '/') . '(?![a-zA-Z0-9_\-])/i';
                 if (preg_match($pattern, $status['content']) || preg_match($urlPattern, $status['content'])) {
+                    self::recordNotification($db, (int)$user['id'], 'mention', (int)$author['id'], $statusId);
                     if ($user['email_notifications']) {
                         self::sendEmailNotification(
                             $user,
@@ -271,6 +273,8 @@ class NotificationHelper {
             $follower = $stmtFollower->fetch();
             if (!$follower) return;
 
+            self::recordNotification($db, $localAccountId, 'follow', $followerAccountId, null);
+
             // Enviar email si está activo
             if ($recipient['email_notifications']) {
                 $followerHandle = $follower['domain'] ? '@' . $follower['username'] . '@' . $follower['domain'] : '@' . $follower['username'];
@@ -326,6 +330,9 @@ class NotificationHelper {
      * Fetch page open graph details for a link preview card.
      */
     public static function fetchLinkCard(string $url): ?array {
+        if (!\KutSocial\SecurityHelper::isSafeExternalUrl($url)) {
+            return null;
+        }
         $host = parse_url($url, PHP_URL_HOST);
         if (!$host || $host === ($_SERVER['HTTP_HOST'] ?? 'localhost') || $host === '127.0.0.1') {
             return null;
@@ -334,8 +341,7 @@ class NotificationHelper {
         $ch = curl_init();
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-        curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, false);
         curl_setopt($ch, CURLOPT_TIMEOUT, 6);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, \KutSocial\Database::verifySsl());
         curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, \KutSocial\Database::verifySsl() ? 2 : 0);
@@ -501,6 +507,8 @@ class NotificationHelper {
             $trigger = $stmtTrigger->fetch();
             if (!$trigger) return;
 
+            self::recordNotification($db, (int)$author['account_id'], 'favourite', $favoritedByAccountId, $statusId);
+
             $favId = null;
             try {
                 $stmtFavId = $db->prepare("SELECT id FROM favourites WHERE status_id = ? AND account_id = ? LIMIT 1");
@@ -567,6 +575,8 @@ class NotificationHelper {
             $trigger = $stmtTrigger->fetch();
             if (!$trigger) return;
 
+            self::recordNotification($db, (int)$author['account_id'], 'reblog', $rebloggedByAccountId, $statusId);
+
             $reblogStatusId = null;
             try {
                 $stmtReblogId = $db->prepare("SELECT id FROM statuses WHERE reblog_of_id = ? AND account_id = ? LIMIT 1");
@@ -605,6 +615,120 @@ class NotificationHelper {
             self::dispatchPushNotification($author['account_id'], 'reblog', $notificationPayload);
         } catch (\Throwable $e) {
             error_log("Failed to process notifyReblog: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Registra una notificación normalizada en la tabla `notifications`.
+     */
+    public static function recordNotification(\PDO $db, int $accountId, string $type, int $fromAccountId, ?int $statusId = null, ?string $createdAt = null): void {
+        if ($accountId <= 0 || $fromAccountId <= 0 || $accountId === $fromAccountId) {
+            return;
+        }
+        try {
+            $ts = $createdAt ?? gmdate('Y-m-d H:i:s');
+            if ($statusId !== null) {
+                $stmtChk = $db->prepare("SELECT 1 FROM notifications WHERE account_id = ? AND type = ? AND from_account_id = ? AND status_id = ? LIMIT 1");
+                $stmtChk->execute([$accountId, $type, $fromAccountId, $statusId]);
+            } else {
+                $stmtChk = $db->prepare("SELECT 1 FROM notifications WHERE account_id = ? AND type = ? AND from_account_id = ? AND status_id IS NULL LIMIT 1");
+                $stmtChk->execute([$accountId, $type, $fromAccountId]);
+            }
+            if ($stmtChk->fetchColumn()) {
+                return;
+            }
+            $stmtIns = $db->prepare("INSERT INTO notifications (account_id, type, from_account_id, status_id, created_at) VALUES (?, ?, ?, ?, ?)");
+            $stmtIns->execute([$accountId, $type, $fromAccountId, $statusId, $ts]);
+        } catch (\Throwable $e) {
+            // Silenciar si la tabla aún no existe o hay error transitorio
+        }
+    }
+
+    /**
+     * Indexa menciones y hashtags de un estado en las tablas normalizadas `mentions` y `status_hashtags`,
+     * y registra notificaciones de mención/respuesta para cuentas locales.
+     */
+    public static function indexStatusEntities(\PDO $db, int $statusId, string $content, int $authorAccountId = 0, ?int $inReplyToAccountId = null): void {
+        if ($statusId <= 0) {
+            return;
+        }
+        try {
+            // 1. Hashtags (texto plano o enlaces /tags/...)
+            $plainText = html_entity_decode(strip_tags($content), ENT_QUOTES, 'UTF-8');
+            $tagsMap = [];
+            if (preg_match_all('/(?:^|\s)#([a-zA-Z0-9_\p{L}\p{N}]+)/u', $plainText, $mText)) {
+                foreach ($mText[1] as $t) {
+                    $tagsMap[mb_strtolower($t, 'UTF-8')] = true;
+                }
+            }
+            if (preg_match_all('/href="[^"]*\/(?:tags|tag)\/([a-zA-Z0-9_\p{L}\p{N}]+)"/ui', $content, $mHtml)) {
+                foreach ($mHtml[1] as $t) {
+                    $tagsMap[mb_strtolower(urldecode($t), 'UTF-8')] = true;
+                }
+            }
+            if (!empty($tagsMap)) {
+                $stmtTag = $db->prepare("INSERT OR IGNORE INTO status_hashtags (status_id, tag) VALUES (?, ?)");
+                foreach (array_keys($tagsMap) as $tag) {
+                    if ($tag !== '') {
+                        $stmtTag->execute([$statusId, $tag]);
+                    }
+                }
+            }
+
+            // 2. Menciones (@user, @user@domain, /users/user)
+            $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $lookups = [];
+            if (preg_match_all('/@([a-zA-Z0-9_-]+)(?:@([a-zA-Z0-9.-]+))?/i', $plainText, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $m) {
+                    $u = $m[1];
+                    $d = (!empty($m[2]) && strcasecmp($m[2], $domain) !== 0) ? strtolower($m[2]) : null;
+                    $lookups[strtolower($u) . ':' . ($d ?? '')] = ['username' => $u, 'domain' => $d];
+                }
+            }
+            if (preg_match_all('/href="([^"]+)"[^>]*class="[^"]*mention[^"]*"/i', $content, $linkMatches, PREG_SET_ORDER)) {
+                foreach ($linkMatches as $lm) {
+                    $url = htmlspecialchars_decode($lm[1], ENT_QUOTES);
+                    $path = parse_url($url, PHP_URL_PATH);
+                    $host = parse_url($url, PHP_URL_HOST);
+                    if ($path && preg_match('/^\/(?:users|@|u)\/([a-zA-Z0-9_-]+)$/i', $path, $pm)) {
+                        $u = $pm[1];
+                        $d = ($host && strcasecmp($host, $domain) !== 0) ? strtolower($host) : null;
+                        $lookups[strtolower($u) . ':' . ($d ?? '')] = ['username' => $u, 'domain' => $d];
+                    }
+                }
+            }
+
+            $stmtMention = $db->prepare("INSERT OR IGNORE INTO mentions (status_id, account_id) VALUES (?, ?)");
+            $stmtFindLocal = $db->prepare("SELECT id, domain FROM accounts WHERE LOWER(username) = LOWER(?) AND (domain IS NULL OR domain = '') LIMIT 1");
+            $stmtFindRemote = $db->prepare("SELECT id, domain FROM accounts WHERE LOWER(username) = LOWER(?) AND LOWER(domain) = LOWER(?) LIMIT 1");
+
+            foreach ($lookups as $item) {
+                if ($item['domain'] === null) {
+                    $stmtFindLocal->execute([$item['username']]);
+                    $acc = $stmtFindLocal->fetch();
+                } else {
+                    $stmtFindRemote->execute([$item['username'], $item['domain']]);
+                    $acc = $stmtFindRemote->fetch();
+                }
+                if ($acc) {
+                    $accId = (int)$acc['id'];
+                    $stmtMention->execute([$statusId, $accId]);
+                    if (empty($acc['domain']) && $authorAccountId > 0 && $accId !== $authorAccountId) {
+                        self::recordNotification($db, $accId, 'mention', $authorAccountId, $statusId);
+                    }
+                }
+            }
+
+            // 3. Notificación por respuesta a cuenta local
+            if ($inReplyToAccountId !== null && $authorAccountId > 0 && $inReplyToAccountId !== $authorAccountId) {
+                $stmtLocal = $db->prepare("SELECT 1 FROM accounts WHERE id = ? AND (domain IS NULL OR domain = '') LIMIT 1");
+                $stmtLocal->execute([$inReplyToAccountId]);
+                if ($stmtLocal->fetchColumn()) {
+                    self::recordNotification($db, $inReplyToAccountId, 'mention', $authorAccountId, $statusId);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log("indexStatusEntities error: " . $e->getMessage());
         }
     }
 }

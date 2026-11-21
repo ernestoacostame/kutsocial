@@ -18,8 +18,8 @@ $basePath = $basePath ?? '';
     <!-- DOMPurify para Saneamiento XSS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
     
+    <link rel="stylesheet" href="/assets/pages.css?v=<?= htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0') ?>">
     <style>
-    <?php include __DIR__ . '/pages.css'; ?>
     #tab-<?= htmlspecialchars($section) ?> { display: <?= in_array($section, ['lists', 'collections']) ? 'flex' : 'block' ?>; }
     #tab-users-list { display: none; }
     #modal-composer .composer-card { border: none !important; margin-bottom: 0 !important; padding: 0 !important; background: transparent !important; }
@@ -640,8 +640,6 @@ $basePath = $basePath ?? '';
     </div>
     <?php endif; ?>
 
-    <script>
-    <?php include __DIR__ . '/pages.js'; ?>
-    </script>
+    <script src="/assets/pages.js?v=<?= htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0') ?>"></script>
 </body>
 </html>

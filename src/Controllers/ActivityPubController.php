@@ -266,10 +266,10 @@ XML;
             self::log("postInbox: Actividad recibida de tipo '" . ($activity['type'] ?? 'unknown') . "'");
 
             // Verificar firma HTTP
-            $sigOk = self::verifyHttpSignature($body);
+            $sigOk = self::verifyHttpSignature($body, $activity);
             if (!$sigOk) {
                 // Reintento una sola vez con la clave del actor refrescada (posible rotación de clave)
-                $sigOk = self::retryVerifyWithFreshKey($body);
+                $sigOk = self::retryVerifyWithFreshKey($body, $activity);
             }
             if (!$sigOk) {
                 self::log("postInbox: Error de verificación de firma HTTP para el actor local '$username'");
@@ -650,13 +650,14 @@ XML;
             return;
         }
 
-        $content = $object['content'] ?? '';
+        $content = \KutSocial\SecurityHelper::sanitizeRemoteHtml((string)($object['content'] ?? ''));
         if (empty($content) && !empty($object['summary'])) {
             $content = $object['summary'];
         }
         if (!empty($object['name']) && is_string($object['name']) && !str_contains($content, $object['name'])) {
             $content = '<strong>' . htmlspecialchars($object['name'], ENT_QUOTES, 'UTF-8') . '</strong><br>' . $content;
         }
+        $content = \KutSocial\SecurityHelper::sanitizeRemoteHtml((string)$content);
 
         $createdAt = $rawDate ?? date('c');
 
@@ -1347,7 +1348,7 @@ XML;
     /**
      * Verifica la firma HTTP Signature de la petición entrante.
      */
-    private static function retryVerifyWithFreshKey(string $body): bool {
+    private static function retryVerifyWithFreshKey(string $body, ?array $activity = null): bool {
         $headers = \KutSocial\Router::getAllHeaders();
         $sigHeader = $headers['Signature'] ?? $headers['signature'] ?? '';
         if (empty($sigHeader)) {
@@ -1360,6 +1361,9 @@ XML;
             return false;
         }
         $actorUrl = explode('#', $m[1])[0];
+        if (!\KutSocial\SecurityHelper::isSafeExternalUrl($actorUrl)) {
+            return false;
+        }
         try {
             $acc = self::getOrRegisterRemoteActor($actorUrl, true);
         } catch (\Throwable $e) {
@@ -1369,10 +1373,10 @@ XML;
             return false;
         }
         self::log("postInbox: Reintentando verificación de firma con clave refrescada para $actorUrl");
-        return self::verifyHttpSignature($body);
+        return self::verifyHttpSignature($body, $activity);
     }
 
-    private static function verifyHttpSignature(string $body): bool {
+    private static function verifyHttpSignature(string $body, ?array $activity = null): bool {
         $headers = \KutSocial\Router::getAllHeaders();
         $sigHeader = $headers['Signature'] ?? $headers['signature'] ?? '';
 
@@ -1411,6 +1415,57 @@ XML;
             $parts['headers'] = 'date';
         }
 
+        $headersLower = array_change_key_case($headers, CASE_LOWER);
+        $headerNames = array_values(array_filter(array_map(fn($h) => strtolower(trim($h)), explode(' ', $parts['headers']))));
+
+        // Exigir cabeceras mínimas de seguridad en la firma
+        $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'POST');
+        $requiredHeaders = ['(request-target)', 'host', 'date'];
+        if ($method === 'POST' && $body !== '') {
+            $requiredHeaders[] = 'digest';
+        }
+        foreach ($requiredHeaders as $reqH) {
+            if (!in_array($reqH, $headerNames, true)) {
+                self::log("verifyHttpSignature: Falta cabecera obligatoria '$reqH' en Signature headers");
+                return false;
+            }
+        }
+
+        // Validar ventana de tiempo en Date (±300 segundos)
+        $dateVal = $headersLower['date'] ?? $_SERVER['HTTP_DATE'] ?? '';
+        $dateTs = $dateVal !== '' ? strtotime($dateVal) : false;
+        if ($dateTs === false || abs(time() - $dateTs) > 300) {
+            self::log("verifyHttpSignature: Cabecera Date ausente, inválida o fuera de ventana (±300s): '$dateVal'");
+            return false;
+        }
+
+        // Validar Digest SHA-256 para peticiones POST con cuerpo
+        if ($method === 'POST' && $body !== '') {
+            $digestVal = $headersLower['digest'] ?? $_SERVER['HTTP_DIGEST'] ?? '';
+            $expectedDigest = 'SHA-256=' . base64_encode(hash('sha256', $body, true));
+            if ($digestVal === '' || !hash_equals($expectedDigest, $digestVal)) {
+                self::log("verifyHttpSignature: Digest SHA-256 inválido o ausente");
+                return false;
+            }
+        }
+
+        // Validar que el host de keyId coincida con el host del actor de la actividad
+        if ($activity === null && $body !== '') {
+            $decoded = json_decode($body, true);
+            if (is_array($decoded)) {
+                $activity = $decoded;
+            }
+        }
+        if (is_array($activity) && !empty($activity['actor'])) {
+            $actorUrl = is_array($activity['actor']) ? ($activity['actor']['id'] ?? '') : (string)$activity['actor'];
+            $keyIdHost = strtolower((string)(parse_url($parts['keyId'], PHP_URL_HOST) ?? ''));
+            $actorHost = strtolower((string)(parse_url($actorUrl, PHP_URL_HOST) ?? ''));
+            if ($keyIdHost === '' || $actorHost === '' || $keyIdHost !== $actorHost) {
+                self::log("verifyHttpSignature: Host de keyId ('$keyIdHost') no coincide con host del actor ('$actorHost')");
+                return false;
+            }
+        }
+
         self::log("verifyHttpSignature: keyId '{$parts['keyId']}'");
 
         // Obtener la llave pública del actor remoto
@@ -1421,28 +1476,21 @@ XML;
         }
 
         // Construir string firmado
-        $headerNames = explode(' ', $parts['headers']);
         $signedLines = [];
-        $headersLower = array_change_key_case($headers, CASE_LOWER);
         
-        foreach ($headerNames as $headerName) {
-            $headerNameLower = strtolower(trim($headerName));
-            if (empty($headerNameLower)) {
-                continue;
-            }
+        foreach ($headerNames as $headerNameLower) {
             if ($headerNameLower === '(request-target)') {
-                $method = strtolower($_SERVER['REQUEST_METHOD'] ?? 'POST');
+                $reqMethod = strtolower($_SERVER['REQUEST_METHOD'] ?? 'POST');
                 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
                 $query = parse_url($_SERVER['REQUEST_URI'], PHP_URL_QUERY);
                 if ($query) {
                     $uri .= '?' . $query;
                 }
-                $signedLines[] = "(request-target): $method $uri";
+                $signedLines[] = "(request-target): $reqMethod $uri";
             } elseif ($headerNameLower === 'host') {
                 $hostVal = $headersLower['host'] ?? $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? '';
                 $signedLines[] = "host: $hostVal";
             } elseif ($headerNameLower === 'date') {
-                $dateVal = $headersLower['date'] ?? $_SERVER['HTTP_DATE'] ?? '';
                 $signedLines[] = "date: $dateVal";
             } elseif ($headerNameLower === 'digest') {
                 $digestVal = $headersLower['digest'] ?? $_SERVER['HTTP_DIGEST'] ?? '';
@@ -1537,12 +1585,16 @@ XML;
                 }
             }
 
+            if (!\KutSocial\SecurityHelper::isSafeExternalUrl($keyId)) {
+                self::log("fetchRemotePublicKey: URL bloqueada por política SSRF: $keyId");
+                return null;
+            }
+
             $ch = curl_init($keyId);
             $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS => 5,
+                CURLOPT_FOLLOWLOCATION => false,
                 CURLOPT_HTTPHEADER => [
                     "Accept: application/activity+json, application/ld+json",
                     "User-Agent: KutSocial/1.0; (+https://$domain)"
@@ -1880,7 +1932,7 @@ XML;
             return (int)$existingId;
         }
 
-        $content = $object['content'] ?? '';
+        $content = \KutSocial\SecurityHelper::sanitizeRemoteHtml((string)($object['content'] ?? ''));
         $createdAt = $rawDate ?? date('c');
         $visibility = self::determineVisibility($object);
 
@@ -2014,6 +2066,7 @@ XML;
 
         $newStatusId = (int)$db->lastInsertId();
         \KutSocial\NotificationHelper::fetchAndSaveLinkCard($newStatusId, $content);
+        \KutSocial\NotificationHelper::indexStatusEntities($db, $newStatusId, $content, (int)$remoteAccount['id'], $inReplyToAccountId ? (int)$inReplyToAccountId : null);
 
         return $newStatusId;
     }
@@ -2231,6 +2284,10 @@ XML;
      * Realiza una petición GET simple con cabeceras ActivityPub y seguimiento de redirecciones.
      */
     public static function executeSimpleGet(string $url): ?string {
+        if (!\KutSocial\SecurityHelper::isSafeExternalUrl($url)) {
+            self::log("executeSimpleGet: URL bloqueada por política SSRF: $url");
+            return null;
+        }
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -2241,8 +2298,7 @@ XML;
             ],
             CURLOPT_CONNECTTIMEOUT => 3,
             CURLOPT_TIMEOUT => 10,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 4,
+            CURLOPT_FOLLOWLOCATION => false,
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
             CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0
         ]);
@@ -2262,6 +2318,10 @@ XML;
      * Si falla, recurre a executeSimpleGet como fallback.
      */
     public static function executeSignedGet(string $url, int $redirectDepth = 0): ?string {
+        if (!\KutSocial\SecurityHelper::isSafeExternalUrl($url)) {
+            self::log("executeSignedGet: URL bloqueada por política SSRF: $url");
+            return null;
+        }
         if ($redirectDepth > 3) {
             return self::executeSimpleGet($url);
         }

@@ -1,5 +1,6 @@
 <h3><?= __('admin_users_title', '', ['count' => count($localUsers)]) ?></h3>
 <form method="POST" action="/admin/users/create" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 20px; border-radius: 10px; margin-bottom: 30px;">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
     <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 120px 120px; gap: 15px; align-items: flex-end;">
         <div class="form-group" style="margin: 0;">
             <label for="new_username"><?= __('admin_users_new_user') ?></label>
@@ -50,6 +51,7 @@
                 <td><?= htmlspecialchars($u['email'] ?? '') ?></td>
                 <td>
                     <form method="POST" action="/admin/users/role" style="margin:0; display:inline;">
+                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                         <input type="hidden" name="id" value="<?= $u['id'] ?>">
                         <select name="role" onchange="this.form.submit()" <?= $selectDisabled ?> style="padding: 6px 10px; font-size: 13px; width: auto; background: rgba(255,255,255,0.05); border-radius: 6px; border: 1px solid var(--border-color); color: white;">
                             <option value="user" <?= $u['role'] === 'user' ? 'selected' : '' ?>><?= __('admin_users_role_user') ?></option>
@@ -65,6 +67,7 @@
                     <?php else: ?>
                         <?php if (!$isOwner || $admin['role'] === 'owner'): ?>
                             <form method="POST" action="/admin/users/delete" style="margin:0; display:inline-block;" onsubmit="return confirm('<?= __('admin_users_delete_confirm') ?>');">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                                 <input type="hidden" name="id" value="<?= $u['id'] ?>">
                                 <button type="submit" class="btn-danger"><?= __('delete') ?></button>
                             </form>

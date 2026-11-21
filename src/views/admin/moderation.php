@@ -61,16 +61,19 @@
                         <div style="display: flex; gap: 6px; align-items: center;">
                             <?php if (!$isResolved): ?>
                                 <form method="POST" action="/admin/moderation/report/resolve" style="margin:0;">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                                     <input type="hidden" name="id" value="<?= $rep['id'] ?>">
                                     <button type="submit" class="btn-submit" style="height: 32px; padding: 0 10px; font-size: 12px;"><?= __('admin_mod_action_resolve') ?></button>
                                 </form>
                                 <form method="POST" action="/admin/moderation/block" style="margin:0;">
+                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                                     <input type="hidden" name="type" value="account">
                                     <input type="hidden" name="target" value="<?= htmlspecialchars($targetHandle) ?>">
                                     <button type="submit" class="btn-danger" style="height: 32px; padding: 0 10px; font-size: 12px;" onclick="return confirm('<?= __('admin_mod_block_confirm', '', ['handle' => htmlspecialchars($targetHandle)]) ?>')"><?= __('admin_mod_action_block') ?></button>
                                 </form>
                             <?php endif; ?>
                             <form method="POST" action="/admin/moderation/report/delete" style="margin:0;">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                                 <input type="hidden" name="id" value="<?= $rep['id'] ?>">
                                 <button type="submit" class="btn-danger" style="height: 32px; padding: 0 8px; font-size: 12px; opacity: 0.7;" onclick="return confirm('<?= __('admin_mod_delete_confirm') ?>')">✕</button>
                             </form>
@@ -88,6 +91,7 @@
 
 <h4 style="margin: 30px 0 12px 0;"><?= __('admin_mod_blocks_title') ?></h4>
 <form method="POST" action="/admin/moderation/block" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); padding: 20px; border-radius: 10px; margin-bottom: 30px;">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
     <div style="display: grid; grid-template-columns: 200px 1fr 120px; gap: 15px; align-items: flex-end;">
         <div class="form-group" style="margin: 0;">
             <label for="block_type"><?= __('admin_mod_filter_type') ?></label>
@@ -137,6 +141,7 @@
                     <td><?= date('d/m/Y H:i', strtotime($row['created_at'])) ?></td>
                     <td>
                         <form method="POST" action="/admin/moderation/unblock" style="margin:0;">
+                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
                             <input type="hidden" name="id" value="<?= $row['id'] ?>">
                             <button type="submit" class="btn-danger"><?= __('admin_mod_btn_unblock') ?></button>
                         </form>

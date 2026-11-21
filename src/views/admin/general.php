@@ -1,5 +1,6 @@
 <h3><?= __('admin_tab_general') ?></h3>
 <form method="POST" action="/admin/settings">
+    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars(\KutSocial\Controllers\AdminController::getCsrfToken(), ENT_QUOTES, 'UTF-8') ?>">
     <!-- Idioma de la Interfaz -->
     <div class="form-group" style="margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
         <label for="site_language"><?= __('admin_language_setting') ?></label>

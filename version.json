@@ -1,5 +1,5 @@
 {
-  "version": "2.0.88",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.88/kutsocial-v2.0.88.zip",
-  "changelog": "Perf: optimizaciones fase 1 (índices, cachés, config memoizada, gzip/expires, logs seguros)"
+  "version": "2.0.89",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.89/kutsocial-v2.0.89.zip",
+  "changelog": "Security & Perf: endurecimiento de seguridad (firmas AP, SSRF, XSS, CSRF, RBAC, uploads) y optimizaciones fases 2-3 (cachés, lote N+1, curl_multi)"
 }

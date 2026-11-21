@@ -162,6 +162,8 @@ if ($ks_update_cache && !empty($ks_update_cache['available']) && !empty($ks_upda
         manualUploadBtn: <?= json_encode(__('admin_update_manual_upload_btn')) ?>
     };
 
+    const adminCsrfToken = <?= json_encode(\KutSocial\Controllers\AdminController::getCsrfToken()) ?>;
+
     function kpUpdateCheck() {
         const btn = document.getElementById('btn-check');
         const status = document.getElementById('update-status');
@@ -177,8 +179,8 @@ if ($ks_update_cache && !empty($ks_update_cache['available']) && !empty($ks_upda
 
         fetch('/admin/update/action', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'action=check'
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': adminCsrfToken },
+            body: 'action=check&csrf_token=' + encodeURIComponent(adminCsrfToken)
         })
         .then(r => r.json())
         .then(data => {
@@ -238,8 +240,8 @@ if ($ks_update_cache && !empty($ks_update_cache['available']) && !empty($ks_upda
 
         fetch('/admin/update/action', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'action=download&zip_url=' + encodeURIComponent(btoa(_updateData.zip_url))
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': adminCsrfToken },
+            body: 'action=download&zip_url=' + encodeURIComponent(btoa(_updateData.zip_url)) + '&csrf_token=' + encodeURIComponent(adminCsrfToken)
         })
         .then(r => r.json())
         .then(dlData => {
@@ -254,8 +256,8 @@ if ($ks_update_cache && !empty($ks_update_cache['available']) && !empty($ks_upda
 
             return fetch('/admin/update/action', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: 'action=apply&zip_path=' + encodeURIComponent(dlData.path) + '&new_version=' + encodeURIComponent(_updateData.new_version)
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': adminCsrfToken },
+                body: 'action=apply&zip_path=' + encodeURIComponent(dlData.path) + '&new_version=' + encodeURIComponent(_updateData.new_version) + '&csrf_token=' + encodeURIComponent(adminCsrfToken)
             });
         })
         .then(r => r.json())
@@ -303,8 +305,8 @@ if ($ks_update_cache && !empty($ks_update_cache['available']) && !empty($ks_upda
 
         fetch('/admin/update/action', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: 'action=rollback&backup_file=' + encodeURIComponent(backupFile)
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': adminCsrfToken },
+            body: 'action=rollback&backup_file=' + encodeURIComponent(backupFile) + '&csrf_token=' + encodeURIComponent(adminCsrfToken)
         })
         .then(r => r.json())
         .then(data => {
@@ -370,6 +372,7 @@ if ($ks_update_cache && !empty($ks_update_cache['available']) && !empty($ks_upda
 
         const formData = new FormData();
         formData.append('action', 'upload');
+        formData.append('csrf_token', adminCsrfToken);
         formData.append('zip_file', file);
 
         fetch('/admin/update/action', {
