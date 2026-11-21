@@ -1420,7 +1420,7 @@ XML;
 
         // Exigir cabeceras mínimas de seguridad en la firma
         $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'POST');
-        $requiredHeaders = ['(request-target)', 'host', 'date'];
+        $requiredHeaders = ['(request-target)', 'date'];
         if ($method === 'POST' && $body !== '') {
             $requiredHeaders[] = 'digest';
         }
@@ -1439,17 +1439,26 @@ XML;
             return false;
         }
 
-        // Validar Digest SHA-256 para peticiones POST con cuerpo
+        // Validar Digest SHA-256 para peticiones POST con cuerpo (prefijo sha-256/SHA-256 insensible a mayúsculas según RFC 3230)
         if ($method === 'POST' && $body !== '') {
-            $digestVal = $headersLower['digest'] ?? $_SERVER['HTTP_DIGEST'] ?? '';
-            $expectedDigest = 'SHA-256=' . base64_encode(hash('sha256', $body, true));
-            if ($digestVal === '' || !hash_equals($expectedDigest, $digestVal)) {
+            $digestVal = trim((string)($headersLower['digest'] ?? $_SERVER['HTTP_DIGEST'] ?? ''));
+            $expectedB64 = base64_encode(hash('sha256', $body, true));
+            $digestOk = false;
+            foreach (explode(',', $digestVal) as $dPart) {
+                if (preg_match('/^sha-256\s*=\s*([A-Za-z0-9+\/=]+)$/i', trim($dPart), $dm)) {
+                    if (hash_equals($expectedB64, $dm[1])) {
+                        $digestOk = true;
+                        break;
+                    }
+                }
+            }
+            if (!$digestOk) {
                 self::log("verifyHttpSignature: Digest SHA-256 inválido o ausente");
                 return false;
             }
         }
 
-        // Validar que el host de keyId coincida con el host del actor de la actividad
+        // Validar que el host de keyId coincida con el actor, sea subdominio hermano o pertenezca a un relay aceptado
         if ($activity === null && $body !== '') {
             $decoded = json_decode($body, true);
             if (is_array($decoded)) {
@@ -1460,7 +1469,26 @@ XML;
             $actorUrl = is_array($activity['actor']) ? ($activity['actor']['id'] ?? '') : (string)$activity['actor'];
             $keyIdHost = strtolower((string)(parse_url($parts['keyId'], PHP_URL_HOST) ?? ''));
             $actorHost = strtolower((string)(parse_url($actorUrl, PHP_URL_HOST) ?? ''));
-            if ($keyIdHost === '' || $actorHost === '' || $keyIdHost !== $actorHost) {
+            $hostMatches = ($keyIdHost !== '' && $actorHost !== '' && (
+                $keyIdHost === $actorHost ||
+                str_ends_with($keyIdHost, '.' . $actorHost) ||
+                str_ends_with($actorHost, '.' . $keyIdHost)
+            ));
+            if (!$hostMatches && $keyIdHost !== '') {
+                try {
+                    $dbRelay = Database::connect();
+                    $stmtRel = $dbRelay->prepare("SELECT inbox_url FROM relays WHERE status = 'accepted'");
+                    $stmtRel->execute();
+                    foreach ($stmtRel->fetchAll(\PDO::FETCH_COLUMN) as $rInbox) {
+                        $rHost = strtolower((string)(parse_url((string)$rInbox, PHP_URL_HOST) ?? ''));
+                        if ($rHost !== '' && $rHost === $keyIdHost) {
+                            $hostMatches = true;
+                            break;
+                        }
+                    }
+                } catch (\Throwable $e) {}
+            }
+            if (!$hostMatches) {
                 self::log("verifyHttpSignature: Host de keyId ('$keyIdHost') no coincide con host del actor ('$actorHost')");
                 return false;
             }

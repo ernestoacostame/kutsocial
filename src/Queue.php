@@ -156,14 +156,18 @@ class Queue {
                         } else {
                             self::processImportListItem((int)$payloadArr['account_id'], (int)$payloadArr['list_id'], $payloadArr['address']);
                         }
-                        $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
-                        $okStmt->execute([$job['id']]);
+                        Database::executeWithRetry(function() use ($db, $job) {
+                            $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
+                            $okStmt->execute([$job['id']]);
+                        });
                     } catch (Exception $e) {
                         $backoffSeconds = pow(3, $job['attempts'] + 1);
                         $next = date('Y-m-d H:i:s', time() + $backoffSeconds);
                         try {
-                            $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
-                            $failStmt->execute([$e->getMessage(), $next, $job['id']]);
+                            Database::executeWithRetry(function() use ($db, $e, $next, $job) {
+                                $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
+                                $failStmt->execute([$e->getMessage(), $next, $job['id']]);
+                            });
                         } catch (Exception $e2) {}
                     }
                     continue;
@@ -258,16 +262,20 @@ class Queue {
 
                         if ($httpCode >= 200 && $httpCode < 400 && $err === '') {
                             try {
-                                $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
-                                $okStmt->execute([$job['id']]);
+                                Database::executeWithRetry(function() use ($db, $job) {
+                                    $okStmt = $db->prepare("UPDATE jobs SET status = 'completed', last_error = NULL WHERE id = ?");
+                                    $okStmt->execute([$job['id']]);
+                                });
                             } catch (Exception $e2) {}
                         } else {
                             $errMsg = "Error HTTP $httpCode: $err. Respuesta: " . substr((string)$resp, 0, 200);
                             $backoffSeconds = pow(3, $job['attempts'] + 1);
                             $next = date('Y-m-d H:i:s', time() + $backoffSeconds);
                             try {
-                                $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
-                                $failStmt->execute([$errMsg, $next, $job['id']]);
+                                Database::executeWithRetry(function() use ($db, $errMsg, $next, $job) {
+                                    $failStmt = $db->prepare("UPDATE jobs SET status = 'failed', last_error = ?, next_attempt = ? WHERE id = ?");
+                                    $failStmt->execute([$errMsg, $next, $job['id']]);
+                                });
                             } catch (Exception $e2) {}
                         }
                     }

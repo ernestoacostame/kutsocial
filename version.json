@@ -1,5 +1,5 @@
 {
-  "version": "2.0.94",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.94/kutsocial-v2.0.94.zip",
-  "changelog": "Fix: evita propagación de clic en botón Iniciar Sesión sobre .user-profile-summary (cerraba el modal y recargaba /@iam)"
+  "version": "2.0.95",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.0.95/kutsocial-v2.0.95.zip",
+  "changelog": "Fix: excluye .owner en glob de adjuntos multimedia, corrige orden de PRAGMA busy_timeout/WAL + reintentos en Queue, y acepta sha-256 minúscula/relays/subdominios en firmas ActivityPub"
 }

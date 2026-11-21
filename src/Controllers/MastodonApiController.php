@@ -3711,7 +3711,7 @@ HTML;
                 $mId = preg_replace('/[^a-zA-Z0-9]/', '', $mId);
                 $matches = glob($uploadsDir . "/media_" . $mId . ".*");
                 $matches = array_filter($matches ?: [], function($f) {
-                    return pathinfo($f, PATHINFO_EXTENSION) !== 'txt';
+                    return !in_array(strtolower(pathinfo($f, PATHINFO_EXTENSION)), ['txt', 'owner'], true);
                 });
                 $matches = array_values($matches);
                 if (!empty($matches)) {
@@ -6233,7 +6233,7 @@ HTML;
                 $mId = preg_replace('/[^a-zA-Z0-9]/', '', $mId);
                 $matches = glob($uploadsDir . "/media_" . $mId . ".*");
                 $matches = array_filter($matches ?: [], function($f) {
-                    return pathinfo($f, PATHINFO_EXTENSION) !== 'txt';
+                    return !in_array(strtolower(pathinfo($f, PATHINFO_EXTENSION)), ['txt', 'owner'], true);
                 });
                 $matches = array_values($matches);
                 if (!empty($matches)) {

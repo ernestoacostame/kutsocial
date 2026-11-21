@@ -49,11 +49,14 @@ class Database {
                 PDO::ATTR_TIMEOUT => 30,
             ]);
 
-            // Optimización SQLite para concurrencia y seguridad en modo WAL
-            $pdo->exec("PRAGMA journal_mode=WAL;");
+            // Optimización SQLite para concurrencia y seguridad en modo WAL (busy_timeout primero para evitar SQLITE_BUSY inmediato)
+            $pdo->exec("PRAGMA busy_timeout=30000;");
+            $mode = strtolower((string)$pdo->query("PRAGMA journal_mode;")->fetchColumn());
+            if ($mode !== 'wal') {
+                $pdo->exec("PRAGMA journal_mode=WAL;");
+            }
             $pdo->exec("PRAGMA synchronous=NORMAL;");
             $pdo->exec("PRAGMA foreign_keys=ON;");
-            $pdo->exec("PRAGMA busy_timeout=30000;");
             $pdo->exec("PRAGMA cache_size=-65536;");
             $pdo->exec("PRAGMA mmap_size=268435456;");
             $pdo->exec("PRAGMA temp_store=MEMORY;");
