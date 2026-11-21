@@ -32,13 +32,19 @@ use KutSocial\Database;
 use KutSocial\Queue;
 
 try {
-    Database::setDbPath(KUTSOCIAL_DB_PATH);
+    if (Database::getDriver() === 'sqlite' && defined('KUTSOCIAL_DB_PATH')) {
+        Database::setDbPath(KUTSOCIAL_DB_PATH);
+    }
 } catch (Exception $e) {
     exit("Fallo de base de datos en worker: " . $e->getMessage() . "\n");
 }
 
 // Mecanismo de bloqueo para evitar ejecuciones concurrentes de cron.php
-$lockFile = dirname(KUTSOCIAL_DB_PATH) . '/cron.lock';
+$dataDir = __DIR__ . '/data';
+if (!is_dir($dataDir)) {
+    @mkdir($dataDir, 0755, true);
+}
+$lockFile = $dataDir . '/cron.lock';
 $lockFp = @fopen($lockFile, 'c');
 if (!$lockFp || !@flock($lockFp, LOCK_EX | LOCK_NB)) {
     if (php_sapi_name() === 'cli') {

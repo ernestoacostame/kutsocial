@@ -667,7 +667,7 @@ class NotificationHelper {
                 }
             }
             if (!empty($tagsMap)) {
-                $stmtTag = $db->prepare("INSERT OR IGNORE INTO status_hashtags (status_id, tag) VALUES (?, ?)");
+                $stmtTag = $db->prepare(Database::insertIgnoreSql('status_hashtags', 'status_id, tag', '?, ?'));
                 foreach (array_keys($tagsMap) as $tag) {
                     if ($tag !== '') {
                         $stmtTag->execute([$statusId, $tag]);
@@ -698,7 +698,7 @@ class NotificationHelper {
                 }
             }
 
-            $stmtMention = $db->prepare("INSERT OR IGNORE INTO mentions (status_id, account_id) VALUES (?, ?)");
+            $stmtMention = $db->prepare(Database::insertIgnoreSql('mentions', 'status_id, account_id', '?, ?'));
             $stmtFindLocal = $db->prepare("SELECT id, domain FROM accounts WHERE LOWER(username) = LOWER(?) AND (domain IS NULL OR domain = '') LIMIT 1");
             $stmtFindRemote = $db->prepare("SELECT id, domain FROM accounts WHERE LOWER(username) = LOWER(?) AND LOWER(domain) = LOWER(?) LIMIT 1");
 

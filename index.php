@@ -31,6 +31,9 @@ if (!file_exists(__DIR__ . '/config.php')) {
 // 2. Cargar configuración y clases
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/version.php';
+if (!defined('KUTSOCIAL_ROOT')) {
+    define('KUTSOCIAL_ROOT', __DIR__);
+}
 
 // Servir /assets/pages.css y /assets/pages.js con caché inmutable y ETag sin tocar la BD
 $rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
@@ -111,7 +114,9 @@ use KutSocial\Controllers\AdminController;
 
 // 3. Inicializar base de datos
 try {
-    Database::setDbPath(KUTSOCIAL_DB_PATH);
+    if (defined('KUTSOCIAL_DB_PATH') && KUTSOCIAL_DB_PATH !== '') {
+        Database::setDbPath(KUTSOCIAL_DB_PATH);
+    }
     Database::runMigrations();
 } catch (Exception $e) {
     http_response_code(500);
@@ -876,6 +881,10 @@ $router->post('/admin/users/delete', [AdminController::class, 'deleteUser']);
 $router->post('/admin/users/role', [AdminController::class, 'changeUserRole']);
 $router->post('/admin/maintenance/clean', [AdminController::class, 'runMaintenanceClean']);
 $router->post('/admin/update/action', [AdminController::class, 'handleUpdateAction']);
+$router->post('/admin/backups/create-db', [AdminController::class, 'createDbBackup']);
+$router->post('/admin/backups/create-full', [AdminController::class, 'createFullBackup']);
+$router->get('/admin/backups/download', [AdminController::class, 'downloadBackup']);
+$router->post('/admin/backups/delete', [AdminController::class, 'deleteBackup']);
 
 // Redirigir la antigua ruta del actualizador al dashboard
 $router->get('/admin/update', function() {

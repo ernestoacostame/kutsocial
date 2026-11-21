@@ -443,7 +443,7 @@ XML;
             $del = $db->prepare("DELETE FROM follows WHERE account_id = ? AND target_account_id = ?");
             $del->execute([$localAccount['id'], $oldAccount['id']]);
 
-            $stmtNewFollow = $db->prepare("INSERT OR IGNORE INTO follows (account_id, target_account_id, status) VALUES (?, ?, 'pending')");
+            $stmtNewFollow = $db->prepare(Database::insertIgnoreSql('follows', 'account_id, target_account_id, status', "?, ?, 'pending'"));
             $stmtNewFollow->execute([$localAccount['id'], $newAccount['id']]);
 
             if (!empty($newAccount['inbox_url'])) {
@@ -880,7 +880,7 @@ XML;
             $emojisJson
         ]);
 
-        $newStatusId = (int)$db->lastInsertId();
+        $newStatusId = Database::lastInsertId($db, 'statuses');
         \KutSocial\NotificationHelper::fetchAndSaveLinkCard($newStatusId, $content);
         \KutSocial\NotificationHelper::notifyMentionOrReply($newStatusId);
 
@@ -1039,11 +1039,16 @@ XML;
         // 2. Guardar relación en la tabla follows (respetando si la cuenta está cerrada/locked)
         $status = ($localAccount['locked'] ?? 0) ? 'pending' : 'accepted';
         self::log("handleFollow: Guardando relación follows en la DB con estado '$status' (remoto ID {$remoteAccount['id']} -> local ID {$localAccount['id']})");
-        $stmt = $db->prepare("
-            INSERT OR REPLACE INTO follows (account_id, target_account_id, uri, status) 
-            VALUES (?, ?, ?, ?)
-        ");
-        $stmt->execute([$remoteAccount['id'], $localAccount['id'], $activity['id'] ?? null, $status]);
+        $stmtExistFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
+        $stmtExistFollow->execute([$remoteAccount['id'], $localAccount['id']]);
+        $existingFollowId = $stmtExistFollow->fetchColumn();
+        if ($existingFollowId) {
+            $stmt = $db->prepare("UPDATE follows SET uri = ?, status = ? WHERE id = ?");
+            $stmt->execute([$activity['id'] ?? null, $status, $existingFollowId]);
+        } else {
+            $stmt = $db->prepare("INSERT INTO follows (account_id, target_account_id, uri, status, created_at) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$remoteAccount['id'], $localAccount['id'], $activity['id'] ?? null, $status, Database::nowUtc()]);
+        }
 
         // Disparar notificación por correo
         if ($status === 'accepted') {
@@ -1319,19 +1324,20 @@ XML;
                     SET username = ?, display_name = ?, note = ?, avatar = ?, header = ?, inbox_url = ?, public_key = ?, 
                         followers_count = ?, following_count = ?, statuses_count = ?, 
                         fields = ?, url = ?, emojis = ?,
-                        updated_at = datetime('now')
+                        updated_at = ?
                     WHERE id = ?
                 ");
-                $upd->execute([$preferredUsername, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $actorUrl, $emojisJson, $account['id']]);
+                $upd->execute([$preferredUsername, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $actorUrl, $emojisJson, Database::nowUtc(), $account['id']]);
                 self::log("getOrRegisterRemoteActor: Actor remoto id={$account['id']} '$preferredUsername@$host' actualizado");
             } else {
                 // Insertar nueva cuenta
+                $now = Database::nowUtc();
                 $ins = $db->prepare("
                     INSERT INTO accounts (username, domain, display_name, note, avatar, header, inbox_url, public_key, followers_count, following_count, statuses_count, fields, url, emojis, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
-                $ins->execute([$preferredUsername, $host, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $actorUrl, $emojisJson]);
-                $newId = $db->lastInsertId();
+                $ins->execute([$preferredUsername, $host, $displayName, $note, $avatar, $header, $inbox, $publicKeyPem, $followersCount, $followingCount, $statusesCount, $fieldsJson, $actorUrl, $emojisJson, $now, $now]);
+                $newId = Database::lastInsertId($db, 'accounts');
                 self::log("getOrRegisterRemoteActor: Actor remoto registrado con ID local $newId");
             }
 
@@ -1829,7 +1835,7 @@ XML;
         $statusId = $stmt->fetchColumn();
 
         if ($statusId) {
-            $stmtFav = $db->prepare("INSERT OR IGNORE INTO favourites (account_id, status_id) VALUES (?, ?)");
+            $stmtFav = $db->prepare(Database::insertIgnoreSql('favourites', 'account_id, status_id', '?, ?'));
             $stmtFav->execute([$remoteAccount['id'], $statusId]);
             self::log("handleLike: Registrada interacción Like de actor {$remoteAccount['username']} en post {$statusId}");
 
@@ -1862,9 +1868,9 @@ XML;
 
         $stmtIns = $db->prepare("
             INSERT INTO statuses (account_id, uri, content, visibility, reblog_of_id, created_at)
-            VALUES (?, ?, '', 'public', ?, datetime('now'))
+            VALUES (?, ?, '', 'public', ?, ?)
         ");
-        $stmtIns->execute([$remoteAccount['id'], $uri, $origStatusId]);
+        $stmtIns->execute([$remoteAccount['id'], $uri, $origStatusId, Database::nowUtc()]);
         self::log("handleAnnounce: Registrada actividad de Announce de actor {$remoteAccount['username']} para post {$origStatusId}");
 
         \KutSocial\NotificationHelper::notifyReblog((int)$origStatusId, (int)$remoteAccount['id']);
@@ -2092,7 +2098,7 @@ XML;
             $reblogOfId
         ]);
 
-        $newStatusId = (int)$db->lastInsertId();
+        $newStatusId = Database::lastInsertId($db, 'statuses');
         \KutSocial\NotificationHelper::fetchAndSaveLinkCard($newStatusId, $content);
         \KutSocial\NotificationHelper::indexStatusEntities($db, $newStatusId, $content, (int)$remoteAccount['id'], $inReplyToAccountId ? (int)$inReplyToAccountId : null);
 
@@ -2651,7 +2657,7 @@ XML;
         if ($enabled === null) {
             $enabled = false;
             try {
-                $st = Database::connect()->prepare("SELECT value FROM options WHERE key = 'debug_log' LIMIT 1");
+                $st = Database::connect()->prepare("SELECT value FROM options WHERE options.key = 'debug_log' LIMIT 1");
                 $st->execute();
                 $enabled = ($st->fetchColumn() === '1');
             } catch (\Throwable $e) {

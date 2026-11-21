@@ -14,13 +14,12 @@ class CryptoHelper {
      */
     private static function getKey(): string {
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT value FROM options WHERE key = 'jwt_secret' LIMIT 1");
+        $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'jwt_secret' LIMIT 1");
         $stmt->execute();
         $secret = $stmt->fetchColumn();
         if (!$secret) {
             $secret = bin2hex(random_bytes(32));
-            $ins = $db->prepare("INSERT INTO options (key, value) VALUES ('jwt_secret', ?)");
-            $ins->execute([$secret]);
+            Database::upsertOption($db, 'jwt_secret', $secret);
         }
         // Derive a 256-bit key using HKDF
         return hash_hmac('sha256', 'smtp_encryption_key', $secret, true);

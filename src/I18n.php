@@ -34,7 +34,7 @@ class I18n {
         // 4. Stored default in database options table
         try {
             $db = Database::connect();
-            $stmt = $db->prepare("SELECT value FROM options WHERE key = 'site_language' LIMIT 1");
+            $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'site_language' LIMIT 1");
             $stmt->execute();
             $stored = $stmt->fetchColumn();
             if ($stored && in_array($stored, ['es', 'en'], true)) {

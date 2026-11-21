@@ -34,11 +34,11 @@ class MastodonApiController {
      */
     public static function getInstance(): void {
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT value FROM options WHERE key = 'instance_title' LIMIT 1");
+        $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'instance_title' LIMIT 1");
         $stmt->execute();
         $title = $stmt->fetchColumn() ?: 'KutSocial';
 
-        $stmtLimit = $db->prepare("SELECT value FROM options WHERE key = 'max_toot_chars' LIMIT 1");
+        $stmtLimit = $db->prepare("SELECT value FROM options WHERE options.key = 'max_toot_chars' LIMIT 1");
         $stmtLimit->execute();
         $maxChars = (int)($stmtLimit->fetchColumn() ?: 500);
 
@@ -127,11 +127,11 @@ class MastodonApiController {
      */
     public static function getInstanceV2(): void {
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT value FROM options WHERE key = 'instance_title' LIMIT 1");
+        $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'instance_title' LIMIT 1");
         $stmt->execute();
         $title = $stmt->fetchColumn() ?: 'KutSocial';
 
-        $stmtLimit = $db->prepare("SELECT value FROM options WHERE key = 'max_toot_chars' LIMIT 1");
+        $stmtLimit = $db->prepare("SELECT value FROM options WHERE options.key = 'max_toot_chars' LIMIT 1");
         $stmtLimit->execute();
         $maxChars = (int)($stmtLimit->fetchColumn() ?: 500);
 
@@ -291,7 +291,7 @@ class MastodonApiController {
         $db = Database::connect();
         $stmt = $db->prepare("INSERT INTO oauth_apps (client_name, client_id, client_secret_hash, redirect_uris, scopes, website) VALUES (?, ?, ?, ?, ?, ?)");
         $stmt->execute([$clientName, $clientId, $clientSecretHash, $redirectUris, $scopes, $website]);
-        $appId = (string)$db->lastInsertId();
+        $appId = (string)Database::lastInsertId($db, 'oauth_apps');
 
         $vapidKeys = \KutSocial\WebPushHelper::getVapidKeys();
         $vapidPublicPoint = \KutSocial\WebPushHelper::pemToUncompressedEcPoint($vapidKeys['vapid_public_key']);
@@ -1079,7 +1079,8 @@ HTML;
         }
 
         if (!empty($fieldsToUpdate)) {
-            $fieldsToUpdate[] = "updated_at = datetime('now')";
+            $fieldsToUpdate[] = "updated_at = ?";
+            $params[] = Database::nowUtc();
             $sql = "UPDATE accounts SET " . implode(", ", $fieldsToUpdate) . " WHERE id = ?";
             $params[] = $account['id'];
             
@@ -1552,10 +1553,7 @@ HTML;
         }
 
         $db = Database::connect();
-        $stmt = $db->prepare("
-            INSERT OR IGNORE INTO dismissed_notifications (account_id, notification_id)
-            VALUES (?, ?)
-        ");
+        $stmt = $db->prepare(Database::insertIgnoreSql('dismissed_notifications', 'account_id, notification_id', '?, ?'));
         $stmt->execute([$account['id'], $id]);
 
         Router::json([]);
@@ -1573,30 +1571,35 @@ HTML;
 
         $db = Database::connect();
         $currUserId = (int)$account['id'];
-        $stmt = $db->prepare("UPDATE accounts SET notifications_read_at = datetime('now') WHERE id = ?");
-        $stmt->execute([$currUserId]);
+        $now = Database::nowUtc();
+        $stmt = $db->prepare("UPDATE accounts SET notifications_read_at = ? WHERE id = ?");
+        $stmt->execute([$now, $currUserId]);
 
         // Sincronizar también con la tabla markers para apps como Mona, Ivory, Ice Cubes
         try {
             $latestId = self::fetchLatestNotificationId($db, $currUserId, $account['username']);
-            $db->exec("CREATE TABLE IF NOT EXISTS markers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                account_id INTEGER NOT NULL,
-                timeline TEXT NOT NULL,
-                last_read_id TEXT NOT NULL,
-                version INTEGER NOT NULL DEFAULT 0,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                UNIQUE(account_id, timeline)
-            )");
-            $stmtM = $db->prepare("
-                INSERT INTO markers (account_id, timeline, last_read_id, updated_at)
-                VALUES (?, 'notifications', ?, datetime('now'))
-                ON CONFLICT(account_id, timeline) DO UPDATE SET
-                    last_read_id = excluded.last_read_id,
-                    version = version + 1,
-                    updated_at = datetime('now')
-            ");
-            $stmtM->execute([$currUserId, $latestId]);
+            Database::ensureMarkersTable($db);
+            $driver = Database::getDriver();
+            if ($driver === 'mysql') {
+                $stmtM = $db->prepare("
+                    INSERT INTO markers (account_id, timeline, last_read_id, updated_at)
+                    VALUES (?, 'notifications', ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                        last_read_id = VALUES(last_read_id),
+                        version = version + 1,
+                        updated_at = VALUES(updated_at)
+                ");
+            } else {
+                $stmtM = $db->prepare("
+                    INSERT INTO markers (account_id, timeline, last_read_id, updated_at)
+                    VALUES (?, 'notifications', ?, ?)
+                    ON CONFLICT(account_id, timeline) DO UPDATE SET
+                        last_read_id = excluded.last_read_id,
+                        version = markers.version + 1,
+                        updated_at = excluded.updated_at
+                ");
+            }
+            $stmtM->execute([$currUserId, $latestId, $now]);
         } catch (\Throwable $e) {}
 
         Router::json([]);
@@ -1797,19 +1800,13 @@ HTML;
         $db = Database::connect();
 
         try {
-            $db->exec("CREATE TABLE IF NOT EXISTS markers (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                account_id INTEGER NOT NULL,
-                timeline TEXT NOT NULL,
-                last_read_id TEXT NOT NULL,
-                version INTEGER NOT NULL DEFAULT 0,
-                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-                UNIQUE(account_id, timeline)
-            )");
+            Database::ensureMarkersTable($db);
         } catch (\Throwable $e) {}
 
         $result = [];
         $timelines = ['home', 'notifications', 'public'];
+        $driver = Database::getDriver();
+        $now = Database::nowUtc();
 
         foreach ($timelines as $tl) {
             $lastReadId = null;
@@ -1820,19 +1817,30 @@ HTML;
             }
 
             if ($lastReadId !== null) {
-                $stmt = $db->prepare("
-                    INSERT INTO markers (account_id, timeline, last_read_id, updated_at)
-                    VALUES (?, ?, ?, datetime('now'))
-                    ON CONFLICT(account_id, timeline) DO UPDATE SET
-                        last_read_id = excluded.last_read_id,
-                        version = version + 1,
-                        updated_at = datetime('now')
-                ");
-                $stmt->execute([$account['id'], $tl, $lastReadId]);
+                if ($driver === 'mysql') {
+                    $stmt = $db->prepare("
+                        INSERT INTO markers (account_id, timeline, last_read_id, updated_at)
+                        VALUES (?, ?, ?, ?)
+                        ON DUPLICATE KEY UPDATE
+                            last_read_id = VALUES(last_read_id),
+                            version = version + 1,
+                            updated_at = VALUES(updated_at)
+                    ");
+                } else {
+                    $stmt = $db->prepare("
+                        INSERT INTO markers (account_id, timeline, last_read_id, updated_at)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(account_id, timeline) DO UPDATE SET
+                            last_read_id = excluded.last_read_id,
+                            version = markers.version + 1,
+                            updated_at = excluded.updated_at
+                    ");
+                }
+                $stmt->execute([$account['id'], $tl, $lastReadId, $now]);
 
                 if ($tl === 'notifications') {
                     try {
-                        $db->prepare("UPDATE accounts SET notifications_read_at = datetime('now') WHERE id = ?")->execute([$account['id']]);
+                        $db->prepare("UPDATE accounts SET notifications_read_at = ? WHERE id = ?")->execute([$now, $account['id']]);
                     } catch (\Throwable $e) {}
                 }
 
@@ -1877,13 +1885,12 @@ HTML;
 
     private static function getSigningSecret(): string {
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT value FROM options WHERE key = 'jwt_secret' LIMIT 1");
+        $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'jwt_secret' LIMIT 1");
         $stmt->execute();
         $secret = $stmt->fetchColumn();
         if (!$secret) {
             $secret = bin2hex(random_bytes(32));
-            $ins = $db->prepare("INSERT INTO options (key, value) VALUES ('jwt_secret', ?)");
-            $ins->execute([$secret]);
+            Database::upsertOption($db, 'jwt_secret', $secret);
         }
         return $secret;
     }
@@ -2007,27 +2014,47 @@ HTML;
             }
             
             // 2. Si no es un resolve exitoso o no se buscó resolver, buscar localmente
+            $driver = Database::getDriver();
             if (empty($accounts) && ($type === null || $type === 'accounts')) {
-                // Búsqueda en FTS5 si es texto plano, sino LIKE fallback
                 $cleanQ = preg_replace('/[^\p{L}\p{N}\s]/u', '', $q);
+                $localAccs = [];
                 if (!empty($cleanQ)) {
-                    $stmt = $db->prepare("
-                        SELECT * FROM accounts 
-                        WHERE id IN (SELECT rowid FROM accounts_fts WHERE accounts_fts MATCH ?)
-                           OR domain LIKE ?
-                        LIMIT 10
-                    ");
-                    $stmt->execute([$cleanQ . '*', '%' . $q . '%']);
-                    $localAccs = $stmt->fetchAll();
-                } else {
-                    $localAccs = [];
+                    if ($driver === 'sqlite') {
+                        $stmt = $db->prepare("
+                            SELECT * FROM accounts 
+                            WHERE id IN (SELECT rowid FROM accounts_fts WHERE accounts_fts MATCH ?)
+                               OR domain LIKE ?
+                            LIMIT 10
+                        ");
+                        $stmt->execute([$cleanQ . '*', '%' . $q . '%']);
+                        $localAccs = $stmt->fetchAll();
+                    } elseif ($driver === 'pgsql') {
+                        $stmt = $db->prepare("
+                            SELECT * FROM accounts 
+                            WHERE to_tsvector('simple', coalesce(username, '') || ' ' || coalesce(display_name, '') || ' ' || coalesce(note, '')) @@ plainto_tsquery('simple', ?)
+                               OR domain ILIKE ?
+                            LIMIT 10
+                        ");
+                        $stmt->execute([$cleanQ, '%' . $q . '%']);
+                        $localAccs = $stmt->fetchAll();
+                    } else {
+                        $stmt = $db->prepare("
+                            SELECT * FROM accounts 
+                            WHERE MATCH(username, display_name, note) AGAINST(? IN BOOLEAN MODE)
+                               OR domain LIKE ?
+                            LIMIT 10
+                        ");
+                        $stmt->execute([$cleanQ . '*', '%' . $q . '%']);
+                        $localAccs = $stmt->fetchAll();
+                    }
                 }
                 
-                // Fallback por si FTS5 no arrojó o query tiene caracteres especiales
+                // Fallback por si FTS no arrojó o query tiene caracteres especiales
                 if (empty($localAccs)) {
+                    $likeOp = $driver === 'pgsql' ? 'ILIKE' : 'LIKE';
                     $stmt = $db->prepare("
                         SELECT * FROM accounts 
-                        WHERE username LIKE ? OR display_name LIKE ? OR domain LIKE ?
+                        WHERE username $likeOp ? OR display_name $likeOp ? OR domain $likeOp ?
                         LIMIT 10
                     ");
                     $stmt->execute(['%' . $q . '%', '%' . $q . '%', '%' . $q . '%']);
@@ -2051,7 +2078,19 @@ HTML;
             // 3. Buscar Statuses locales
             if ($type === null || $type === 'statuses') {
                 $cleanQ = preg_replace('/[^\p{L}\p{N}\s]/u', '', $q);
+                $localStatuses = [];
                 if (!empty($cleanQ)) {
+                    if ($driver === 'sqlite') {
+                        $ftsCondition = "s.id IN (SELECT rowid FROM statuses_fts WHERE statuses_fts MATCH ?)";
+                        $ftsParam = $cleanQ . '*';
+                    } elseif ($driver === 'pgsql') {
+                        $ftsCondition = "to_tsvector('simple', coalesce(s.content, '')) @@ plainto_tsquery('simple', ?)";
+                        $ftsParam = $cleanQ;
+                    } else {
+                        $ftsCondition = "MATCH(s.content) AGAINST(? IN BOOLEAN MODE)";
+                        $ftsParam = $cleanQ . '*';
+                    }
+
                     if ($currUserId !== null) {
                         $sql = "
                             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
@@ -2061,7 +2100,7 @@ HTML;
                                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.note
                             FROM statuses s
                             JOIN accounts a ON s.account_id = a.id
-                            WHERE s.id IN (SELECT rowid FROM statuses_fts WHERE statuses_fts MATCH ?)
+                            WHERE $ftsCondition
                               AND (
                                   s.visibility IN ('public', 'unlisted')
                                   OR (s.visibility = 'private' AND (s.account_id = ? OR s.account_id IN (SELECT target_account_id FROM follows WHERE account_id = ? AND status = 'accepted')))
@@ -2070,7 +2109,7 @@ HTML;
                             ORDER BY s.id DESC
                             LIMIT 10
                         ";
-                        $queryParams = [$cleanQ . '*', $currUserId, $currUserId, $currUserId, '%@' . $account['username'] . '%', '%/users/' . $account['username'] . '%'];
+                        $queryParams = [$ftsParam, $currUserId, $currUserId, $currUserId, '%@' . $account['username'] . '%', '%/users/' . $account['username'] . '%'];
                     } else {
                         $sql = "
                             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
@@ -2080,18 +2119,16 @@ HTML;
                                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.note
                             FROM statuses s
                             JOIN accounts a ON s.account_id = a.id
-                            WHERE s.id IN (SELECT rowid FROM statuses_fts WHERE statuses_fts MATCH ?)
+                            WHERE $ftsCondition
                               AND s.visibility IN ('public', 'unlisted')
                             ORDER BY s.id DESC
                             LIMIT 10
                         ";
-                        $queryParams = [$cleanQ . '*'];
+                        $queryParams = [$ftsParam];
                     }
                     $stmt = $db->prepare($sql);
                     $stmt->execute($queryParams);
                     $localStatuses = $stmt->fetchAll();
-                } else {
-                    $localStatuses = [];
                 }
                 
                 if (empty($localStatuses)) {
@@ -2534,7 +2571,8 @@ HTML;
         }
 
         if (!empty($fieldsToUpdate)) {
-            $fieldsToUpdate[] = "updated_at = datetime('now')";
+            $fieldsToUpdate[] = "updated_at = ?";
+            $params[] = Database::nowUtc();
             $sql = "UPDATE accounts SET " . implode(", ", $fieldsToUpdate) . " WHERE id = ?";
             $params[] = $account['id'];
 
@@ -2834,7 +2872,7 @@ HTML;
             $db = Database::connect();
             // Actualizar marca de tiempo de última consulta de estados para no sobrecargar
             try {
-                $db->prepare("UPDATE accounts SET statuses_last_fetched_at = datetime('now') WHERE id = ?")->execute([$account['id']]);
+                $db->prepare("UPDATE accounts SET statuses_last_fetched_at = ? WHERE id = ?")->execute([Database::nowUtc(), $account['id']]);
             } catch (\Throwable $e) {}
 
             // 1. Obtener la URL de la outbox del perfil del actor remoto
@@ -3076,7 +3114,7 @@ HTML;
                     $inReplyToAccountId
                 ]);
 
-                $newStatusId = (int)$db->lastInsertId();
+                $newStatusId = Database::lastInsertId($db, 'statuses');
                 if (class_exists('\\KutSocial\\NotificationHelper')) {
                     \KutSocial\NotificationHelper::fetchAndSaveLinkCard($newStatusId, $content);
                 }
@@ -3508,9 +3546,9 @@ HTML;
         $queryParams = [];
         $whereClauses = [
             self::buildHomeTimelineWhereCondition($account, $queryParams),
-            "s.created_at >= datetime('now', ?)"
+            "s.created_at >= ?"
         ];
-        $queryParams[] = "-$hours hours";
+        $queryParams[] = Database::agoUtc($hours * 3600);
 
         $whereSql = implode(" AND ", $whereClauses);
 
@@ -3661,15 +3699,28 @@ HTML;
 
         // 2. Prevención de publicaciones duplicadas en caso de reenvío rápido desde borradores (<90s)
         try {
-            $stmtDup = $db->prepare("
-                SELECT id FROM statuses 
-                WHERE account_id = ? 
-                  AND content = ? 
-                  AND (in_reply_to_id = ? OR (in_reply_to_id IS NULL AND ? IS NULL))
-                  AND created_at >= datetime('now', '-90 seconds')
-                ORDER BY id DESC LIMIT 1
-            ");
-            $stmtDup->execute([$account['id'], $content, $inReplyToId, $inReplyToId]);
+            $dupCutoff = Database::agoUtc(90);
+            if ($inReplyToId !== null) {
+                $stmtDup = $db->prepare("
+                    SELECT id FROM statuses 
+                    WHERE account_id = ? 
+                      AND content = ? 
+                      AND in_reply_to_id = ?
+                      AND created_at >= ?
+                    ORDER BY id DESC LIMIT 1
+                ");
+                $stmtDup->execute([$account['id'], $content, $inReplyToId, $dupCutoff]);
+            } else {
+                $stmtDup = $db->prepare("
+                    SELECT id FROM statuses 
+                    WHERE account_id = ? 
+                      AND content = ? 
+                      AND in_reply_to_id IS NULL
+                      AND created_at >= ?
+                    ORDER BY id DESC LIMIT 1
+                ");
+                $stmtDup->execute([$account['id'], $content, $dupCutoff]);
+            }
             $dupId = $stmtDup->fetchColumn();
             if ($dupId) {
                 $dupRow = self::fetchStatusRow($db, (int)$dupId);
@@ -3689,7 +3740,7 @@ HTML;
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         // Cargar límite de caracteres
-        $stmtLimit = $db->prepare("SELECT value FROM options WHERE key = 'max_toot_chars' LIMIT 1");
+        $stmtLimit = $db->prepare("SELECT value FROM options WHERE options.key = 'max_toot_chars' LIMIT 1");
         $stmtLimit->execute();
         $maxChars = (int)($stmtLimit->fetchColumn() ?: 500);
 
@@ -3793,7 +3844,7 @@ HTML;
             try {
                 $stmt = $db->prepare("
                     INSERT INTO statuses (account_id, uri, content, visibility, in_reply_to_id, in_reply_to_account_id, sensitive, spoiler_text, media_attachments, language, reblog_of_id, idempotency_key, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt->execute([
                     $account['id'], 
@@ -3807,9 +3858,10 @@ HTML;
                     !empty($mediaAttachments) ? json_encode($mediaAttachments) : null, 
                     $language, 
                     $reblogOfId,
-                    $idempotencyKey
+                    $idempotencyKey,
+                    Database::nowUtc()
                 ]);
-                $insertedId = (int)$db->lastInsertId();
+                $insertedId = Database::lastInsertId($db, 'statuses');
                 $db->commit();
                 return $insertedId;
             } catch (\Throwable $e) {
@@ -5771,14 +5823,15 @@ HTML;
         if (!$existing) {
             $stmt = $db->prepare("
                 INSERT INTO follows (account_id, target_account_id, status, only_replies_to_me, show_reblogs, created_at)
-                VALUES (?, ?, ?, ?, ?, datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $account['id'], 
                 $targetId, 
                 $status, 
                 $paramOnlyRepliesToMe ?? 0, 
-                $paramShowReblogs ?? 1
+                $paramShowReblogs ?? 1,
+                Database::nowUtc()
             ]);
 
             if (!$isRemote && $status === 'accepted') {
@@ -6357,10 +6410,7 @@ HTML;
             return;
         }
 
-        $stmt = $db->prepare("
-            INSERT OR IGNORE INTO favourites (account_id, status_id)
-            VALUES (?, ?)
-        ");
+        $stmt = $db->prepare(Database::insertIgnoreSql('favourites', 'account_id, status_id', '?, ?'));
         $stmt->execute([$account['id'], $id]);
 
         \KutSocial\NotificationHelper::notifyFavourite((int)$id, (int)$account['id']);
@@ -6406,16 +6456,10 @@ HTML;
             return;
         }
 
-        $stmt = $db->prepare("
-            INSERT OR IGNORE INTO bookmarks (account_id, status_id)
-            VALUES (?, ?)
-        ");
+        $stmt = $db->prepare(Database::insertIgnoreSql('bookmarks', 'account_id, status_id', '?, ?'));
         $stmt->execute([$account['id'], $id]);
 
-        $stmt = $db->prepare("
-            INSERT OR IGNORE INTO bookmarks (account_id, status_id)
-            VALUES (?, ?)
-        ");
+        $stmt = $db->prepare(Database::insertIgnoreSql('bookmarks', 'account_id, status_id', '?, ?'));
         $stmt->execute([$account['id'], $id]);
 
         $row = self::fetchStatusRow($db, $id);
@@ -7451,7 +7495,7 @@ HTML;
                     $filterType = $item['type'] ?? 'word';
                     $target = trim($item['target'] ?? $item['phrase'] ?? '');
                     if (!empty($target)) {
-                        $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES (?, ?)");
+                        $stmt = $db->prepare(Database::insertIgnoreSql('moderation_blocks', 'type, target', '?, ?'));
                         $stmt->execute([$filterType, $target]);
                         $importedCount++;
                     }
@@ -7472,7 +7516,7 @@ HTML;
                 }
                 $domain = trim($row[0]);
                 if (!empty($domain)) {
-                    $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES ('domain', ?)");
+                    $stmt = $db->prepare(Database::insertIgnoreSql('moderation_blocks', 'type, target', "'domain', ?"));
                     $stmt->execute([$domain]);
                     $importedCount++;
                 }
@@ -7490,7 +7534,7 @@ HTML;
                 }
                 $address = trim($row[0]);
                 if (!empty($address)) {
-                    $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES ('account', ?)");
+                    $stmt = $db->prepare(Database::insertIgnoreSql('moderation_blocks', 'type, target', "'account', ?"));
                     $stmt->execute([$address]);
                     $importedCount++;
                 }
@@ -7508,7 +7552,7 @@ HTML;
                 }
                 $address = trim($row[0], " \t\n\r\0\x0B\"'@");
                 if (!empty($address)) {
-                    $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES ('mute', ?)");
+                    $stmt = $db->prepare(Database::insertIgnoreSql('moderation_blocks', 'type, target', "'mute', ?"));
                     $stmt->execute([$address]);
                     $importedCount++;
                 }
@@ -7529,7 +7573,7 @@ HTML;
                     $stmtStatus->execute([$statusUri]);
                     $statusId = $stmtStatus->fetchColumn();
                     if ($statusId) {
-                        $stmtIns = $db->prepare("INSERT OR IGNORE INTO bookmarks (account_id, status_id) VALUES (?, ?)");
+                        $stmtIns = $db->prepare(Database::insertIgnoreSql('bookmarks', 'account_id, status_id', '?, ?'));
                         $stmtIns->execute([$account['id'], $statusId]);
                         $importedCount++;
                     } else {
@@ -7597,13 +7641,14 @@ HTML;
                     }
 
                     // Encolar de forma asíncrona
-                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollow', ?, 'local', 'pending', datetime('now'))");
+                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollow', ?, 'local', 'pending', ?)");
                     $stmtJob->execute([
                         json_encode([
                             'account_id' => $account['id'],
                             'address' => $address,
                             'mutual' => $mutual
-                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                        Database::nowUtc()
                     ]);
                     $importedCount++;
                 }
@@ -7682,13 +7727,14 @@ HTML;
                     }
 
                     // Encolar importación de seguidor de forma asíncrona
-                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollower', ?, 'local', 'pending', datetime('now'))");
+                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportFollower', ?, 'local', 'pending', ?)");
                     $stmtJob->execute([
                         json_encode([
                             'account_id' => $account['id'],
                             'address' => $address,
                             'mutual' => $mutual
-                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                        Database::nowUtc()
                     ]);
                     $importedCount++;
                 }
@@ -7724,7 +7770,7 @@ HTML;
                     if (!$lId) {
                         $stmtInsList = $db->prepare("INSERT INTO lists (account_id, title) VALUES (?, ?)");
                         $stmtInsList->execute([$account['id'], $listTitle]);
-                        $lId = (int)$db->lastInsertId();
+                        $lId = Database::lastInsertId($db, 'lists');
                     }
                     $listsCache[$listTitle] = (int)$lId;
                 }
@@ -7747,7 +7793,7 @@ HTML;
                 }
 
                 if ($targetId) {
-                    $stmtAdd = $db->prepare("INSERT OR IGNORE INTO list_accounts (list_id, account_id) VALUES (?, ?)");
+                    $stmtAdd = $db->prepare(Database::insertIgnoreSql('list_accounts', 'list_id, account_id', '?, ?'));
                     $stmtAdd->execute([$listId, $targetId]);
 
                     $stmtCheckFollow = $db->prepare("SELECT id FROM follows WHERE account_id = ? AND target_account_id = ? LIMIT 1");
@@ -7758,13 +7804,14 @@ HTML;
                     }
                     $importedCount++;
                 } else {
-                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportListItem', ?, 'local', 'pending', datetime('now'))");
+                    $stmtJob = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES ('ImportListItem', ?, 'local', 'pending', ?)");
                     $stmtJob->execute([
                         json_encode([
                             'account_id' => $account['id'],
                             'list_id' => $listId,
                             'address' => $address
-                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
+                        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                        Database::nowUtc()
                     ]);
                     $importedCount++;
                 }
@@ -8000,7 +8047,7 @@ HTML;
         $db = Database::connect();
         $stmt = $db->prepare("INSERT INTO lists (account_id, title, replies_policy) VALUES (?, ?, ?)");
         $stmt->execute([$account['id'], $title, $repliesPolicy]);
-        $id = $db->lastInsertId();
+        $id = Database::lastInsertId($db, 'lists');
         Router::json([
             'id' => (string)$id,
             'title' => $title,
@@ -8126,7 +8173,7 @@ HTML;
             return;
         }
 
-        $stmtInsert = $db->prepare("INSERT OR IGNORE INTO list_accounts (list_id, account_id) VALUES (?, ?)");
+        $stmtInsert = $db->prepare(Database::insertIgnoreSql('list_accounts', 'list_id, account_id', '?, ?'));
         foreach ($accountIds as $accId) {
             $stmtInsert->execute([$listId, (int)$accId]);
         }
@@ -8230,7 +8277,7 @@ HTML;
         $db = Database::connect();
         $stmt = $db->prepare("INSERT INTO collections (account_id, title, description) VALUES (?, ?, ?)");
         $stmt->execute([$account['id'], $title, $description]);
-        $id = $db->lastInsertId();
+        $id = Database::lastInsertId($db, 'collections');
         Router::json([
             'id' => (string)$id,
             'title' => $title,
@@ -8340,7 +8387,7 @@ HTML;
             return;
         }
 
-        $stmtInsert = $db->prepare("INSERT OR IGNORE INTO collection_accounts (collection_id, account_id) VALUES (?, ?)");
+        $stmtInsert = $db->prepare(Database::insertIgnoreSql('collection_accounts', 'collection_id, account_id', '?, ?'));
         foreach ($accountIds as $accId) {
             $stmtInsert->execute([$collectionId, (int)$accId]);
         }
@@ -8419,7 +8466,7 @@ HTML;
         }
 
         $db = Database::connect();
-        $stmt = $db->prepare("INSERT OR IGNORE INTO followed_hashtags (account_id, hashtag) VALUES (?, ?)");
+        $stmt = $db->prepare(Database::insertIgnoreSql('followed_hashtags', 'account_id, hashtag', '?, ?'));
         $stmt->execute([$account['id'], $tagName]);
 
         $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
@@ -8779,10 +8826,10 @@ HTML;
 
             $stmtIns = $db->prepare("
                 INSERT INTO statuses (account_id, uri, content, visibility, reblog_of_id, created_at)
-                VALUES (?, ?, '', ?, ?, datetime('now'))
+                VALUES (?, ?, '', ?, ?, ?)
             ");
-            $stmtIns->execute([$account['id'], $uri, $orig['visibility'], $id]);
-            $newId = $db->lastInsertId();
+            $stmtIns->execute([$account['id'], $uri, $orig['visibility'], $id, Database::nowUtc()]);
+            $newId = Database::lastInsertId($db, 'statuses');
 
             \KutSocial\NotificationHelper::notifyReblog((int)$id, (int)$account['id']);
         }
@@ -8895,12 +8942,37 @@ HTML;
         $alertsJson = json_encode($alerts);
 
         $db = Database::connect();
-        $stmt = $db->prepare("
-            INSERT OR REPLACE INTO web_push_subscriptions (account_id, endpoint, key_p256dh, key_auth, alerts)
-            VALUES (?, ?, ?, ?, ?)
-        ");
-        $stmt->execute([$account['id'], $endpoint, $p256dh, $auth, $alertsJson]);
-        $subId = $db->lastInsertId();
+        $driver = Database::getDriver();
+        $now = Database::nowUtc();
+        if ($driver === 'mysql') {
+            $stmt = $db->prepare("
+                INSERT INTO web_push_subscriptions (account_id, endpoint, key_p256dh, key_auth, alerts, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE
+                    key_p256dh = VALUES(key_p256dh),
+                    key_auth = VALUES(key_auth),
+                    alerts = VALUES(alerts)
+            ");
+        } else {
+            $stmt = $db->prepare("
+                INSERT INTO web_push_subscriptions (account_id, endpoint, key_p256dh, key_auth, alerts, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(account_id, endpoint) DO UPDATE SET
+                    key_p256dh = excluded.key_p256dh,
+                    key_auth = excluded.key_auth,
+                    alerts = excluded.alerts
+            ");
+        }
+        $stmt->execute([$account['id'], $endpoint, $p256dh, $auth, $alertsJson, $now]);
+        $subId = 0;
+        try {
+            $subId = Database::lastInsertId($db, 'web_push_subscriptions');
+        } catch (\Throwable $e) {}
+        if ($subId <= 0) {
+            $stmtSub = $db->prepare("SELECT id FROM web_push_subscriptions WHERE account_id = ? AND endpoint = ? LIMIT 1");
+            $stmtSub->execute([$account['id'], $endpoint]);
+            $subId = (int)$stmtSub->fetchColumn();
+        }
 
         $vapid = \KutSocial\WebPushHelper::getVapidKeys();
         $vapidPublic = \KutSocial\WebPushHelper::pemToUncompressedEcPoint($vapid['vapid_public_key']);
@@ -9032,7 +9104,7 @@ HTML;
         $targetId = (int)$targetAccount['id'];
         $db = Database::connect();
 
-        $stmt = $db->prepare("INSERT OR IGNORE INTO user_mutes (account_id, target_account_id) VALUES (?, ?)");
+        $stmt = $db->prepare(Database::insertIgnoreSql('user_mutes', 'account_id, target_account_id', '?, ?'));
         $stmt->execute([(int)$account['id'], $targetId]);
 
         Router::json(self::getRelationshipObj($db, (int)$account['id'], $targetId));
@@ -9080,7 +9152,7 @@ HTML;
 
         $tDomain = $targetAccount['domain'] ? strtolower($targetAccount['domain']) : '';
 
-        $stmt = $db->prepare("INSERT OR IGNORE INTO user_blocks (account_id, target_account_id) VALUES (?, ?)");
+        $stmt = $db->prepare(Database::insertIgnoreSql('user_blocks', 'account_id, target_account_id', '?, ?'));
         $stmt->execute([(int)$account['id'], $targetId]);
 
         // Break follows
@@ -9218,7 +9290,7 @@ HTML;
         $domain = strtolower(trim($domain));
         $db = Database::connect();
 
-        $stmt = $db->prepare("INSERT OR IGNORE INTO moderation_blocks (type, target) VALUES ('domain', ?)");
+        $stmt = $db->prepare(Database::insertIgnoreSql('moderation_blocks', 'type, target', "'domain', ?"));
         $stmt->execute([$domain]);
 
         // Break follows with accounts from this domain
@@ -9304,16 +9376,17 @@ HTML;
         $forward = !empty($input['forward']) && ($input['forward'] === true || $input['forward'] === 'true' || $input['forward'] === 1 || $input['forward'] === '1');
 
         $db = Database::connect();
-        $stmt = $db->prepare("INSERT INTO reports (account_id, target_account_id, status_ids, comment, forward, category, action_taken, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, datetime('now'))");
+        $stmt = $db->prepare("INSERT INTO reports (account_id, target_account_id, status_ids, comment, forward, category, action_taken, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)");
         $stmt->execute([
             $account['id'],
             $targetAccount['id'],
             !empty($statusIds) ? json_encode(array_values($statusIds)) : null,
             $comment,
             $forward ? 1 : 0,
-            $category
+            $category,
+            Database::nowUtc()
         ]);
-        $reportId = (string)$db->lastInsertId();
+        $reportId = (string)Database::lastInsertId($db, 'reports');
 
         // Si se solicitó reenvío y la cuenta es remota, enviar actividad Flag ActivityPub
         $tDomain = !empty($targetAccount['domain']) ? strtolower($targetAccount['domain']) : '';

@@ -7,7 +7,7 @@ class WebPushHelper {
      */
     public static function getVapidKeys(): array {
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT key, value FROM options WHERE key IN ('vapid_public_key', 'vapid_private_key')");
+        $stmt = $db->prepare("SELECT options.key, value FROM options WHERE options.key IN ('vapid_public_key', 'vapid_private_key')");
         $stmt->execute();
         $rows = $stmt->fetchAll();
         $keys = [];
@@ -30,10 +30,8 @@ class WebPushHelper {
             $details = openssl_pkey_get_details($pkey);
             $publicPem = $details['key'];
 
-            $stmt = $db->prepare("INSERT OR REPLACE INTO options (key, value) VALUES ('vapid_private_key', ?)");
-            $stmt->execute([$privatePem]);
-            $stmt = $db->prepare("INSERT OR REPLACE INTO options (key, value) VALUES ('vapid_public_key', ?)");
-            $stmt->execute([$publicPem]);
+            Database::upsertOption($db, 'vapid_private_key', $privatePem);
+            Database::upsertOption($db, 'vapid_public_key', $publicPem);
 
             $keys['vapid_private_key'] = $privatePem;
             $keys['vapid_public_key'] = $publicPem;

@@ -44,6 +44,7 @@
                     </a>
                 </li>
                 <li><a href="/admin/dashboard/maintenance" class="tab-btn <?= $section === 'maintenance' ? 'active' : '' ?>"><span class="material-icons-outlined" style="vertical-align: middle; margin-right: 8px;">cleaning_services</span> <?= __('admin_tab_maintenance') ?></a></li>
+                <li><a href="/admin/dashboard/backups" class="tab-btn <?= $section === 'backups' ? 'active' : '' ?>"><span class="material-icons-outlined" style="vertical-align: middle; margin-right: 8px;">backup</span> <?= __('admin_tab_backups') ?></a></li>
             </ul>
         </aside>
 

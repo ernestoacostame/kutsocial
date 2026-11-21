@@ -28,7 +28,7 @@ class UpdaterService {
     private function getGithubToken(): string {
         try {
             $db = Database::connect();
-            $stmt = $db->prepare("SELECT value FROM options WHERE key = 'update_github_token' LIMIT 1");
+            $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'update_github_token' LIMIT 1");
             $stmt->execute();
             return trim($stmt->fetchColumn() ?: '');
         } catch (Throwable $e) {
@@ -42,10 +42,8 @@ class UpdaterService {
     public function saveCache(array $data): void {
         try {
             $db = Database::connect();
-            $stmt = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('update_cache', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-            $stmt->execute([json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)]);
-            $stmtTime = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('update_cache_at', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-            $stmtTime->execute([(string)time()]);
+            Database::upsertOption($db, 'update_cache', json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            Database::upsertOption($db, 'update_cache_at', (string)time());
         } catch (Throwable $e) {
             // Ignorar errores menores de cache
         }
@@ -57,7 +55,7 @@ class UpdaterService {
     public function getCached(): ?array {
         try {
             $db = Database::connect();
-            $stmt = $db->prepare("SELECT value FROM options WHERE key = 'update_cache' LIMIT 1");
+            $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'update_cache' LIMIT 1");
             $stmt->execute();
             $json = $stmt->fetchColumn();
             return $json ? (json_decode($json, true) ?: null) : null;
@@ -72,7 +70,7 @@ class UpdaterService {
     public function isCacheStale(): bool {
         try {
             $db = Database::connect();
-            $stmt = $db->prepare("SELECT value FROM options WHERE key = 'update_cache_at' LIMIT 1");
+            $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'update_cache_at' LIMIT 1");
             $stmt->execute();
             $val = $stmt->fetchColumn();
             if ($val === false || $val === null || $val === '') return true;
@@ -295,10 +293,8 @@ class UpdaterService {
         // Registrar referencias de rollback en la tabla de opciones
         try {
             $db = Database::connect();
-            $stmt1 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('update_rollback_path', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-            $stmt1->execute([$backupPath]);
-            $stmt2 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('update_rollback_version', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-            $stmt2->execute([$currentVersion]);
+            Database::upsertOption($db, 'update_rollback_path', $backupPath);
+            Database::upsertOption($db, 'update_rollback_version', $currentVersion);
         } catch (Throwable $e) {
             // Ignorar fallos de registro de metadatos del backup
         }
@@ -460,11 +456,11 @@ class UpdaterService {
             }
             $rollbackVersion = $matches[1];
         } else {
-            $stmtPath = $db->prepare("SELECT value FROM options WHERE key = 'update_rollback_path' LIMIT 1");
+            $stmtPath = $db->prepare("SELECT value FROM options WHERE options.key = 'update_rollback_path' LIMIT 1");
             $stmtPath->execute();
             $backupPath = $stmtPath->fetchColumn() ?: '';
 
-            $stmtVer = $db->prepare("SELECT value FROM options WHERE key = 'update_rollback_version' LIMIT 1");
+            $stmtVer = $db->prepare("SELECT value FROM options WHERE options.key = 'update_rollback_version' LIMIT 1");
             $stmtVer->execute();
             $rollbackVersion = $stmtVer->fetchColumn() ?: '';
         }
@@ -487,15 +483,17 @@ class UpdaterService {
 
         // Actualizar estado en historial
         try {
-            $db->exec("UPDATE updates SET status = 'rolled_back', rolled_back_at = datetime('now') WHERE id = (SELECT id FROM updates ORDER BY id DESC LIMIT 1)");
+            $lastUpdateId = $db->query("SELECT id FROM updates ORDER BY id DESC LIMIT 1")->fetchColumn();
+            if ($lastUpdateId) {
+                $stmtUpd = $db->prepare("UPDATE updates SET status = 'rolled_back', rolled_back_at = ? WHERE id = ?");
+                $stmtUpd->execute([Database::nowUtc(), $lastUpdateId]);
+            }
         } catch (Throwable $e) {}
 
         // Limpiar referencias en opciones
         try {
-            $stmtClear1 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('update_rollback_path', '', datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
-            $stmtClear1->execute();
-            $stmtClear2 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('update_rollback_version', '', datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value");
-            $stmtClear2->execute();
+            Database::upsertOption($db, 'update_rollback_path', '');
+            Database::upsertOption($db, 'update_rollback_version', '');
         } catch (Throwable $e) {}
 
         // Limpiar cache de verificación

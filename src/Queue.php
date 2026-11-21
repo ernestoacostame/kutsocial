@@ -12,13 +12,14 @@ class Queue {
     public static function enqueue(string $activityType, array $payload, string $inboxUrl): int {
         return Database::executeWithRetry(function() use ($activityType, $payload, $inboxUrl) {
             $db = Database::connect();
-            $stmt = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES (?, ?, ?, 'pending', datetime('now'))");
+            $stmt = $db->prepare("INSERT INTO jobs (activity_type, payload, inbox_url, status, next_attempt) VALUES (?, ?, ?, 'pending', ?)");
             $stmt->execute([
                 $activityType,
                 json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
-                $inboxUrl
+                $inboxUrl,
+                Database::nowUtc()
             ]);
-            return (int)$db->lastInsertId();
+            return Database::lastInsertId($db, 'jobs');
         });
     }
 
@@ -101,30 +102,36 @@ class Queue {
             
             // Liberar tareas atascadas en 'processing' por más de 10 minutos
             try {
-                Database::executeWithRetry(function() use ($db) {
-                    $db->exec("UPDATE jobs SET status = 'pending' WHERE status = 'processing' AND next_attempt <= datetime('now', '-10 minutes')");
+                $stuckCutoff = Database::agoUtc(600);
+                Database::executeWithRetry(function() use ($db, $stuckCutoff) {
+                    $stmtStuck = $db->prepare("UPDATE jobs SET status = 'pending' WHERE status = 'processing' AND next_attempt <= ?");
+                    $stmtStuck->execute([$stuckCutoff]);
                 });
             } catch (\Exception $e) {}
             
             // Purga periódica (1 de cada 50 ejecuciones) de tareas completadas con más de 1 día
             if (mt_rand(1, 50) === 1) {
                 try {
-                    Database::executeWithRetry(function() use ($db) {
-                        $db->exec("DELETE FROM jobs WHERE status = 'completed' AND created_at < datetime('now', '-1 day')");
+                    $purgeCutoff = Database::agoUtc(86400);
+                    Database::executeWithRetry(function() use ($db, $purgeCutoff) {
+                        $stmtPurge = $db->prepare("DELETE FROM jobs WHERE status = 'completed' AND created_at < ?");
+                        $stmtPurge->execute([$purgeCutoff]);
                     });
                 } catch (\Exception $e) {}
             }
 
             // Obtener tareas pendientes o fallidas con intentos menores a 5
+            $nowUtc = Database::nowUtc();
             $stmt = $db->prepare("
                 SELECT * FROM jobs 
                 WHERE (status = 'pending' OR status = 'failed') 
                   AND attempts < 5 
-                  AND next_attempt <= datetime('now') 
+                  AND next_attempt <= ? 
                 ORDER BY next_attempt, id
                 LIMIT ?
             ");
-            $stmt->bindValue(1, $limit, PDO::PARAM_INT);
+            $stmt->bindValue(1, $nowUtc);
+            $stmt->bindValue(2, $limit, PDO::PARAM_INT);
             $stmt->execute();
             $jobs = $stmt->fetchAll();
 
@@ -139,8 +146,8 @@ class Queue {
                 // Marcar como en proceso
                 try {
                     Database::executeWithRetry(function() use ($db, $job) {
-                        $upd = $db->prepare("UPDATE jobs SET status = 'processing', attempts = attempts + 1, next_attempt = datetime('now') WHERE id = ?");
-                        $upd->execute([$job['id']]);
+                        $upd = $db->prepare("UPDATE jobs SET status = 'processing', attempts = attempts + 1, next_attempt = ? WHERE id = ?");
+                        $upd->execute([Database::nowUtc(), $job['id']]);
                     });
                 } catch (\Exception $e) {
                     continue;
@@ -562,7 +569,7 @@ class Queue {
 
         $targetId = $resolvedAcc['id'];
         
-        $stmtAdd = $db->prepare("INSERT OR IGNORE INTO list_accounts (list_id, account_id) VALUES (?, ?)");
+        $stmtAdd = $db->prepare(Database::insertIgnoreSql('list_accounts', 'list_id, account_id', '?, ?'));
         $stmtAdd->execute([$listId, $targetId]);
 
         // Asegurar que también lo seguimos para que sus publicaciones lleguen a la lista

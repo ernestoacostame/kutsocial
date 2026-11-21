@@ -17,7 +17,7 @@ class AdminController {
     public static function getSessionDurationDays(): int {
         try {
             $db = Database::connect();
-            $stmt = $db->prepare("SELECT value FROM options WHERE key = 'admin_session_days' LIMIT 1");
+            $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'admin_session_days' LIMIT 1");
             $stmt->execute();
             $val = $stmt->fetchColumn();
             if ($val !== false && is_numeric($val)) {
@@ -104,8 +104,9 @@ class AdminController {
             $ip = $_SERVER['REMOTE_ADDR'] ?? '';
             $ua = substr($_SERVER['HTTP_USER_AGENT'] ?? '', 0, 255);
 
-            $ins = $db->prepare("INSERT INTO admin_sessions (account_id, selector, hashed_validator, expires_at, ip, user_agent, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))");
-            $ins->execute([$accountId, $selector, $hashedValidator, $expiresAt, $ip, $ua]);
+            $now = Database::nowUtc();
+            $ins = $db->prepare("INSERT INTO admin_sessions (account_id, selector, hashed_validator, expires_at, ip, user_agent, created_at, last_used_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $ins->execute([$accountId, $selector, $hashedValidator, $expiresAt, $ip, $ua, $now, $now]);
 
             self::setRememberCookie($selector . ':' . $validator, $expiresAt);
         } catch (\Throwable $e) {}
@@ -164,8 +165,8 @@ class AdminController {
             $lifetime = $days * 86400;
             $newExpires = time() + $lifetime;
 
-            $upd = $db->prepare("UPDATE admin_sessions SET expires_at = ?, last_used_at = datetime('now') WHERE id = ?");
-            $upd->execute([$newExpires, $session['id']]);
+            $upd = $db->prepare("UPDATE admin_sessions SET expires_at = ?, last_used_at = ? WHERE id = ?");
+            $upd->execute([$newExpires, Database::nowUtc(), $session['id']]);
 
             self::setRememberCookie($selector . ':' . $validator, $newExpires);
 
@@ -479,13 +480,13 @@ class AdminController {
         $db = Database::connect();
 
         $section = $params['section'] ?? 'general';
-        $validSections = ['general', 'security', 'users', 'moderation', 'relays', 'update', 'maintenance'];
+        $validSections = ['general', 'security', 'users', 'moderation', 'relays', 'update', 'maintenance', 'backups'];
         if (!in_array($section, $validSections)) {
             $section = 'general';
         }
 
         // 1. Obtener Límite de caracteres
-        $stmtLimit = $db->prepare("SELECT value FROM options WHERE key = 'max_toot_chars' LIMIT 1");
+        $stmtLimit = $db->prepare("SELECT value FROM options WHERE options.key = 'max_toot_chars' LIMIT 1");
         $stmtLimit->execute();
         $maxChars = (int)($stmtLimit->fetchColumn() ?: 500);
 
@@ -513,15 +514,15 @@ class AdminController {
         // 5. Datos de actualizaciones (estilo KutPod)
         $updater = new UpdaterService();
         
-        $stmtToken = $db->prepare("SELECT value FROM options WHERE key = 'update_github_token' LIMIT 1");
+        $stmtToken = $db->prepare("SELECT value FROM options WHERE options.key = 'update_github_token' LIMIT 1");
         $stmtToken->execute();
         $githubToken = $stmtToken->fetchColumn() ?: '';
 
-        $stmtGiphy = $db->prepare("SELECT value FROM options WHERE key = 'giphy_api_key' LIMIT 1");
+        $stmtGiphy = $db->prepare("SELECT value FROM options WHERE options.key = 'giphy_api_key' LIMIT 1");
         $stmtGiphy->execute();
         $giphyApiKey = $stmtGiphy->fetchColumn() ?: '';
 
-        $stmtLang = $db->prepare("SELECT value FROM options WHERE key = 'site_language' LIMIT 1");
+        $stmtLang = $db->prepare("SELECT value FROM options WHERE options.key = 'site_language' LIMIT 1");
         $stmtLang->execute();
         $siteLanguage = $stmtLang->fetchColumn() ?: 'es';
 
@@ -563,6 +564,9 @@ class AdminController {
         }
         $checkUpdateAsync = $updater->isCacheStale();
 
+        $dbDriver = Database::getDriver();
+        $backups = ($section === 'backups') ? self::listBackups() : [];
+
         // Incluir la vista de la plantilla
         include __DIR__ . '/../views/admin/layout.php';
     }
@@ -582,22 +586,16 @@ class AdminController {
         if ($maxChars < 500 || $maxChars > 9999) {
             $_SESSION['admin_error_msg'] = __raw('msg_admin_toot_limit_invalid', 'El límite de caracteres debe estar entre 500 y 9999.');
         } else {
-            $stmt = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('max_toot_chars', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-            $stmt->execute([(string)$maxChars]);
-
-            $stmt2 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('update_github_token', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-            $stmt2->execute([$githubToken]);
-
-            $stmt3 = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('giphy_api_key', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-            $stmt3->execute([$giphyApiKey]);
+            Database::upsertOption($db, 'max_toot_chars', (string)$maxChars);
+            Database::upsertOption($db, 'update_github_token', $githubToken);
+            Database::upsertOption($db, 'giphy_api_key', $giphyApiKey);
 
             // Guardar idioma de la interfaz
             $siteLanguage = trim($_POST['site_language'] ?? 'es');
             if (!in_array($siteLanguage, ['es', 'en'], true)) {
                 $siteLanguage = 'es';
             }
-            $stmtLang = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('site_language', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-            $stmtLang->execute([$siteLanguage]);
+            Database::upsertOption($db, 'site_language', $siteLanguage);
             I18n::setLang($siteLanguage);
 
             // Guardar preferencias SMTP y Atribución
@@ -639,8 +637,7 @@ class AdminController {
             }
             $validKeys = ['home', 'catchup', 'local', 'public', 'notifications', 'bookmarks', 'direct', 'lists', 'collections', 'hashtags', 'profile', 'settings', 'admin'];
             $cleanNav = array_values(array_intersect($validKeys, $submittedNav));
-            $stmtNav = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('sidebar_nav_items', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-            $stmtNav->execute([json_encode($cleanNav)]);
+            Database::upsertOption($db, 'sidebar_nav_items', json_encode($cleanNav));
 
             $_SESSION['admin_success_msg'] = __raw('msg_admin_settings_saved', 'Ajustes generales guardados correctamente.');
         }
@@ -654,7 +651,7 @@ class AdminController {
 
     public static function getEnabledNavItems(): array {
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT value FROM options WHERE key = 'sidebar_nav_items' LIMIT 1");
+        $stmt = $db->prepare("SELECT value FROM options WHERE options.key = 'sidebar_nav_items' LIMIT 1");
         $stmt->execute();
         $raw = $stmt->fetchColumn();
         if ($raw === false || $raw === null) {
@@ -681,8 +678,8 @@ class AdminController {
             $_SESSION['admin_error_msg'] = __raw('msg_admin_password_min_length', 'La nueva contraseña debe tener un mínimo de 8 caracteres.');
         } else {
             $newHash = password_hash($newPass, PASSWORD_BCRYPT);
-            $stmt = $db->prepare("UPDATE accounts SET password_hash = ?, updated_at = datetime('now') WHERE id = ?");
-            $stmt->execute([$newHash, $admin['id']]);
+            $stmt = $db->prepare("UPDATE accounts SET password_hash = ?, updated_at = ? WHERE id = ?");
+            $stmt->execute([$newHash, Database::nowUtc(), $admin['id']]);
             $_SESSION['admin_success_msg'] = __raw('msg_admin_password_updated', 'Contraseña de administrador actualizada con éxito.');
         }
         header("Location: /admin/dashboard/security");
@@ -703,8 +700,7 @@ class AdminController {
             $days = 30;
         }
 
-        $stmt = $db->prepare("INSERT INTO options (key, value, updated_at) VALUES ('admin_session_days', ?, datetime('now')) ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at");
-        $stmt->execute([(string)$days]);
+        Database::upsertOption($db, 'admin_session_days', (string)$days);
 
         $lifetime = $days * 86400;
         $newExpires = time() + $lifetime;
@@ -778,8 +774,8 @@ class AdminController {
         }
 
         if (TotpHelper::verifyCode($secret, $code)) {
-            $stmt = $db->prepare("UPDATE accounts SET otp_secret = ?, updated_at = datetime('now') WHERE id = ?");
-            $stmt->execute([$secret, $admin['id']]);
+            $stmt = $db->prepare("UPDATE accounts SET otp_secret = ?, updated_at = ? WHERE id = ?");
+            $stmt->execute([$secret, Database::nowUtc(), $admin['id']]);
             $_SESSION['admin_success_msg'] = __raw('msg_admin_2fa_enabled', '¡Autenticación de Dos Factores (2FA) configurada y activada con éxito!');
         } else {
             $_SESSION['admin_error_msg'] = __raw('msg_admin_2fa_code_invalid', 'El código ingresado es incorrecto o expiró. Inténtalo de nuevo.');
@@ -798,8 +794,8 @@ class AdminController {
 
         $confirmPassword = $_POST['confirm_password'] ?? '';
         if (password_verify($confirmPassword, $admin['password_hash'])) {
-            $stmt = $db->prepare("UPDATE accounts SET otp_secret = NULL, updated_at = datetime('now') WHERE id = ?");
-            $stmt->execute([$admin['id']]);
+            $stmt = $db->prepare("UPDATE accounts SET otp_secret = NULL, updated_at = ? WHERE id = ?");
+            $stmt->execute([Database::nowUtc(), $admin['id']]);
             $_SESSION['admin_success_msg'] = __raw('msg_admin_2fa_disabled', 'La autenticación de dos factores (2FA) ha sido desactivada.');
         } else {
             $_SESSION['admin_error_msg'] = __raw('msg_admin_2fa_pass_invalid', 'Contraseña de confirmación incorrecta. No se pudo desactivar el 2FA.');
@@ -864,8 +860,8 @@ class AdminController {
 
         $id = (int)($_POST['id'] ?? 0);
         if ($id > 0) {
-            $stmt = $db->prepare("UPDATE reports SET action_taken = 1, action_taken_at = datetime('now') WHERE id = ?");
-            $stmt->execute([$id]);
+            $stmt = $db->prepare("UPDATE reports SET action_taken = 1, action_taken_at = ? WHERE id = ?");
+            $stmt->execute([Database::nowUtc(), $id]);
             $_SESSION['admin_success_msg'] = __raw('msg_admin_report_resolved', 'Reporte marcado como resuelto.');
         }
         header("Location: /admin/dashboard/moderation");
@@ -1124,9 +1120,10 @@ class AdminController {
         $pwdHash = password_hash($password, PASSWORD_DEFAULT);
 
         try {
+            $now = Database::nowUtc();
             $stmt = $db->prepare("
                 INSERT INTO accounts (username, display_name, email, password_hash, public_key, private_key, role, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $username,
@@ -1135,7 +1132,9 @@ class AdminController {
                 $pwdHash,
                 $publicKey,
                 $privateKey,
-                $role
+                $role,
+                $now,
+                $now
             ]);
             $_SESSION['admin_success_msg'] = __raw('msg_admin_user_created', "Usuario ':username' creado correctamente.", ['username' => $username]);
         } catch (Exception $e) {
@@ -1241,8 +1240,8 @@ class AdminController {
         }
 
         try {
-            $stmt = $db->prepare("UPDATE accounts SET role = ?, updated_at = datetime('now') WHERE id = ?");
-            $stmt->execute([$role, $id]);
+            $stmt = $db->prepare("UPDATE accounts SET role = ?, updated_at = ? WHERE id = ?");
+            $stmt->execute([$role, Database::nowUtc(), $id]);
             $_SESSION['admin_success_msg'] = __raw('msg_admin_role_updated', "Rol del usuario ':username' actualizado a ':role'.", [
                 'username' => htmlspecialchars($targetUser['username']),
                 'role' => $role
@@ -1279,31 +1278,37 @@ class AdminController {
         // 1. Eliminar Estados Remotos Antiguos
         if ($removeStatuses) {
             try {
-                $stmt = $db->prepare("
-                    DELETE FROM statuses WHERE id IN (
-                        SELECT s.id FROM statuses s
-                        JOIN accounts a ON s.account_id = a.id
-                        WHERE a.domain IS NOT NULL
-                          AND s.created_at < datetime('now', :days)
-                          AND NOT EXISTS (
-                              SELECT 1 FROM favourites fav
-                              JOIN accounts a_local ON fav.account_id = a_local.id
-                              WHERE fav.status_id = s.id AND a_local.domain IS NULL
-                          )
-                          AND NOT EXISTS (
-                              SELECT 1 FROM bookmarks b
-                              JOIN accounts a_local ON b.account_id = a_local.id
-                              WHERE b.status_id = s.id AND a_local.domain IS NULL
-                          )
-                          AND NOT EXISTS (
-                              SELECT 1 FROM statuses s_reply
-                              JOIN accounts a_local ON s_reply.account_id = a_local.id
-                              WHERE s_reply.in_reply_to_id = s.id AND a_local.domain IS NULL
-                          )
-                    )
+                $cutoff = Database::agoUtc($statusesDays * 86400);
+                $stmtSel = $db->prepare("
+                    SELECT s.id FROM statuses s
+                    JOIN accounts a ON s.account_id = a.id
+                    WHERE a.domain IS NOT NULL AND a.domain != ''
+                      AND s.created_at < ?
+                      AND NOT EXISTS (
+                          SELECT 1 FROM favourites fav
+                          JOIN accounts a_local ON fav.account_id = a_local.id
+                          WHERE fav.status_id = s.id AND (a_local.domain IS NULL OR a_local.domain = '')
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM bookmarks b
+                          JOIN accounts a_local ON b.account_id = a_local.id
+                          WHERE b.status_id = s.id AND (a_local.domain IS NULL OR a_local.domain = '')
+                      )
+                      AND NOT EXISTS (
+                          SELECT 1 FROM statuses s_reply
+                          JOIN accounts a_local ON s_reply.account_id = a_local.id
+                          WHERE s_reply.in_reply_to_id = s.id AND (a_local.domain IS NULL OR a_local.domain = '')
+                      )
                 ");
-                $stmt->execute([':days' => "-$statusesDays days"]);
-                $deletedStatuses = $stmt->rowCount();
+                $stmtSel->execute([$cutoff]);
+                $idsToDelete = $stmtSel->fetchAll(\PDO::FETCH_COLUMN);
+                $deletedStatuses = 0;
+                foreach (array_chunk($idsToDelete, 500) as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                    $delStmt = $db->prepare("DELETE FROM statuses WHERE id IN ($placeholders)");
+                    $delStmt->execute($chunk);
+                    $deletedStatuses += $delStmt->rowCount();
+                }
                 $messages[] = "Se eliminaron $deletedStatuses estados remotos antiguos (> $statusesDays días).";
             } catch (Exception $e) {
                 $messages[] = "Error al eliminar estados remotos: " . $e->getMessage();
@@ -1313,40 +1318,47 @@ class AdminController {
         // 2. Eliminar Cuentas Remotas Inactivas
         if ($pruneAccounts) {
             try {
-                $stmt = $db->prepare("
-                    DELETE FROM accounts
-                    WHERE domain IS NOT NULL
-                      AND id NOT IN (
+                $stmtSelAcc = $db->prepare("
+                    SELECT a.id FROM accounts a
+                    WHERE a.domain IS NOT NULL AND a.domain != ''
+                      AND a.id NOT IN (
                           SELECT target_account_id FROM follows f
                           JOIN accounts a_local ON f.account_id = a_local.id
-                          WHERE a_local.domain IS NULL
+                          WHERE a_local.domain IS NULL OR a_local.domain = ''
                       )
-                      AND id NOT IN (
+                      AND a.id NOT IN (
                           SELECT account_id FROM follows f
                           JOIN accounts a_local ON f.target_account_id = a_local.id
-                          WHERE a_local.domain IS NULL
+                          WHERE a_local.domain IS NULL OR a_local.domain = ''
                       )
-                      AND id NOT IN (
+                      AND a.id NOT IN (
                           SELECT s.account_id FROM favourites fav
                           JOIN statuses s ON fav.status_id = s.id
                           JOIN accounts a_local ON fav.account_id = a_local.id
-                          WHERE a_local.domain IS NULL
+                          WHERE a_local.domain IS NULL OR a_local.domain = ''
                       )
-                      AND id NOT IN (
+                      AND a.id NOT IN (
                           SELECT s.account_id FROM bookmarks b
                           JOIN statuses s ON b.status_id = s.id
                           JOIN accounts a_local ON b.account_id = a_local.id
-                          WHERE a_local.domain IS NULL
+                          WHERE a_local.domain IS NULL OR a_local.domain = ''
                       )
-                      AND id NOT IN (
+                      AND a.id NOT IN (
                           SELECT s_parent.account_id FROM statuses s_reply
                           JOIN statuses s_parent ON s_reply.in_reply_to_id = s_parent.id
                           JOIN accounts a_local ON s_reply.account_id = a_local.id
-                          WHERE a_local.domain IS NULL
+                          WHERE a_local.domain IS NULL OR a_local.domain = ''
                       )
                 ");
-                $stmt->execute();
-                $prunedAccounts = $stmt->rowCount();
+                $stmtSelAcc->execute();
+                $accIdsToDelete = $stmtSelAcc->fetchAll(\PDO::FETCH_COLUMN);
+                $prunedAccounts = 0;
+                foreach (array_chunk($accIdsToDelete, 500) as $chunk) {
+                    $placeholders = implode(',', array_fill(0, count($chunk), '?'));
+                    $delAccStmt = $db->prepare("DELETE FROM accounts WHERE id IN ($placeholders)");
+                    $delAccStmt->execute($chunk);
+                    $prunedAccounts += $delAccStmt->rowCount();
+                }
                 $messages[] = "Se eliminaron $prunedAccounts cuentas remotas inactivas.";
             } catch (Exception $e) {
                 $messages[] = "Error al purgar cuentas remotas: " . $e->getMessage();
@@ -1423,18 +1435,12 @@ class AdminController {
             }
         }
 
-        // 5. Optimizar Base de Datos (VACUUM)
+        // 5. Optimizar Base de Datos
         if ($vacuumDb) {
             try {
-                $dbPath = Database::getDbPath();
-                $initialSize = file_exists($dbPath) ? filesize($dbPath) : 0;
-                $db->exec("VACUUM;");
-                $finalSize = file_exists($dbPath) ? filesize($dbPath) : 0;
-                $savedDBBytes = max(0, $initialSize - $finalSize);
-                $savedDBMB = round($savedDBBytes / (1024 * 1024), 2);
-                $messages[] = "Base de datos optimizada (VACUUM): se recuperaron $savedDBMB MB de espacio.";
+                $messages[] = Database::optimizeDb($db);
             } catch (Exception $e) {
-                $messages[] = "Error al optimizar la base de datos (VACUUM): " . $e->getMessage();
+                $messages[] = "Error al optimizar la base de datos: " . $e->getMessage();
             }
         }
 
@@ -1446,5 +1452,598 @@ class AdminController {
 
         header("Location: /admin/dashboard/maintenance");
         exit;
+    }
+
+    /**
+     * Create a database-only backup and store it in data/backups/.
+     */
+    public static function createDbBackup(): void {
+        self::checkAuth();
+        self::verifyCsrf();
+
+        try {
+            $backupDir = self::getBackupDir();
+            $ts = gmdate('Ymd-His');
+            $driver = Database::getDriver();
+            $result = self::createDatabaseDump($backupDir, "kutsocial-db-{$driver}-{$ts}");
+            $_SESSION['admin_success_msg'] = __raw(
+                'admin_backups_msg_db_created',
+                'Backup de base de datos creado correctamente: :file',
+                ['file' => $result['filename']]
+            );
+        } catch (\Throwable $e) {
+            $_SESSION['admin_error_msg'] = __raw(
+                'admin_backups_err_create',
+                'No se pudo crear el backup: :error',
+                ['error' => $e->getMessage()]
+            );
+        }
+
+        header("Location: /admin/dashboard/backups");
+        exit;
+    }
+
+    /**
+     * Create a full directory backup (including a fresh DB snapshot) in data/backups/.
+     */
+    public static function createFullBackup(): void {
+        self::checkAuth();
+        self::verifyCsrf();
+
+        $tempDbPath = null;
+        try {
+            $root = self::getAppRoot();
+            $backupDir = self::getBackupDir();
+            $ts = gmdate('Ymd-His');
+            $driver = Database::getDriver();
+
+            $tempDir = sys_get_temp_dir();
+            $dumpInfo = self::createDatabaseDump($tempDir, "kutsocial-tmp-db-{$driver}-{$ts}-" . bin2hex(random_bytes(4)));
+            $tempDbPath = $dumpInfo['path'];
+
+            $sqliteRelPath = '';
+            if ($driver === 'sqlite') {
+                $dbReal = realpath(Database::getDbPath()) ?: Database::getDbPath();
+                $normRoot = rtrim(str_replace('\\', '/', $root), '/');
+                $normDb = str_replace('\\', '/', $dbReal);
+                if (str_starts_with($normDb, $normRoot . '/')) {
+                    $sqliteRelPath = substr($normDb, strlen($normRoot) + 1);
+                } else {
+                    $sqliteRelPath = 'data/' . basename($normDb);
+                }
+                $tempDbArchiveName = $sqliteRelPath;
+            } else {
+                $ext = str_ends_with($dumpInfo['filename'], '.sql.gz') ? '.sql.gz' : '.sql';
+                $tempDbArchiveName = 'database-backup' . $ext;
+            }
+
+            if (class_exists(\ZipArchive::class)) {
+                $archiveName = "kutsocial-full-{$ts}.zip";
+                $archivePath = $backupDir . '/' . $archiveName;
+                self::createZipFullBackup($root, $archivePath, $tempDbPath, $tempDbArchiveName, $sqliteRelPath);
+            } else {
+                $archiveName = "kutsocial-full-{$ts}.tar.gz";
+                $archivePath = $backupDir . '/' . $archiveName;
+                self::createTarFullBackup($root, $archivePath, $tempDbPath, $tempDbArchiveName, $sqliteRelPath);
+            }
+
+            $_SESSION['admin_success_msg'] = __raw(
+                'admin_backups_msg_full_created',
+                'Backup completo creado correctamente: :file',
+                ['file' => $archiveName]
+            );
+        } catch (\Throwable $e) {
+            $_SESSION['admin_error_msg'] = __raw(
+                'admin_backups_err_create',
+                'No se pudo crear el backup: :error',
+                ['error' => $e->getMessage()]
+            );
+        } finally {
+            if ($tempDbPath !== null && is_file($tempDbPath)) {
+                @unlink($tempDbPath);
+            }
+        }
+
+        header("Location: /admin/dashboard/backups");
+        exit;
+    }
+
+    /**
+     * Stream a backup file to the authenticated administrator.
+     */
+    public static function downloadBackup(): void {
+        self::checkAuth();
+
+        $file = (string)($_GET['file'] ?? '');
+        $targetPath = self::resolveBackupFile($file);
+        if ($targetPath === null) {
+            http_response_code(404);
+            echo 'Backup not found.';
+            exit;
+        }
+
+        while (ob_get_level() > 0) {
+            ob_end_clean();
+        }
+
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . basename($targetPath) . '"');
+        header('Content-Length: ' . (string)filesize($targetPath));
+        header('Cache-Control: no-store, no-cache, must-revalidate');
+        header('Pragma: public');
+
+        readfile($targetPath);
+        exit;
+    }
+
+    /**
+     * Delete a backup file from data/backups/.
+     */
+    public static function deleteBackup(): void {
+        self::checkAuth();
+        self::verifyCsrf();
+
+        $file = (string)($_POST['file'] ?? '');
+        $targetPath = self::resolveBackupFile($file);
+        if ($targetPath === null) {
+            $_SESSION['admin_error_msg'] = __raw('admin_backups_err_invalid_file', 'Nombre de archivo de backup inválido o no encontrado.');
+        } elseif (@unlink($targetPath)) {
+            $_SESSION['admin_success_msg'] = __raw(
+                'admin_backups_msg_deleted',
+                'Copia de seguridad eliminada: :file',
+                ['file' => basename($targetPath)]
+            );
+        } else {
+            $_SESSION['admin_error_msg'] = __raw('admin_backups_err_invalid_file', 'Nombre de archivo de backup inválido o no encontrado.');
+        }
+
+        header("Location: /admin/dashboard/backups");
+        exit;
+    }
+
+    private static function getAppRoot(): string {
+        if (defined('KUTSOCIAL_ROOT') && KUTSOCIAL_ROOT !== '') {
+            return rtrim((string)KUTSOCIAL_ROOT, '/\\');
+        }
+        return rtrim((string)realpath(__DIR__ . '/../..'), '/\\');
+    }
+
+    private static function getBackupDir(): string {
+        $dir = self::getAppRoot() . '/data/backups';
+        if (!is_dir($dir) && !@mkdir($dir, 0755, true) && !is_dir($dir)) {
+            throw new Exception('Cannot create backup directory.');
+        }
+        return $dir;
+    }
+
+    private static function isValidBackupFilename(string $filename): bool {
+        if ($filename === '' || basename($filename) !== $filename) {
+            return false;
+        }
+        if (preg_match('/^[a-zA-Z0-9._-]+$/', $filename) !== 1) {
+            return false;
+        }
+        $lower = strtolower($filename);
+        foreach (['.db', '.sql', '.sql.gz', '.zip', '.tar.gz'] as $ext) {
+            if (str_ends_with($lower, $ext)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static function resolveBackupFile(string $filename): ?string {
+        if (!self::isValidBackupFilename($filename)) {
+            return null;
+        }
+        $backupDir = realpath(self::getBackupDir());
+        if ($backupDir === false) {
+            return null;
+        }
+        $targetPath = realpath($backupDir . DIRECTORY_SEPARATOR . $filename);
+        if ($targetPath === false || !is_file($targetPath)) {
+            return null;
+        }
+        if (!str_starts_with($targetPath, $backupDir . DIRECTORY_SEPARATOR)) {
+            return null;
+        }
+        return $targetPath;
+    }
+
+    private static function listBackups(): array {
+        $dir = self::getBackupDir();
+        $entries = @scandir($dir);
+        if (!is_array($entries)) {
+            return [];
+        }
+
+        $backups = [];
+        foreach ($entries as $name) {
+            if ($name === '.' || $name === '..' || !self::isValidBackupFilename($name)) {
+                continue;
+            }
+            $fullPath = $dir . DIRECTORY_SEPARATOR . $name;
+            if (!is_file($fullPath)) {
+                continue;
+            }
+            $lower = strtolower($name);
+            $type = (str_ends_with($lower, '.zip') || str_ends_with($lower, '.tar.gz')) ? 'Full' : 'DB';
+            $backups[] = [
+                'filename' => $name,
+                'size'     => (int)(@filesize($fullPath) ?: 0),
+                'mtime'    => (int)(@filemtime($fullPath) ?: 0),
+                'type'     => $type,
+            ];
+        }
+
+        usort($backups, static function (array $a, array $b): int {
+            if ($a['mtime'] !== $b['mtime']) {
+                return $b['mtime'] <=> $a['mtime'];
+            }
+            return strcmp($b['filename'], $a['filename']);
+        });
+
+        return $backups;
+    }
+
+    private static function createDatabaseDump(string $targetDir, string $filenamePrefix): array {
+        $db = Database::connect();
+        $cfg = Database::getConnectionConfig();
+        $driver = $cfg['driver'];
+        $targetDir = rtrim($targetDir, '/\\');
+
+        if ($driver === 'sqlite') {
+            $filename = $filenamePrefix . '.db';
+            $outPath = $targetDir . DIRECTORY_SEPARATOR . $filename;
+            if (is_file($outPath)) {
+                @unlink($outPath);
+            }
+            $vacuumOk = false;
+            try {
+                $db->exec('VACUUM INTO ' . $db->quote($outPath));
+                $vacuumOk = is_file($outPath) && filesize($outPath) > 0;
+            } catch (\Throwable $e) {
+                $vacuumOk = false;
+            }
+            if (!$vacuumOk) {
+                $srcDb = $cfg['path'];
+                if (!is_file($srcDb) || !@copy($srcDb, $outPath)) {
+                    throw new Exception('SQLite VACUUM INTO and copy() fallback both failed.');
+                }
+            }
+            return ['path' => $outPath, 'filename' => $filename];
+        }
+
+        $useGzip = function_exists('gzopen');
+        $ext = $useGzip ? '.sql.gz' : '.sql';
+        $filename = $filenamePrefix . $ext;
+        $outPath = $targetDir . DIRECTORY_SEPARATOR . $filename;
+        $baseEnv = ['PATH' => getenv('PATH') ?: '/usr/local/bin:/usr/bin:/bin'];
+
+        if ($driver === 'pgsql') {
+            $cmd = [
+                'pg_dump',
+                '-h', $cfg['host'],
+                '-p', $cfg['port'] !== '' ? $cfg['port'] : '5432',
+                '-U', $cfg['user'],
+                '-F', 'p',
+                $cfg['name'],
+            ];
+            $env = $baseEnv;
+            if ($cfg['pass'] !== '') {
+                $env['PGPASSWORD'] = $cfg['pass'];
+            }
+            if (!self::runDumpProcess($cmd, $env, $outPath, $useGzip)) {
+                self::exportDatabaseWithPdo($db, 'pgsql', $outPath, $useGzip);
+            }
+            return ['path' => $outPath, 'filename' => $filename];
+        }
+
+        // mysql / mariadb
+        $dumped = false;
+        $env = $baseEnv;
+        if ($cfg['pass'] !== '') {
+            $env['MYSQL_PWD'] = $cfg['pass'];
+        }
+        foreach (['mariadb-dump', 'mysqldump'] as $bin) {
+            $cmd = [
+                $bin,
+                '-h', $cfg['host'],
+                '-P', $cfg['port'] !== '' ? $cfg['port'] : '3306',
+                '-u', $cfg['user'],
+                '--single-transaction',
+                '--quick',
+                $cfg['name'],
+            ];
+            if (self::runDumpProcess($cmd, $env, $outPath, $useGzip)) {
+                $dumped = true;
+                break;
+            }
+        }
+        if (!$dumped) {
+            self::exportDatabaseWithPdo($db, 'mysql', $outPath, $useGzip);
+        }
+        return ['path' => $outPath, 'filename' => $filename];
+    }
+
+    private static function runDumpProcess(array $cmd, array $env, string $outFile, bool $gzip): bool {
+        if (!function_exists('proc_open')) {
+            return false;
+        }
+        $descriptors = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $proc = @proc_open($cmd, $descriptors, $pipes, null, $env);
+        if (!is_resource($proc)) {
+            return false;
+        }
+
+        @fclose($pipes[0]);
+        $handle = $gzip ? @gzopen($outFile, 'wb9') : @fopen($outFile, 'wb');
+        if ($handle === false) {
+            @fclose($pipes[1]);
+            @fclose($pipes[2]);
+            @proc_close($proc);
+            return false;
+        }
+
+        $bytesWritten = 0;
+        while (!feof($pipes[1])) {
+            $chunk = fread($pipes[1], 65536);
+            if ($chunk === false) {
+                break;
+            }
+            if ($chunk !== '') {
+                $bytesWritten += strlen($chunk);
+                if ($gzip) {
+                    gzwrite($handle, $chunk);
+                } else {
+                    fwrite($handle, $chunk);
+                }
+            }
+        }
+
+        @fclose($pipes[1]);
+        @stream_get_contents($pipes[2]);
+        @fclose($pipes[2]);
+        if ($gzip) {
+            @gzclose($handle);
+        } else {
+            @fclose($handle);
+        }
+
+        $exitCode = proc_close($proc);
+        if ($exitCode !== 0 || $bytesWritten === 0 || !is_file($outFile)) {
+            @unlink($outFile);
+            return false;
+        }
+        return true;
+    }
+
+    private static function exportDatabaseWithPdo(PDO $db, string $driver, string $outFile, bool $gzip): void {
+        $handle = $gzip ? @gzopen($outFile, 'wb9') : @fopen($outFile, 'wb');
+        if ($handle === false) {
+            throw new Exception('Cannot open output file for SQL export.');
+        }
+
+        $write = static function (string $text) use ($handle, $gzip): void {
+            if ($gzip) {
+                gzwrite($handle, $text);
+            } else {
+                fwrite($handle, $text);
+            }
+        };
+
+        $quoteIdent = static function (string $ident) use ($driver): string {
+            if ($driver === 'mysql') {
+                return '`' . str_replace('`', '``', $ident) . '`';
+            }
+            return '"' . str_replace('"', '""', $ident) . '"';
+        };
+
+        try {
+            $write("-- KutSocial PDO SQL Backup\n");
+            $write("-- Driver: {$driver}\n");
+            $write("-- Generated: " . gmdate('Y-m-d H:i:s') . " UTC\n\n");
+
+            if ($driver === 'mysql') {
+                $write("SET FOREIGN_KEY_CHECKS=0;\n\n");
+                $tables = $db->query('SHOW TABLES')->fetchAll(PDO::FETCH_COLUMN);
+            } else {
+                $tables = $db->query("SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename")->fetchAll(PDO::FETCH_COLUMN);
+            }
+
+            foreach ($tables as $table) {
+                $table = (string)$table;
+                $qTable = $quoteIdent($table);
+                $write("-- Table: {$table}\n");
+
+                if ($driver === 'mysql') {
+                    $createRow = $db->query("SHOW CREATE TABLE {$qTable}")->fetch(PDO::FETCH_NUM);
+                    if (is_array($createRow) && isset($createRow[1])) {
+                        $write("DROP TABLE IF EXISTS {$qTable};\n");
+                        $write($createRow[1] . ";\n\n");
+                    }
+                }
+
+                $stmt = $db->query("SELECT * FROM {$qTable}");
+                $colCount = $stmt->columnCount();
+                if ($colCount === 0) {
+                    continue;
+                }
+                $cols = [];
+                for ($i = 0; $i < $colCount; $i++) {
+                    $meta = $stmt->getColumnMeta($i);
+                    $cols[] = $quoteIdent((string)($meta['name'] ?? "col_{$i}"));
+                }
+                $colsSql = implode(', ', $cols);
+
+                while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
+                    $vals = [];
+                    foreach ($row as $val) {
+                        if ($val === null) {
+                            $vals[] = 'NULL';
+                        } elseif (is_bool($val)) {
+                            $vals[] = $driver === 'pgsql' ? ($val ? 'TRUE' : 'FALSE') : ($val ? '1' : '0');
+                        } elseif (is_int($val) || is_float($val)) {
+                            $vals[] = (string)$val;
+                        } else {
+                            $vals[] = $db->quote((string)$val);
+                        }
+                    }
+                    $write("INSERT INTO {$qTable} ({$colsSql}) VALUES (" . implode(', ', $vals) . ");\n");
+                }
+                $write("\n");
+            }
+
+            if ($driver === 'mysql') {
+                $write("SET FOREIGN_KEY_CHECKS=1;\n");
+            }
+        } finally {
+            if ($gzip) {
+                @gzclose($handle);
+            } else {
+                @fclose($handle);
+            }
+        }
+    }
+
+    private static function createZipFullBackup(
+        string $root,
+        string $archivePath,
+        string $tempDbPath,
+        string $tempDbArchiveName,
+        string $sqliteRelPath
+    ): void {
+        $zip = new \ZipArchive();
+        if ($zip->open($archivePath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            throw new Exception('Failed to create ZIP archive.');
+        }
+
+        try {
+            $normRoot = rtrim(str_replace('\\', '/', $root), '/');
+            $sqliteExcludes = $sqliteRelPath !== ''
+                ? [$sqliteRelPath, $sqliteRelPath . '-wal', $sqliteRelPath . '-shm']
+                : [];
+
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
+                \RecursiveIteratorIterator::SELF_FIRST
+            );
+
+            foreach ($iterator as $item) {
+                $fullPath = $item->getPathname();
+                $normFull = str_replace('\\', '/', $fullPath);
+                if (!str_starts_with($normFull, $normRoot . '/')) {
+                    continue;
+                }
+                $relPath = substr($normFull, strlen($normRoot) + 1);
+
+                if (
+                    $relPath === 'data/backups' || str_starts_with($relPath, 'data/backups/') ||
+                    $relPath === '.git' || str_starts_with($relPath, '.git/') ||
+                    $relPath === 'database' || str_starts_with($relPath, 'database/') ||
+                    in_array($relPath, $sqliteExcludes, true)
+                ) {
+                    continue;
+                }
+
+                if ($item->isDir()) {
+                    $zip->addEmptyDir($relPath);
+                } elseif ($item->isFile()) {
+                    $zip->addFile($fullPath, $relPath);
+                }
+            }
+
+            if (is_file($tempDbPath)) {
+                $zip->addFile($tempDbPath, $tempDbArchiveName);
+            }
+        } finally {
+            $zip->close();
+        }
+    }
+
+    private static function createTarFullBackup(
+        string $root,
+        string $archivePath,
+        string $tempDbPath,
+        string $tempDbArchiveName,
+        string $sqliteRelPath
+    ): void {
+        if (!function_exists('proc_open')) {
+            throw new Exception('Neither ZipArchive nor proc_open(tar) is available.');
+        }
+
+        $stagingDir = sys_get_temp_dir() . '/kutsocial-db-stage-' . bin2hex(random_bytes(4));
+        $cmd = [
+            'tar',
+            '-czf',
+            $archivePath,
+            '-C',
+            $root,
+            '--exclude=./data/backups',
+            '--exclude=./.git',
+            '--exclude=./database',
+        ];
+        if ($sqliteRelPath !== '') {
+            $cmd[] = '--exclude=./' . $sqliteRelPath;
+            $cmd[] = '--exclude=./' . $sqliteRelPath . '-wal';
+            $cmd[] = '--exclude=./' . $sqliteRelPath . '-shm';
+        }
+        $cmd[] = '.';
+
+        $stagedFile = null;
+        try {
+            if (is_file($tempDbPath)) {
+                $stagedFile = $stagingDir . '/' . $tempDbArchiveName;
+                $stageParent = dirname($stagedFile);
+                if (!is_dir($stageParent)) {
+                    @mkdir($stageParent, 0755, true);
+                }
+                if (@copy($tempDbPath, $stagedFile)) {
+                    $cmd[] = '-C';
+                    $cmd[] = $stagingDir;
+                    $cmd[] = $tempDbArchiveName;
+                }
+            }
+
+            $descriptors = [
+                0 => ['pipe', 'r'],
+                1 => ['pipe', 'w'],
+                2 => ['pipe', 'w'],
+            ];
+            $proc = @proc_open($cmd, $descriptors, $pipes);
+            if (!is_resource($proc)) {
+                throw new Exception('Failed to execute tar.');
+            }
+            @fclose($pipes[0]);
+            @stream_get_contents($pipes[1]);
+            @fclose($pipes[1]);
+            $err = (string)@stream_get_contents($pipes[2]);
+            @fclose($pipes[2]);
+            $exitCode = proc_close($proc);
+            if ($exitCode !== 0 || !is_file($archivePath)) {
+                @unlink($archivePath);
+                throw new Exception('tar failed: ' . trim($err));
+            }
+        } finally {
+            if ($stagedFile !== null && is_file($stagedFile)) {
+                @unlink($stagedFile);
+            }
+            if (is_dir($stagingDir)) {
+                // Clean up nested staging dirs if any
+                $it = new \RecursiveIteratorIterator(
+                    new \RecursiveDirectoryIterator($stagingDir, \FilesystemIterator::SKIP_DOTS),
+                    \RecursiveIteratorIterator::CHILD_FIRST
+                );
+                foreach ($it as $f) {
+                    $f->isDir() ? @rmdir($f->getPathname()) : @unlink($f->getPathname());
+                }
+                @rmdir($stagingDir);
+            }
+        }
     }
 }
