@@ -49,6 +49,7 @@ html[data-ui-theme="mastodon"] .sidebar {
     padding: 6px 4px;
     transition: width 0.2s ease;
     overflow: visible;
+    z-index: 200;
 }
 
 /* Cabecera: Marca + botón cerrar/colapsar */
@@ -196,14 +197,15 @@ html[data-ui-theme="mastodon"] .m5-notif-dot {
 html[data-ui-theme="mastodon"] .m5-popover-menu {
     position: absolute;
     top: 48px;
-    left: 0;
+    right: 0;
+    left: auto;
     width: 240px;
     background: var(--surface-elevated);
-    border: 1px solid rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 14px;
     padding: 8px;
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.65);
-    z-index: 2000;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.75);
+    z-index: 2500;
 }
 
 html[data-ui-theme="mastodon"] .m5-account-menu-header {
@@ -239,17 +241,22 @@ html[data-ui-theme="mastodon"] .m5-menu-handle {
     text-overflow: ellipsis;
 }
 
-html[data-ui-theme="mastodon"] .m5-menu-item {
+html[data-ui-theme="mastodon"] .m5-menu-item,
+html[data-ui-theme="mastodon"] button.m5-menu-item {
     display: flex;
     align-items: center;
     gap: 10px;
     width: 100%;
     padding: 8px 10px;
+    margin: 0;
     border-radius: 9px;
     border: none;
     background: transparent;
+    background-image: none;
+    box-shadow: none;
     color: #e4e4ec;
     font-size: 13.5px;
+    font-weight: 500;
     font-family: inherit;
     text-decoration: none;
     cursor: pointer;
@@ -394,6 +401,7 @@ html[data-ui-theme="mastodon"].m5-sidebar-collapsed .m5-icon-bar {
 
 html[data-ui-theme="mastodon"].m5-sidebar-collapsed .m5-popover-menu {
     left: 54px;
+    right: auto;
     top: 0;
 }
 
