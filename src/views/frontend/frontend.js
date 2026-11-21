@@ -331,6 +331,14 @@ if (loginForm) {
         
         const data = await response.json();
         if (data.access_token) {
+            const checkRes = await fetch('/api/v1/accounts/verify_credentials', {
+                headers: { 'Authorization': `Bearer ${data.access_token}` }
+            });
+            if (!checkRes.ok) {
+                errDiv.innerText = `No se pudo validar el token de sesión (HTTP ${checkRes.status}). Revisa si el proxy/servidor está bloqueando la cabecera Authorization.`;
+                errDiv.style.display = 'block';
+                return;
+            }
             token = data.access_token;
             localStorage.setItem('kutsocial_token', token);
             window.location.reload();
@@ -588,7 +596,15 @@ async function initApp() {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.status === 401) {
-            logout();
+            console.warn('verify_credentials returned 401; clearing invalid token');
+            localStorage.removeItem('kutsocial_token');
+            token = null;
+            document.documentElement.classList.remove('is-authenticated');
+            if (window.KUTSOCIAL_OWNER && !window.KUTSOCIAL_OWNER.locked) {
+                initPublicView();
+            } else {
+                showLoginModal();
+            }
             return;
         }
         const profile = await res.json();
