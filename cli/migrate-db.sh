@@ -88,7 +88,7 @@ ui_menu() {
         return $rc
     else
         echo "" >&2
-        echo "${prompt}" >&2
+        printf '%b\n' "${prompt}" >&2
         local i=0
         local -a keys=()
         while [[ $i -lt ${#items[@]} ]]; do
@@ -181,7 +181,9 @@ fi
 read_current_config() {
     php -r '
         $cfgFile = $argv[1];
+        ob_start();
         require_once $cfgFile;
+        ob_end_clean();
         $driver = defined("KUTSOCIAL_DB_DRIVER") && KUTSOCIAL_DB_DRIVER !== "" ? strtolower(trim((string)KUTSOCIAL_DB_DRIVER)) : "sqlite";
         if ($driver === "postgres" || $driver === "postgresql") $driver = "pgsql";
         if ($driver === "mariadb") $driver = "mysql";
@@ -203,7 +205,11 @@ read_current_config() {
 declare -A SRC_CFG
 while IFS='=' read -r k b64; do
     [[ -z "$k" ]] && continue
-    SRC_CFG["$k"]="$(printf '%s' "$b64" | base64 -d)"
+    if [[ -n "$b64" ]]; then
+        SRC_CFG["$k"]="$(printf '%s' "$b64" | base64 -d 2>/dev/null || true)"
+    else
+        SRC_CFG["$k"]=""
+    fi
 done < <(read_current_config)
 
 SRC_DRIVER="${SRC_CFG[driver]}"
@@ -262,17 +268,16 @@ has_pdo_driver() {
 }
 
 need_install_packages() {
-    local need=0
-    has_pdo_driver "${SRC_DRIVER}" || need=1
-    has_pdo_driver "${DST_DRIVER}" || need=1
+    has_pdo_driver "${SRC_DRIVER}" || return 0
+    has_pdo_driver "${DST_DRIVER}" || return 0
     if [[ "${DST_DRIVER}" == "pgsql" ]] && ! command -v psql >/dev/null 2>&1; then
-        need=1
+        return 0
     elif [[ "${DST_DRIVER}" == "mysql" ]] && ! command -v mariadb >/dev/null 2>&1 && ! command -v mysql >/dev/null 2>&1; then
-        need=1
+        return 0
     elif [[ "${DST_DRIVER}" == "sqlite" ]] && ! command -v sqlite3 >/dev/null 2>&1; then
-        need=1
+        return 0
     fi
-    return $need
+    return 1
 }
 
 install_packages() {
@@ -358,6 +363,9 @@ install_packages() {
         debian)
             export DEBIAN_FRONTEND=noninteractive
             apt-get update -qq && apt-get install -y "${pkgs[@]}"
+            if command -v phpenmod >/dev/null 2>&1; then
+                phpenmod -v "${PHP_VER}" "pdo_${SRC_DRIVER}" "pdo_${DST_DRIVER}" 2>/dev/null || true
+            fi
             ;;
         rhel)
             dnf install -y "${pkgs[@]}"
