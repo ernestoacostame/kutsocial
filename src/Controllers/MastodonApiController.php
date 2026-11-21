@@ -2952,9 +2952,47 @@ HTML;
             }
 
             $importedCount = 0;
-            // 3. Procesar e insertar notas en la base de datos local
+            $announceFetches = 0;
+            // 3. Procesar e insertar notas y boosts en la base de datos local
             foreach ($items as $item) {
                 $activityType = $item['type'] ?? '';
+                if ($activityType === 'Announce' && !empty($item['object'])) {
+                    $objectUrl = is_array($item['object']) ? ($item['object']['id'] ?? '') : (string)$item['object'];
+                    if ($objectUrl === '') continue;
+
+                    $announceUri = $item['id'] ?? ($objectUrl . '/reblog/' . md5((string)$account['id'] . $objectUrl));
+                    $stmtCheckAnn = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+                    $stmtCheckAnn->execute([$announceUri]);
+                    if ($stmtCheckAnn->fetchColumn()) {
+                        continue;
+                    }
+
+                    $stmtCheckOrig = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
+                    $stmtCheckOrig->execute([$objectUrl]);
+                    $origStatusId = $stmtCheckOrig->fetchColumn();
+                    if (!$origStatusId) {
+                        if ($announceFetches >= 5) continue;
+                        $announceFetches++;
+                        $origStatusId = ActivityPubController::fetchAndRegisterRemoteStatus($objectUrl);
+                    }
+                    if (!$origStatusId) continue;
+
+                    $stmtCheckReb = $db->prepare("SELECT id FROM statuses WHERE account_id = ? AND reblog_of_id = ? AND content = '' LIMIT 1");
+                    $stmtCheckReb->execute([$account['id'], (int)$origStatusId]);
+                    if ($stmtCheckReb->fetchColumn()) {
+                        continue;
+                    }
+
+                    $annCreatedAt = !empty($item['published']) ? gmdate('Y-m-d H:i:s', strtotime($item['published']) ?: time()) : Database::nowUtc();
+                    $stmtInsAnn = $db->prepare("
+                        INSERT INTO statuses (account_id, uri, content, visibility, reblog_of_id, created_at, is_profile_fetch)
+                        VALUES (?, ?, '', 'public', ?, ?, 1)
+                    ");
+                    $stmtInsAnn->execute([$account['id'], $announceUri, (int)$origStatusId, $annCreatedAt]);
+                    $importedCount++;
+                    continue;
+                }
+
                 $object = null;
                 if ($activityType === 'Create' && isset($item['object'])) {
                     $object = $item['object'];

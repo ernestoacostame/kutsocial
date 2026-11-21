@@ -1,5 +1,5 @@
 {
-  "version": "2.1.12",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.12/kutsocial-v2.1.12.zip",
-  "changelog": "Filtra retoots huérfanos vacíos en perfiles, corrige filtros PostgreSQL y ordena por fecha real en getAccountStatuses()"
+  "version": "2.1.13",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.13/kutsocial-v2.1.13.zip",
+  "changelog": "Importa también boosts (Announce) al consultar el outbox de perfiles remotos"
 }
