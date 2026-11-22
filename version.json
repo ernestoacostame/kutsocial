@@ -1,5 +1,5 @@
 {
-  "version": "2.1.18",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.18/kutsocial-v2.1.18.zip",
-  "changelog": "Restaura el botón Ir Arriba / Nuevos Toots en el sidebar del tema Mastodon 5.0"
+  "version": "2.1.19",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.19/kutsocial-v2.1.19.zip",
+  "changelog": "Actualiza el favicon de KutSocial"
 }
