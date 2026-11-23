@@ -366,29 +366,18 @@ XML;
         $stmtFind->execute([$targetUri, $cleanTarget]);
         $matchingStatuses = $stmtFind->fetchAll();
 
-        // Si no se encuentra de forma directa, intentar búsqueda parcial en URI o contenido
-        if (empty($matchingStatuses)) {
-            $stmtFind2 = $db->prepare("SELECT id, account_id, uri FROM statuses WHERE uri LIKE ? OR content LIKE ?");
-            $stmtFind2->execute(['%' . basename($cleanTarget), '%' . $cleanTarget . '%']);
-            $matchingStatuses = $stmtFind2->fetchAll();
-        }
-
         if (empty($matchingStatuses)) {
             self::log("handleDelete: Publicación '$targetUri' no encontrada en DB local (quizá ya fue eliminada)");
             return;
         }
 
         $remoteAccount = !empty($actorUrl) ? self::getOrRegisterRemoteActor($actorUrl) : null;
-        $actorHost = !empty($actorUrl) ? parse_url($actorUrl, PHP_URL_HOST) : null;
 
         foreach ($matchingStatuses as $status) {
-            // 3. Verificar que el actor que envía el Delete sea el autor o pertenezca al mismo dominio
-            if ($remoteAccount && (int)$status['account_id'] !== (int)$remoteAccount['id']) {
-                $statusAcc = $db->query("SELECT domain FROM accounts WHERE id = " . (int)$status['account_id'])->fetch();
-                if (!$statusAcc || empty($actorHost) || strcasecmp((string)($statusAcc['domain'] ?? ''), (string)$actorHost) !== 0) {
-                    self::log("handleDelete: Rechazado borrado de status {$status['id']} porque el actor '$actorUrl' no es su autor");
-                    continue;
-                }
+            // 3. Verificar estrictamente que el actor que envía el Delete sea el autor
+            if (!$remoteAccount || (int)$status['account_id'] !== (int)$remoteAccount['id']) {
+                self::log("handleDelete: Rechazado borrado de status {$status['id']} porque el actor '$actorUrl' no es su autor");
+                continue;
             }
 
             $statusId = (int)$status['id'];
@@ -1209,7 +1198,7 @@ XML;
 
             $preferredUsername = $json['preferredUsername'] ?? $usernameCandidate;
             $displayName = $json['name'] ?? $preferredUsername;
-            $note = $json['summary'] ?? '';
+            $note = \KutSocial\SecurityHelper::sanitizeRemoteHtml((string)($json['summary'] ?? ''));
             $inbox = $json['inbox'] ?? '';
 
             $publicKeyPem = '';
@@ -1274,8 +1263,8 @@ XML;
                     $attType = $attachment['type'] ?? '';
                     if ($attType === 'PropertyValue') {
                         $fields[] = [
-                            'name' => $attachment['name'] ?? '',
-                            'value' => $attachment['value'] ?? '',
+                            'name' => strip_tags((string)($attachment['name'] ?? '')),
+                            'value' => \KutSocial\SecurityHelper::sanitizeRemoteHtml((string)($attachment['value'] ?? '')),
                             'verified_at' => null
                         ];
                     }
@@ -1502,11 +1491,20 @@ XML;
 
         self::log("verifyHttpSignature: keyId '{$parts['keyId']}'");
 
-        // Obtener la llave pública del actor remoto
-        $publicKey = self::fetchRemotePublicKey($parts['keyId']);
+        // Obtener la llave pública del actor remoto y verificar su owner
+        $keyOwner = null;
+        $publicKey = self::fetchRemotePublicKey($parts['keyId'], $keyOwner);
         if (!$publicKey) {
             self::log("verifyHttpSignature: No se pudo obtener la clave pública remota para keyId '{$parts['keyId']}'");
             return false;
+        }
+        if (is_array($activity) && !empty($activity['actor']) && $keyOwner) {
+            $actActor = is_array($activity['actor']) ? ($activity['actor']['id'] ?? '') : (string)$activity['actor'];
+            $actType = (string)($activity['type'] ?? '');
+            if ($actActor !== '' && $keyOwner !== $actActor && $actType !== 'Announce') {
+                self::log("verifyHttpSignature: Owner de clave ('$keyOwner') no coincide con actor ('$actActor')");
+                return false;
+            }
         }
 
         // Construir string firmado
@@ -1561,7 +1559,7 @@ XML;
         return $ok === 1;
     }
 
-    private static function fetchRemotePublicKey(string $keyId): ?string {
+    private static function fetchRemotePublicKey(string $keyId, ?string &$keyOwner = null): ?string {
         self::log("fetchRemotePublicKey: Consultando keyId: $keyId");
         try {
             // Si el keyId es local o ya está registrado, evitar petición de red/loopback
@@ -1652,10 +1650,12 @@ XML;
             $json = json_decode($resp, true);
             if (is_array($json)) {
                 if (isset($json['publicKey']['publicKeyPem']) && is_string($json['publicKey']['publicKeyPem'])) {
+                    $keyOwner = (string)($json['publicKey']['owner'] ?? $json['id'] ?? '');
                     self::log("fetchRemotePublicKey: Clave pública encontrada en publicKey.publicKeyPem");
                     return $json['publicKey']['publicKeyPem'];
                 }
                 if (isset($json['publicKeyPem']) && is_string($json['publicKeyPem'])) {
+                    $keyOwner = (string)($json['owner'] ?? $json['id'] ?? '');
                     self::log("fetchRemotePublicKey: Clave pública encontrada en publicKeyPem de la raíz");
                     return $json['publicKeyPem'];
                 }
@@ -1688,6 +1688,9 @@ XML;
         }
 
         $url = "https://$domain/.well-known/webfinger?resource=acct:$username@$domain";
+        if (!\KutSocial\SecurityHelper::isSafeExternalUrl($url)) {
+            return null;
+        }
         self::log("resolveWebfinger: Resolviendo $acct vía $url");
 
         try {

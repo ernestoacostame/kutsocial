@@ -283,9 +283,9 @@ $renderFrontend = function() {
         window.KUTSOCIAL_I18N = {$i18nStrings};
         window.KUTSOCIAL_VERSION = '{$version}';
         window.KUTSOCIAL_CURRENT_USER = {$currentUserData};
-        window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
-        window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
-        window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
+        window.KUTSOCIAL_ACTIVE_SECTION = " . json_encode($section, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ";
+        window.KUTSOCIAL_CURRENT_TIMELINE = " . json_encode($currentTimeline, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ";
+        window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? json_encode($activeProfileViewId, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : "null") . ";
         window.KUTSOCIAL_ACTIVE_THREAD_ID = {$jsThreadId};
         window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
@@ -547,9 +547,9 @@ $renderPagesFrontend = function() {
         window.KUTSOCIAL_I18N = {$i18nStrings};
         window.KUTSOCIAL_VERSION = '{$version}';
         window.KUTSOCIAL_CURRENT_USER = {$currentUserData};
-        window.KUTSOCIAL_ACTIVE_SECTION = '{$section}';
-        window.KUTSOCIAL_CURRENT_TIMELINE = '{$currentTimeline}';
-        window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? "'$activeProfileViewId'" : "null") . ";
+        window.KUTSOCIAL_ACTIVE_SECTION = " . json_encode($section, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ";
+        window.KUTSOCIAL_CURRENT_TIMELINE = " . json_encode($currentTimeline, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) . ";
+        window.KUTSOCIAL_ACTIVE_PROFILE_VIEW_ID = " . ($activeProfileViewId ? json_encode($activeProfileViewId, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) : "null") . ";
         window.KUTSOCIAL_ACTIVE_THREAD_ID = {$jsThreadId};
         window.KUTSOCIAL_USER_LISTS = " . json_encode($userLists, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
         window.KUTSOCIAL_USER_COLLECTIONS = " . json_encode($userCollections, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ";
@@ -815,7 +815,16 @@ $router->get('/lang/:code', function($params) {
     $code = $params['code'] ?? 'es';
     \KutSocial\I18n::setLang($code);
     $referer = $_SERVER['HTTP_REFERER'] ?? '/';
-    header("Location: " . $referer);
+    $refParts = parse_url($referer);
+    $safeRedirect = '/';
+    if (is_array($refParts)) {
+        $refHost = $refParts['host'] ?? '';
+        $curHost = $_SERVER['HTTP_HOST'] ?? '';
+        if ($refHost === '' || strcasecmp($refHost, $curHost) === 0) {
+            $safeRedirect = ($refParts['path'] ?? '/') . (isset($refParts['query']) ? '?' . $refParts['query'] : '');
+        }
+    }
+    header("Location: " . $safeRedirect);
     exit;
 });
 

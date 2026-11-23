@@ -600,6 +600,11 @@ HTML;
 
         if (!$account || !password_verify($password, $account['password_hash'])) {
             \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: password verify failed for username=$username");
+            $eClientId = htmlspecialchars($clientId, ENT_QUOTES, 'UTF-8');
+            $eRedirectUri = htmlspecialchars($redirectUri, ENT_QUOTES, 'UTF-8');
+            $eResponseType = htmlspecialchars($responseType, ENT_QUOTES, 'UTF-8');
+            $eScope = htmlspecialchars($scope, ENT_QUOTES, 'UTF-8');
+            $eUsername = htmlspecialchars($username, ENT_QUOTES, 'UTF-8');
             $html = <<<HTML
 <!DOCTYPE html>
 <html lang="es">
@@ -698,14 +703,14 @@ HTML;
         <div class="error">Usuario o contraseña incorrectos.</div>
         
         <form method="POST" action="/oauth/authorize">
-            <input type="hidden" name="client_id" value="{$clientId}">
-            <input type="hidden" name="redirect_uri" value="{$redirectUri}">
-            <input type="hidden" name="response_type" value="{$responseType}">
-            <input type="hidden" name="scope" value="{$scope}">
+            <input type="hidden" name="client_id" value="{$eClientId}">
+            <input type="hidden" name="redirect_uri" value="{$eRedirectUri}">
+            <input type="hidden" name="response_type" value="{$eResponseType}">
+            <input type="hidden" name="scope" value="{$eScope}">
             
             <div class="form-group">
                 <label for="username">Usuario</label>
-                <input type="text" id="username" name="username" required value="{$username}">
+                <input type="text" id="username" name="username" required value="{$eUsername}">
             </div>
             
             <div class="form-group">
@@ -2679,6 +2684,9 @@ HTML;
      * Verifica de fondo si un enlace remoto enlaza de vuelta a este perfil con rel="me".
      */
     private static function verifyLinkRelation(string $url, string $username): bool {
+        if (!\KutSocial\SecurityHelper::isSafeExternalUrl($url)) {
+            return false;
+        }
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         
         $ch = curl_init($url);
@@ -2689,7 +2697,7 @@ HTML;
             CURLOPT_USERAGENT => 'KutSocial-LinkVerifier/1.0',
             CURLOPT_SSL_VERIFYPEER => \KutSocial\Database::verifySsl(),
             CURLOPT_SSL_VERIFYHOST => \KutSocial\Database::verifySsl() ? 2 : 0,
-            CURLOPT_FOLLOWLOCATION => true
+            CURLOPT_FOLLOWLOCATION => false
         ]);
         
         $html = curl_exec($ch);
@@ -3462,9 +3470,10 @@ HTML;
         $db = Database::connect();
         $whereClauses = [
             "s.id = ?",
-            "s.visibility = 'direct'"
+            "s.visibility = 'direct'",
+            "(s.account_id = ? OR EXISTS (SELECT 1 FROM mentions m WHERE m.status_id = s.id AND m.account_id = ?))"
         ];
-        $queryParams = [(int)$id];
+        $queryParams = [(int)$id, (int)$account['id'], (int)$account['id']];
 
         $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, null, null, null, 1);
         if (empty($rows)) {

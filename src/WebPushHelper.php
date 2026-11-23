@@ -261,6 +261,9 @@ class WebPushHelper {
                 'Authorization: vapid t=' . $jwt . ', k=' . $vapidPublicBase64
             ];
 
+            if (!\KutSocial\SecurityHelper::isSafeExternalUrl($endpoint)) {
+                return false;
+            }
             $ch = curl_init();
             curl_setopt($ch, CURLOPT_URL, $endpoint);
             curl_setopt($ch, CURLOPT_POST, true);

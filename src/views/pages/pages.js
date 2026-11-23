@@ -3549,9 +3549,8 @@ async function loadUsersList(type, accountId) {
             // Bio / resumen
             let bioHTML = '';
             if (user.note) {
-                const tmp = document.createElement('div');
-                tmp.innerHTML = user.note;
-                const plainBio = (tmp.textContent || tmp.innerText || '').trim();
+                const doc = new DOMParser().parseFromString(user.note, 'text/html');
+                const plainBio = (doc.body.textContent || '').trim();
                 if (plainBio) {
                     bioHTML = `<div class="user-list-bio">${escapeHTML(plainBio)}</div>`;
                 }
@@ -3777,7 +3776,7 @@ function renderProfileData(account) {
 
             const verifiedBadge = f.verified_at ? `<span class="verified-badge">✓</span>` : '';
             card.innerHTML = `
-                <span class="field-label" title="${f.name}">${f.name}</span>
+                <span class="field-label" title="${escapeHTML(f.name || '')}">${escapeHTML(f.name || '')}</span>
                 <span class="field-value">${valHTML} ${verifiedBadge}</span>
             `;
             fieldsGrid.appendChild(card);

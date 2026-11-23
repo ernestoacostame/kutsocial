@@ -39,6 +39,10 @@ try {
     exit("Fallo de base de datos en worker: " . $e->getMessage() . "\n");
 }
 
+if (php_sapi_name() !== 'cli') {
+    http_response_code(403);
+    exit('Forbidden: CLI only');
+}
 // Mecanismo de bloqueo para evitar ejecuciones concurrentes de cron.php
 $dataDir = __DIR__ . '/data';
 if (!is_dir($dataDir)) {
