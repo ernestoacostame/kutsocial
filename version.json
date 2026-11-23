@@ -1,5 +1,5 @@
 {
-  "version": "2.1.20",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.20/kutsocial-v2.1.20.zip",
-  "changelog": "Security hardening: fix auth, SSRF, XSS, uploads, and access controls"
+  "version": "2.1.21",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.21/kutsocial-v2.1.21.zip",
+  "changelog": "Allow login with email, @handle, or case-insensitive username"
 }
