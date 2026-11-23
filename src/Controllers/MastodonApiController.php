@@ -594,8 +594,12 @@ HTML;
         \KutSocial\Controllers\ActivityPubController::log("handleAuthorize: username=$username, clientId=$clientId, redirectUri=$redirectUri");
 
         $db = Database::connect();
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
-        $stmt->execute([$username]);
+        $loginId = $username;
+        if (str_starts_with($loginId, '@')) {
+            $loginId = explode('@', ltrim($loginId, '@'))[0];
+        }
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE (LOWER(username) = LOWER(?) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?))) AND (domain IS NULL OR domain = '') LIMIT 1");
+        $stmt->execute([$loginId, $loginId]);
         $account = $stmt->fetch();
 
         if (!$account || !password_verify($password, $account['password_hash'])) {
@@ -903,8 +907,12 @@ HTML;
                 }
             }
 
-            $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL LIMIT 1");
-            $stmt->execute([$username]);
+            $loginId = trim((string)$username);
+            if (str_starts_with($loginId, '@')) {
+                $loginId = explode('@', ltrim($loginId, '@'))[0];
+            }
+            $stmt = $db->prepare("SELECT * FROM accounts WHERE (LOWER(username) = LOWER(?) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?))) AND (domain IS NULL OR domain = '') LIMIT 1");
+            $stmt->execute([$loginId, $loginId]);
             $account = $stmt->fetch();
 
             if (!$account || !password_verify($password, $account['password_hash'])) {

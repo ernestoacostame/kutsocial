@@ -414,12 +414,16 @@ class AdminController {
             exit;
         }
 
-        // Paso normal: Usuario y contraseña
+        // Paso normal: Usuario o correo y contraseña
         $username = trim($_POST['username'] ?? '');
         $password = $_POST['password'] ?? '';
+        $loginId = $username;
+        if (str_starts_with($loginId, '@')) {
+            $loginId = explode('@', ltrim($loginId, '@'))[0];
+        }
 
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE username = ? AND domain IS NULL AND role IN ('admin', 'owner') LIMIT 1");
-        $stmt->execute([$username]);
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE (LOWER(username) = LOWER(?) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?))) AND (domain IS NULL OR domain = '') AND role IN ('admin', 'owner') LIMIT 1");
+        $stmt->execute([$loginId, $loginId]);
         $user = $stmt->fetch();
 
         if ($user && password_verify($password, $user['password_hash'])) {
