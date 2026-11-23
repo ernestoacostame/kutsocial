@@ -1,5 +1,5 @@
 {
-  "version": "2.1.19",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.19/kutsocial-v2.1.19.zip",
-  "changelog": "Actualiza el favicon de KutSocial"
+  "version": "2.1.20",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.20/kutsocial-v2.1.20.zip",
+  "changelog": "Security hardening: fix auth, SSRF, XSS, uploads, and access controls"
 }
