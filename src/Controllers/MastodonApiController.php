@@ -28,6 +28,7 @@ class MastodonApiController {
     private static array $memoExclusiveTargets = [];
     private static array $memoUserMutes = [];
     private static array $memoUserBlocks = [];
+    private static int $hydrateBudget = 5;
 
     /**
      * Endpoint GET /api/v1/instance
@@ -5637,6 +5638,28 @@ HTML;
         }
  
         $rawStatusContent = $row['status_content'] ?? $row['content'] ?? '';
+
+        $isRemote = !empty($row['domain']) && strtolower(explode(':', $row['domain'])[0]) !== strtolower(explode(':', $domain)[0]);
+        if ($isRemote && !empty($row['status_uri']) && trim(strip_tags((string)$rawStatusContent)) === '' && $reblog === null && $quote === null && empty($attachments) && empty($poll) && self::$hydrateBudget > 0) {
+            self::$hydrateBudget--;
+            $hydrated = ActivityPubController::hydrateEmptyStatus($statusId, (string)$row['status_uri']);
+            if (is_array($hydrated)) {
+                if (!empty($hydrated['content'])) {
+                    $rawStatusContent = $hydrated['content'];
+                    $hasOwnContent = true;
+                }
+                if (!empty($hydrated['reblog_of_id'])) {
+                    $origRow = self::fetchStatusRow($db, (int)$hydrated['reblog_of_id']);
+                    if ($origRow) {
+                        if ($hasOwnContent) {
+                            $quote = self::formatStatus($origRow, $currentAccountId);
+                        } else {
+                            $reblog = self::formatStatus($origRow, $currentAccountId);
+                        }
+                    }
+                }
+            }
+        }
 
         $formattedContent = (!empty($row['domain']) || str_contains($rawStatusContent, '<p>')) 
             ? $rawStatusContent 

@@ -639,14 +639,7 @@ XML;
             return;
         }
 
-        $content = \KutSocial\SecurityHelper::sanitizeRemoteHtml((string)($object['content'] ?? ''));
-        if (empty($content) && !empty($object['summary'])) {
-            $content = $object['summary'];
-        }
-        if (!empty($object['name']) && is_string($object['name']) && !str_contains($content, $object['name'])) {
-            $content = '<strong>' . htmlspecialchars($object['name'], ENT_QUOTES, 'UTF-8') . '</strong><br>' . $content;
-        }
-        $content = \KutSocial\SecurityHelper::sanitizeRemoteHtml((string)$content);
+        $content = self::extractObjectContent($object);
 
         $createdAt = $rawDate ?? date('c');
 
@@ -852,9 +845,17 @@ XML;
             }
         }
 
+        $quoteUrl = self::extractQuoteUrl($object);
+        $reblogOfId = null;
+        if ($quoteUrl) {
+            try {
+                $reblogOfId = self::fetchAndRegisterRemoteStatus($quoteUrl);
+            } catch (\Throwable $e) {}
+        }
+
         $stmtIns = $db->prepare("
-            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, in_reply_to_url, in_reply_to_account_id, emojis)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, in_reply_to_url, in_reply_to_account_id, emojis, reblog_of_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmtIns->execute([
             $remoteAccount['id'],
@@ -866,7 +867,8 @@ XML;
             $inReplyToId,
             $inReplyToUri,
             $inReplyToAccountId,
-            $emojisJson
+            $emojisJson,
+            $reblogOfId
         ]);
 
         $newStatusId = Database::lastInsertId($db, 'statuses');
@@ -1848,15 +1850,29 @@ XML;
 
     private static function handleAnnounce(array $localAccount, array $activity): void {
         $actorUrl = $activity['actor'] ?? '';
-        $objectUrl = $activity['object'] ?? '';
-        if (empty($actorUrl) || empty($objectUrl)) return;
+        $rawObject = $activity['object'] ?? '';
+        if (empty($actorUrl) || empty($rawObject)) return;
 
         $remoteAccount = self::getOrRegisterRemoteActor($actorUrl);
         if (!$remoteAccount) return;
 
         $db = Database::connect();
-        
-        $origStatusId = self::fetchAndRegisterRemoteStatus($objectUrl);
+        $origStatusId = null;
+        if (is_array($rawObject)) {
+            $objectUrl = (string)($rawObject['id'] ?? ($rawObject['url'] ?? ''));
+            if (!empty($rawObject['type']) && !empty($rawObject['attributedTo'])) {
+                $attr = is_array($rawObject['attributedTo']) ? ($rawObject['attributedTo'][0] ?? '') : $rawObject['attributedTo'];
+                if ($attr) {
+                    $origStatusId = self::saveRemoteStatus($rawObject, (string)$attr);
+                }
+            }
+            if (!$origStatusId && $objectUrl !== '') {
+                $origStatusId = self::fetchAndRegisterRemoteStatus($objectUrl);
+            }
+        } else {
+            $objectUrl = (string)$rawObject;
+            $origStatusId = self::fetchAndRegisterRemoteStatus($objectUrl);
+        }
         if (!$origStatusId) return;
 
         $uri = $activity['id'] ?? ($objectUrl . '/reblog/' . bin2hex(random_bytes(4)));
@@ -1877,6 +1893,95 @@ XML;
         self::log("handleAnnounce: Registrada actividad de Announce de actor {$remoteAccount['username']} para post {$origStatusId}");
 
         \KutSocial\NotificationHelper::notifyReblog((int)$origStatusId, (int)$remoteAccount['id']);
+    }
+
+    private static function extractObjectContent(array $object): string {
+        $raw = (string)($object['content'] ?? '');
+        if (trim(strip_tags($raw)) === '' && !empty($object['contentMap']) && is_array($object['contentMap'])) {
+            $raw = (string)($object['contentMap']['es'] ?? $object['contentMap']['en'] ?? reset($object['contentMap']) ?: '');
+        }
+        if (trim(strip_tags($raw)) === '' && !empty($object['summary']) && is_string($object['summary'])) {
+            $raw = $object['summary'];
+        }
+        $content = \KutSocial\SecurityHelper::sanitizeRemoteHtml($raw);
+        if (!empty($object['name']) && is_string($object['name']) && !str_contains($content, $object['name'])) {
+            $content = '<strong>' . htmlspecialchars($object['name'], ENT_QUOTES, 'UTF-8') . '</strong><br>' . $content;
+        }
+        return \KutSocial\SecurityHelper::sanitizeRemoteHtml($content);
+    }
+
+    private static function extractQuoteUrl(array $object): ?string {
+        foreach (['quote', 'quoteUrl', 'quoteUri', '_misskey_quote'] as $key) {
+            if (empty($object[$key])) continue;
+            $val = $object[$key];
+            if (is_string($val) && filter_var($val, FILTER_VALIDATE_URL)) {
+                return $val;
+            }
+            if (is_array($val)) {
+                $nested = $val['id'] ?? $val['url'] ?? null;
+                if (is_string($nested) && filter_var($nested, FILTER_VALIDATE_URL)) {
+                    return $nested;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Intenta resolver y rellenar en DB un estado remoto que quedó vacío o sin reblog_of_id.
+     */
+    public static function hydrateEmptyStatus(int $statusId, string $uri): ?array {
+        if ($statusId <= 0 || empty($uri)) return null;
+        try {
+            $resp = self::executeSignedGet($uri);
+            if (!$resp) return null;
+            $json = json_decode($resp, true);
+            if (!is_array($json)) return null;
+
+            $db = Database::connect();
+            $type = $json['type'] ?? '';
+
+            if ($type === 'Announce' && !empty($json['object'])) {
+                $obj = $json['object'];
+                $origId = null;
+                if (is_string($obj) && filter_var($obj, FILTER_VALIDATE_URL)) {
+                    $origId = self::fetchAndRegisterRemoteStatus($obj);
+                } elseif (is_array($obj)) {
+                    $attr = $obj['attributedTo'] ?? '';
+                    if (is_array($attr)) $attr = $attr[0] ?? '';
+                    if ($attr) {
+                        $origId = self::saveRemoteStatus($obj, (string)$attr);
+                    }
+                    if (!$origId && !empty($obj['id']) && is_string($obj['id'])) {
+                        $origId = self::fetchAndRegisterRemoteStatus($obj['id']);
+                    }
+                }
+                if ($origId && $origId !== $statusId) {
+                    $db->prepare("UPDATE statuses SET reblog_of_id = ? WHERE id = ?")->execute([$origId, $statusId]);
+                    return ['reblog_of_id' => $origId];
+                }
+                return null;
+            }
+
+            $object = ($type === 'Create' && is_array($json['object'] ?? null)) ? $json['object'] : $json;
+            $objType = $object['type'] ?? '';
+            $supported = ['Note', 'Question', 'Audio', 'Article', 'Page', 'Video', 'Document', 'Event'];
+            if (!in_array($objType, $supported, true)) return null;
+
+            $content = self::extractObjectContent($object);
+            $quoteUrl = self::extractQuoteUrl($object);
+            $reblogOfId = $quoteUrl ? self::fetchAndRegisterRemoteStatus($quoteUrl) : null;
+            if ($reblogOfId === $statusId) $reblogOfId = null;
+
+            if ($content !== '' || $reblogOfId !== null) {
+                $db->prepare("UPDATE statuses SET content = CASE WHEN content = '' THEN ? ELSE content END, reblog_of_id = COALESCE(reblog_of_id, ?) WHERE id = ?")
+                   ->execute([$content, $reblogOfId, $statusId]);
+                return ['content' => $content, 'reblog_of_id' => $reblogOfId];
+            }
+        } catch (\Throwable $e) {
+            self::log("hydrateEmptyStatus($statusId) Error: " . $e->getMessage());
+        }
+        return null;
     }
 
     public static function fetchAndRegisterRemoteStatus(string $url, bool $forceRefresh = false, int $depth = 0): ?int {
