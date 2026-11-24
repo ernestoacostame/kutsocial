@@ -1,5 +1,5 @@
 {
-  "version": "2.1.37",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.37/kutsocial-v2.1.37.zip",
-  "changelog": "Remove border from Home filter button and ensure popover toggle works reliably"
+  "version": "2.1.38",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.38/kutsocial-v2.1.38.zip",
+  "changelog": "Fix mixed ES/EN strings in admin panel and frontend views"
 }
