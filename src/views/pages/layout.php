@@ -36,6 +36,21 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
     #tab-users-list { display: none; }
     #modal-composer .composer-card { border: none !important; margin-bottom: 0 !important; padding: 0 !important; background: transparent !important; }
     </style>
+    <script>
+    (function () {
+        try {
+            var t = localStorage.getItem('kutsocial_token') || window.KUTSOCIAL_AUTO_TOKEN;
+            if (!t) document.documentElement.classList.add('is-guest');
+        } catch (e) { document.documentElement.classList.add('is-guest'); }
+    })();
+    </script>
+    <style>
+    html.is-guest .auth-only,
+    html.is-guest #home-timeline-header,
+    html.is-guest #tab-feed .composer-card,
+    html.is-guest #modal-composer { display: none !important; }
+    html:not(.is-guest) .guest-only { display: none !important; }
+    </style>
 </head>
 <body>
 
@@ -93,7 +108,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                 <!-- Barra de iconos superior (horizontal expandida, vertical al cerrar) -->
                 <div class="m5-icon-bar">
                     <?php if (in_array('home', $enabledNavItems, true)): ?>
-                    <a href="<?= $basePath ?>/home" class="m5-icon-btn <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>" title="<?= __('nav_home') ?>">
+                    <a href="<?= $basePath ?>/home" class="m5-icon-btn auth-only <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>" title="<?= __('nav_home') ?>">
                         <span class="material-icons-outlined">home</span>
                     </a>
                     <?php endif; ?>
@@ -101,17 +116,17 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                         <span class="material-icons-outlined">search</span>
                     </button>
                     <?php if (in_array('direct', $enabledNavItems, true)): ?>
-                    <a href="<?= $basePath ?>/direct" class="m5-icon-btn <?= ($section === 'feed' && $currentTimeline === 'direct') ? 'active' : '' ?>" title="<?= __('nav_direct') ?>">
+                    <a href="<?= $basePath ?>/direct" class="m5-icon-btn auth-only <?= ($section === 'feed' && $currentTimeline === 'direct') ? 'active' : '' ?>" title="<?= __('nav_direct') ?>">
                         <span class="material-icons-outlined">mail_outline</span>
                     </a>
                     <?php endif; ?>
                     <?php if (in_array('notifications', $enabledNavItems, true)): ?>
-                    <a href="<?= $basePath ?>/notifications" class="m5-icon-btn <?= ($section === 'notifications') ? 'active' : '' ?>" title="<?= __('nav_notifications') ?>" style="position: relative;">
+                    <a href="<?= $basePath ?>/notifications" class="m5-icon-btn auth-only <?= ($section === 'notifications') ? 'active' : '' ?>" title="<?= __('nav_notifications') ?>" style="position: relative;">
                         <span class="material-icons-outlined">notifications</span>
                         <span id="m5-notif-dot" class="m5-notif-dot" style="display: none;"></span>
                     </a>
                     <?php endif; ?>
-                    <div class="m5-account-wrap" style="position: relative;">
+                    <div class="m5-account-wrap auth-only" style="position: relative;">
                         <button type="button" class="m5-icon-btn m5-avatar-btn" onclick="toggleM5AccountMenu(event)" title="<?= __('nav_profile') ?>">
                             <img id="m5-my-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.svg') ?>" alt="Avatar">
                         </button>
@@ -172,7 +187,11 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                 </div>
 
                 <!-- Botón principal New Post -->
-                <button type="button" class="m5-new-post-btn" onclick="openM5NewPost()" title="<?= __('publish', 'Publicar') ?>">
+                <button type="button" class="m5-new-post-btn guest-only" onclick="showLoginModal()" title="<?= __('sign_in', 'Iniciar sesión') ?>">
+                    <span class="material-icons-outlined">login</span>
+                    <span class="m5-new-post-label"><?= __('sign_in', 'Iniciar sesión') ?></span>
+                </button>
+                <button type="button" class="m5-new-post-btn auth-only" onclick="openM5NewPost()" title="<?= __('publish', 'Publicar') ?>">
                     <span class="material-icons-outlined">edit</span>
                     <span class="m5-new-post-label"><?= __('publish', 'Publicar') ?></span>
                 </button>
@@ -185,7 +204,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
 
                 <ul class="nav-menu">
                     <?php if (in_array('home', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/home" id="nav-home" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'home') ? 'active' : '' ?>" title="<?= __('nav_home') ?>">
                             <span class="material-icons-outlined">home</span> <span class="nav-label"><?= __('nav_home') ?></span>
                         </a>
@@ -197,7 +216,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                         </a>
                     </li>
                     <?php if (in_array('catchup', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/catchup" id="nav-catchup" class="nav-link <?= ($section === 'catchup') ? 'active' : '' ?>" title="<?= __('nav_catchup') ?>">
                             <span class="material-icons-outlined">bolt</span> <span class="nav-label"><?= __('nav_catchup') ?></span>
                         </a>
@@ -218,7 +237,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('notifications', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/notifications" id="nav-notifications" class="nav-link <?= ($section === 'notifications') ? 'active' : '' ?>" title="<?= __('nav_notifications') ?>">
                             <span class="material-icons-outlined">notifications</span> <span class="nav-label"><?= __('nav_notifications') ?></span>
                             <span id="nav-notifications-count" class="notification-badge" style="display: none; background: var(--error, #ef4444); color: white; border-radius: 10px; padding: 2px 6px; font-size: 11px; font-weight: bold; margin-left: auto;">0</span>
@@ -226,56 +245,56 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('bookmarks', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/bookmarks" id="nav-bookmarks" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'bookmarks') ? 'active' : '' ?>" title="<?= __('nav_bookmarks') ?>">
                             <span class="material-icons-outlined">bookmark_border</span> <span class="nav-label"><?= __('nav_bookmarks') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('direct', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/direct" id="nav-direct" class="nav-link <?= ($section === 'feed' && $currentTimeline === 'direct') ? 'active' : '' ?>" title="<?= __('nav_direct') ?>">
                             <span class="material-icons-outlined">mail_outline</span> <span class="nav-label"><?= __('nav_direct') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('lists', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/lists" id="nav-lists" class="nav-link <?= ($section === 'lists') ? 'active' : '' ?>" title="<?= __('nav_lists') ?>">
                             <span class="material-icons-outlined">list</span> <span class="nav-label"><?= __('nav_lists') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('collections', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/collections" id="nav-collections" class="nav-link <?= ($section === 'collections') ? 'active' : '' ?>" title="<?= __('nav_collections') ?>">
                             <span class="material-icons-outlined">folder</span> <span class="nav-label"><?= __('nav_collections') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('hashtags', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/followed-hashtags" id="nav-hashtags" class="nav-link <?= ($section === 'followed-hashtags') ? 'active' : '' ?>" title="<?= __('nav_hashtags') ?>">
                             <span class="material-icons-outlined">tag</span> <span class="nav-label"><?= __('nav_hashtags') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('profile', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/@<?= htmlspecialchars($localUser['username'] ?? '') ?>" id="nav-profile" class="nav-link <?= ($section === 'profile-view' && $activeProfileViewId === ($localUser['id'] ?? null)) ? 'active' : '' ?>" title="<?= __('nav_profile') ?>">
                             <span class="material-icons-outlined">person</span> <span class="nav-label"><?= __('nav_profile') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('settings', $enabledNavItems, true)): ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/profile" id="nav-settings" class="nav-link <?= ($section === 'profile') ? 'active' : '' ?>" title="<?= __('nav_settings') ?>">
                             <span class="material-icons-outlined">tune</span> <span class="nav-label"><?= __('nav_settings') ?></span>
                         </a>
                     </li>
                     <?php endif; ?>
                     <?php if (in_array('admin', $enabledNavItems, true)): ?>
-                    <li class="nav-item" id="nav-admin-settings">
+                    <li class="nav-item auth-only" id="nav-admin-settings">
                         <a href="/admin/update" class="nav-link" title="<?= __('nav_admin') ?>">
                             <span class="material-icons-outlined">settings</span> <span class="nav-label"><?= __('nav_admin') ?></span>
                         </a>
@@ -301,7 +320,10 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
             </div>
 
             <!-- Perfil del usuario actual -->
-            <div class="user-profile-summary" style="cursor: pointer;" onclick="const u = (typeof currentProfileData !== 'undefined' && currentProfileData?.username) ? currentProfileData.username : '<?= htmlspecialchars($localUser['username'] ?? '') ?>'; if(u) window.location.href='<?= $basePath ?>/@' + u;">
+            <div class="user-profile-summary-guest guest-only" style="padding: 12px 0;">
+                <button type="button" onclick="showLoginModal()" style="margin: 0; width: 100%; padding: 12px; font-weight: 600; background: var(--primary); border: none; border-radius: 10px; color: white; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;"><span class="material-icons-outlined">login</span> <?= __('sign_in', 'Iniciar sesión') ?></button>
+            </div>
+            <div class="user-profile-summary auth-only" style="cursor: pointer;" onclick="const u = (typeof currentProfileData !== 'undefined' && currentProfileData?.username) ? currentProfileData.username : '<?= htmlspecialchars($localUser['username'] ?? '') ?>'; if(u) window.location.href='<?= $basePath ?>/@' + u;">
                 <img id="my-avatar" class="user-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.svg') ?>" alt="Mi Avatar">
                 <div class="user-info">
                     <div id="my-display-name" class="user-name"><?= htmlspecialchars($localUser['display_name'] ?: ($localUser['username'] ?? 'Cargando...')) ?></div>

@@ -397,12 +397,7 @@ function initPublicView() {
         el.style.display = 'none';
     });
 
-    const newPostBtn = document.querySelector('.m5-new-post-btn');
-    if (newPostBtn) {
-        newPostBtn.onclick = () => showLoginModal();
-        newPostBtn.title = __('sign_in', 'Iniciar sesión');
-        newPostBtn.innerHTML = `<span class="material-icons-outlined">login</span><span class="m5-new-post-label">${__('sign_in', 'Iniciar sesión')}</span>`;
-    }
+    document.documentElement.classList.add('is-guest');
 
     // Asegurar que Explorar, Timeline Local y Federación Pública estén visibles para visitantes
     const linksToShow = ['nav-explore', 'nav-local', 'nav-public'];
@@ -621,6 +616,7 @@ window.addEventListener('popstate', () => {
 
 // Inicializar Aplicación Autenticada
 async function initApp() {
+    document.documentElement.classList.remove('is-guest');
     document.getElementById('login-container').style.display = 'none';
     document.getElementById('app-container').style.display = 'flex';
 
