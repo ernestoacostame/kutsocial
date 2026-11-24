@@ -1,5 +1,5 @@
 {
-  "version": "2.1.44",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.44/kutsocial-v2.1.44.zip",
-  "changelog": "Guest mode: hide all logged-in sidebar items before render and show only a Sign In button"
+  "version": "2.1.45",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.45/kutsocial-v2.1.45.zip",
+  "changelog": "Fix duplicate Sign In button in Mastodon theme guest mode"
 }
