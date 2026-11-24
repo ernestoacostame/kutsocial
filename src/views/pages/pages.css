@@ -2856,3 +2856,185 @@ body.composer-zen-active {
 
 
 
+
+/* === Mastodon-inspired Account Menu, Home Filters & Explore === */
+.m5-menu-section-label {
+    padding: 6px 14px 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+}
+
+.home-filter-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    margin-bottom: 12px;
+    background: var(--card-bg, rgba(255,255,255,0.03));
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+}
+
+.home-filter-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+.home-filter-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: rgba(255,255,255,0.05);
+    color: var(--text-color);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+}
+.home-filter-btn:hover { background: rgba(255,255,255,0.1); }
+
+.home-filter-popover {
+    position: absolute;
+    right: 0;
+    top: 42px;
+    width: 220px;
+    background: #181b24;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 8px 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+    z-index: 200;
+}
+
+.home-filter-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    font-size: 13.5px;
+    color: var(--text-color);
+    cursor: pointer;
+    gap: 10px;
+}
+.home-filter-row input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary, #6366f1);
+    cursor: pointer;
+}
+
+.explore-page { width: 100%; }
+.explore-header {
+    background: var(--card-bg, rgba(255,255,255,0.03));
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 16px 16px 0;
+    margin-bottom: 14px;
+}
+.explore-title {
+    margin: 0 0 12px;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+}
+.explore-search-form {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+}
+.explore-search-form input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-color);
+    font-size: 14px;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+.explore-tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+}
+.explore-tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    padding: 10px 6px;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 0;
+}
+.explore-tab-btn.active {
+    color: var(--text-color);
+    border-bottom-color: var(--primary, #6366f1);
+}
+.explore-tag-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color);
+    text-decoration: none;
+    color: inherit;
+    background: var(--card-bg, rgba(255,255,255,0.02));
+}
+.explore-tag-row:hover { background: rgba(255,255,255,0.05); }
+.explore-news-hero {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    overflow: hidden;
+    margin-bottom: 12px;
+    background: var(--card-bg, rgba(255,255,255,0.03));
+}
+.explore-news-hero img {
+    width: 100%;
+    max-height: 280px;
+    object-fit: cover;
+    display: block;
+}
+.explore-news-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border-color);
+    text-decoration: none;
+    color: inherit;
+    background: var(--card-bg, rgba(255,255,255,0.02));
+}
+.explore-news-row:hover { background: rgba(255,255,255,0.05); }
+.explore-news-thumb {
+    width: 84px;
+    height: 84px;
+    border-radius: 10px;
+    object-fit: cover;
+    flex-shrink: 0;
+}
+.explore-posts-badge {
+    display: inline-block;
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.08);
+    color: var(--text-muted);
+}

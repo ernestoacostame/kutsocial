@@ -3655,6 +3655,18 @@ HTML;
             self::buildHomeTimelineWhereCondition($account, $queryParams)
         ];
 
+        $showBoosts = ($_GET['show_boosts'] ?? '1') !== '0';
+        $showReplies = ($_GET['show_replies'] ?? '1') !== '0';
+        $showQuotes = ($_GET['show_quotes'] ?? '1') !== '0';
+
+        if (!$showBoosts) {
+            $whereClauses[] = "s.reblog_of_id IS NULL";
+        }
+        if (!$showReplies) {
+            $whereClauses[] = "s.in_reply_to_id IS NULL";
+        }
+        $whereClauses[] = "NOT EXISTS (SELECT 1 FROM moderation_blocks mb WHERE mb.type = 'muted_conversation' AND mb.value = CAST(s.id AS TEXT))";
+
         if ($maxId !== null) {
             $whereClauses[] = "s.id < ?";
             $queryParams[] = $maxId;
@@ -3671,6 +3683,9 @@ HTML;
         $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $timeline = self::formatStatusesBatch($rows, (int)$account['id']);
+        if (!$showQuotes) {
+            $timeline = array_values(array_filter($timeline, fn($st) => empty($st['quote'])));
+        }
 
         self::setLinkHeader($timeline);
 
@@ -9706,6 +9721,198 @@ HTML;
         }
 
         Router::json($reports);
+    }
+
+    /**
+     * Endpoint GET /api/v1/trends/tags
+     */
+    public static function getTrendingTags(): void {
+        $db = Database::connect();
+        $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? min(30, max(1, (int)$_GET['limit'])) : 15;
+        $rows = $db->query("SELECT id, account_id, content, created_at FROM statuses WHERE visibility = 'public' AND reblog_of_id IS NULL ORDER BY id DESC LIMIT 400")->fetchAll(\PDO::FETCH_ASSOC);
+
+        $today = gmdate('Y-m-d');
+        $yesterday = gmdate('Y-m-d', strtotime('-1 day'));
+        $todayTs = strtotime($today . ' 00:00:00 UTC');
+        $yesterdayTs = strtotime($yesterday . ' 00:00:00 UTC');
+
+        $tags = [];
+        foreach ($rows as $r) {
+            $text = strip_tags((string)($r['content'] ?? ''));
+            if (!preg_match_all('/#([\p{L}\p{N}_]{2,40})/u', $text, $m)) continue;
+            $dayKey = substr((string)($r['created_at'] ?? ''), 0, 10);
+            $accId = (string)($r['account_id'] ?? '');
+            foreach (array_unique($m[1]) as $rawTag) {
+                $key = mb_strtolower($rawTag, 'UTF-8');
+                if (!isset($tags[$key])) {
+                    $tags[$key] = [
+                        'name' => $rawTag,
+                        'total_uses' => 0,
+                        'accounts' => [],
+                        'days' => [],
+                    ];
+                }
+                $tags[$key]['total_uses']++;
+                if ($accId !== '') $tags[$key]['accounts'][$accId] = true;
+                if ($dayKey !== '') {
+                    if (!isset($tags[$key]['days'][$dayKey])) $tags[$key]['days'][$dayKey] = ['uses' => 0, 'accounts' => []];
+                    $tags[$key]['days'][$dayKey]['uses']++;
+                    if ($accId !== '') $tags[$key]['days'][$dayKey]['accounts'][$accId] = true;
+                }
+            }
+        }
+
+        uasort($tags, function($a, $b) {
+            $cmp = count($b['accounts']) <=> count($a['accounts']);
+            return $cmp !== 0 ? $cmp : ($b['total_uses'] <=> $a['total_uses']);
+        });
+
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $out = [];
+        foreach (array_slice($tags, 0, $limit) as $t) {
+            $history = [];
+            for ($i = 0; $i < 7; $i++) {
+                $d = gmdate('Y-m-d', strtotime("-{$i} days"));
+                $dTs = strtotime($d . ' 00:00:00 UTC');
+                $u = $t['days'][$d]['uses'] ?? 0;
+                $a = isset($t['days'][$d]['accounts']) ? count($t['days'][$d]['accounts']) : 0;
+                $history[] = ['day' => (string)$dTs, 'uses' => (string)$u, 'accounts' => (string)$a];
+            }
+            $out[] = [
+                'name' => $t['name'],
+                'url' => $scheme . '://' . $host . '/tag_' . urlencode($t['name']),
+                'history' => $history,
+                'total_accounts' => count($t['accounts']),
+                'total_uses' => $t['total_uses'],
+            ];
+        }
+        Router::json($out);
+    }
+
+    /**
+     * Endpoint GET /api/v1/trends/statuses
+     */
+    public static function getTrendingStatuses(): void {
+        $db = Database::connect();
+        $account = self::getAuthenticatedAccount();
+        $viewerId = $account ? (int)$account['id'] : null;
+        $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? min(40, max(1, (int)$_GET['limit'])) : 20;
+
+        $whereClauses = ["s.visibility = 'public'", "s.reblog_of_id IS NULL"];
+        $queryParams = [];
+        $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, null, null, null, 80);
+        usort($rows, function($a, $b) {
+            $scoreA = ((int)($a['favourites_count'] ?? 0)) + ((int)($a['reblogs_count'] ?? 0) * 2) + ((int)($a['replies_count'] ?? 0));
+            $scoreB = ((int)($b['favourites_count'] ?? 0)) + ((int)($b['reblogs_count'] ?? 0) * 2) + ((int)($b['replies_count'] ?? 0));
+            if ($scoreB !== $scoreA) return $scoreB <=> $scoreA;
+            return (int)$b['id'] <=> (int)$a['id'];
+        });
+        $rows = array_slice($rows, 0, $limit);
+        Router::json(self::formatStatusesBatch($rows, $viewerId));
+    }
+
+    /**
+     * Endpoint GET /api/v1/trends/links
+     */
+    public static function getTrendingLinks(): void {
+        $db = Database::connect();
+        $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? min(30, max(1, (int)$_GET['limit'])) : 15;
+        $rows = $db->query("SELECT id, account_id, content, card_json, created_at FROM statuses WHERE visibility = 'public' AND card_json IS NOT NULL AND card_json != '' ORDER BY id DESC LIMIT 300")->fetchAll(\PDO::FETCH_ASSOC);
+
+        $links = [];
+        foreach ($rows as $r) {
+            $card = json_decode((string)$r['card_json'], true);
+            if (!is_array($card) || empty($card['url']) || empty($card['title'])) continue;
+            $u = $card['url'];
+            if (!isset($links[$u])) {
+                $links[$u] = [
+                    'url' => $u,
+                    'title' => $card['title'],
+                    'description' => $card['description'] ?? '',
+                    'type' => $card['type'] ?? 'link',
+                    'author_name' => $card['author_name'] ?? '',
+                    'provider_name' => $card['provider_name'] ?? (parse_url($u, PHP_URL_HOST) ?: ''),
+                    'image' => $card['image'] ?? null,
+                    'published_at' => $r['created_at'] ?? gmdate('c'),
+                    'uses' => 0,
+                    'accounts' => [],
+                ];
+            }
+            $links[$u]['uses']++;
+            if (!empty($r['account_id'])) $links[$u]['accounts'][(string)$r['account_id']] = true;
+        }
+
+        uasort($links, fn($a, $b) => $b['uses'] <=> $a['uses']);
+        $out = [];
+        $todayTs = (string)strtotime(gmdate('Y-m-d') . ' 00:00:00 UTC');
+        foreach (array_slice($links, 0, $limit) as $l) {
+            $accCount = count($l['accounts']);
+            unset($l['accounts']);
+            $l['history'] = [['day' => $todayTs, 'uses' => (string)$l['uses'], 'accounts' => (string)$accCount]];
+            $out[] = $l;
+        }
+        Router::json($out);
+    }
+
+    /**
+     * Endpoint GET /api/v1/directory
+     */
+    public static function getDirectory(): void {
+        $db = Database::connect();
+        $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? min(60, max(1, (int)$_GET['limit'])) : 24;
+        $localOnly = ($_GET['local'] ?? 'false') === 'true';
+        $sql = "SELECT * FROM accounts";
+        if ($localOnly) {
+            $sql .= " WHERE (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != ''";
+        }
+        $sql .= " ORDER BY statuses_count DESC, id DESC LIMIT " . (int)$limit;
+        $rows = $db->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = self::formatAccount($row);
+        }
+        Router::json($out);
+    }
+
+    /**
+     * Endpoint POST /api/v1/statuses/:id/mute
+     */
+    public static function muteStatus(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $id = (int)($params['id'] ?? 0);
+        if ($id <= 0) {
+            Router::json(['error' => 'Not found'], 404);
+            return;
+        }
+        $db = Database::connect();
+        $stmtChk = $db->prepare("SELECT id FROM moderation_blocks WHERE type = 'muted_conversation' AND value = ? LIMIT 1");
+        $stmtChk->execute([(string)$id]);
+        if (!$stmtChk->fetchColumn()) {
+            $stmtIns = $db->prepare("INSERT INTO moderation_blocks (type, value, created_at) VALUES ('muted_conversation', ?, ?)");
+            $stmtIns->execute([(string)$id, gmdate('Y-m-d H:i:s')]);
+        }
+        Router::json(['id' => (string)$id, 'muted' => true]);
+    }
+
+    /**
+     * Endpoint POST /api/v1/statuses/:id/unmute
+     */
+    public static function unmuteStatus(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $id = (int)($params['id'] ?? 0);
+        $db = Database::connect();
+        $stmtDel = $db->prepare("DELETE FROM moderation_blocks WHERE type = 'muted_conversation' AND value = ?");
+        $stmtDel->execute([(string)$id]);
+        Router::json(['id' => (string)$id, 'muted' => false]);
     }
 }
 

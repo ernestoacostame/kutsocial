@@ -139,6 +139,23 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                                 <span class="material-icons-outlined">folder</span> <span><?= __('nav_collections') ?></span>
                             </a>
                             <?php endif; ?>
+                            <a href="<?= $basePath ?>/favourites" class="m5-menu-item">
+                                <span class="material-icons-outlined">favorite_border</span> <span><?= __('nav_liked_posts', 'Publicaciones que me gustan') ?></span>
+                            </a>
+                            <div class="m5-menu-divider"></div>
+                            <div class="m5-menu-section-label"><?= __('nav_relationships', 'Relaciones') ?></div>
+                            <a href="<?= $basePath ?>/followers" class="m5-menu-item">
+                                <span class="material-icons-outlined">group</span> <span><?= __('followers', 'Seguidores') ?></span>
+                            </a>
+                            <a href="<?= $basePath ?>/following" class="m5-menu-item">
+                                <span class="material-icons-outlined">person_add</span> <span><?= __('following', 'Siguiendo') ?></span>
+                            </a>
+                            <a href="<?= $basePath ?>/mutes" class="m5-menu-item">
+                                <span class="material-icons-outlined">notifications_off</span> <span><?= __('nav_muted', 'Silenciados') ?></span>
+                            </a>
+                            <a href="<?= $basePath ?>/blocks" class="m5-menu-item">
+                                <span class="material-icons-outlined">block</span> <span><?= __('nav_blocked', 'Bloqueados') ?></span>
+                            </a>
                             <?php if (in_array('admin', $enabledNavItems, true)): ?>
                             <a href="/admin/update" class="m5-menu-item">
                                 <span class="material-icons-outlined">settings</span> <span><?= __('nav_admin') ?></span>
@@ -179,6 +196,11 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                         </a>
                     </li>
                     <?php endif; ?>
+                    <li class="nav-item">
+                        <a href="<?= $basePath ?>/explore" id="nav-explore" class="nav-link <?= ($section === 'explore') ? 'active' : '' ?>" title="<?= __('nav_explore', 'Explorar') ?>">
+                            <span class="material-icons-outlined">explore</span> <span class="nav-label"><?= __('nav_explore', 'Explorar') ?></span>
+                        </a>
+                    </li>
                     <?php if (in_array('catchup', $enabledNavItems, true)): ?>
                     <li class="nav-item">
                         <a href="<?= $basePath ?>/catchup" id="nav-catchup" class="nav-link <?= ($section === 'catchup') ? 'active' : '' ?>" title="<?= __('nav_catchup') ?>">

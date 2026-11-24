@@ -424,6 +424,25 @@ $renderPagesFrontend = function() {
         $currentTimeline = 'bookmarks';
         $contentView = 'feed.php';
         $pageTitle = 'Marcadores - KutSocial';
+    } elseif ($subUri === '/favourites' || $subUri === '/liked') {
+        $section = 'feed';
+        $currentTimeline = 'favourites';
+        $contentView = 'feed.php';
+        $pageTitle = 'Me gusta - KutSocial';
+    } elseif ($subUri === '/explore') {
+        $section = 'explore';
+        $contentView = 'explore.php';
+        $pageTitle = 'Explorar - KutSocial';
+    } elseif ($subUri === '/mutes' || $subUri === '/blocks' || $subUri === '/followers' || $subUri === '/following') {
+        $section = 'users-list';
+        $contentView = 'users-list.php';
+        $pageTitle = match($subUri) {
+            '/mutes' => 'Silenciados - KutSocial',
+            '/blocks' => 'Bloqueados - KutSocial',
+            '/followers' => 'Seguidores - KutSocial',
+            '/following' => 'Siguiendo - KutSocial',
+            default => 'Usuarios - KutSocial'
+        };
     } elseif ($subUri === '/direct') {
         $section = 'feed';
         $currentTimeline = 'direct';
@@ -760,6 +779,12 @@ $router->post('/api/v1/statuses/:id/bookmark', [MastodonApiController::class, 'b
 $router->post('/api/v1/statuses/:id/unbookmark', [MastodonApiController::class, 'unbookmarkStatus']);
 $router->post('/api/v1/statuses/:id/reblog', [MastodonApiController::class, 'reblogStatus']);
 $router->post('/api/v1/statuses/:id/unreblog', [MastodonApiController::class, 'unreblogStatus']);
+$router->post('/api/v1/statuses/:id/mute', [MastodonApiController::class, 'muteStatus']);
+$router->post('/api/v1/statuses/:id/unmute', [MastodonApiController::class, 'unmuteStatus']);
+$router->get('/api/v1/trends/tags', [MastodonApiController::class, 'getTrendingTags']);
+$router->get('/api/v1/trends/statuses', [MastodonApiController::class, 'getTrendingStatuses']);
+$router->get('/api/v1/trends/links', [MastodonApiController::class, 'getTrendingLinks']);
+$router->get('/api/v1/directory', [MastodonApiController::class, 'getDirectory']);
 $router->get('/api/v1/streaming', [MastodonApiController::class, 'getStreaming']);
 
 // Carga Real de Multimedia (Mastodon compatible)
@@ -835,6 +860,13 @@ $router->get('/home', $renderPagesFrontend);
 $router->get('/catchup', $renderPagesFrontend);
 $router->get('/local', $renderPagesFrontend);
 $router->get('/bookmarks', $renderPagesFrontend);
+$router->get('/favourites', $renderPagesFrontend);
+$router->get('/liked', $renderPagesFrontend);
+$router->get('/explore', $renderPagesFrontend);
+$router->get('/mutes', $renderPagesFrontend);
+$router->get('/blocks', $renderPagesFrontend);
+$router->get('/followers', $renderPagesFrontend);
+$router->get('/following', $renderPagesFrontend);
 $router->get('/direct', $renderPagesFrontend);
 $router->get('/notifications', $renderPagesFrontend);
 $router->get('/lists', $renderPagesFrontend);

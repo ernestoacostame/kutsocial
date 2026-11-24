@@ -558,9 +558,17 @@ function handlePathRouting() {
         path = path.substring(base.length);
         if (!path.startsWith('/')) path = '/' + path;
     }
-    if (path === '/public' || path === '/home' || path === '/local' || path === '/bookmarks' || path === '/direct' || path.startsWith('/list_') || path.startsWith('/tag_')) {
-        const type = path.substring(1);
+    if (path === '/public' || path === '/home' || path === '/local' || path === '/bookmarks' || path === '/favourites' || path === '/liked' || path === '/direct' || path.startsWith('/list_') || path.startsWith('/tag_')) {
+        const type = (path === '/liked') ? 'favourites' : path.substring(1);
         switchTimeline(type, true);
+        return true;
+    } else if (path === '/explore') {
+        showTab('explore', true);
+        return true;
+    } else if (path === '/mutes' || path === '/blocks' || path === '/followers' || path === '/following') {
+        const listType = path.substring(1);
+        const ownerId = window.KUTSOCIAL_CURRENT_USER?.id || window.KUTSOCIAL_OWNER?.id || currentProfileData?.id;
+        loadUsersList(listType, ownerId);
         return true;
     } else if (path === '/notifications' || path === '/lists' || path === '/collections' || path === '/followed-hashtags' || path === '/profile' || path === '/search-results' || path === '/catchup') {
         const tab = path.substring(1);
@@ -742,11 +750,14 @@ async function loadTimeline(loadMore = false) {
 
     let url = '/api/v1/timelines/public';
     if (currentTimeline === 'home') {
-        url = '/api/v1/timelines/home';
+        const hf = typeof getHomeFilters === 'function' ? getHomeFilters() : { boosts: true, quotes: true, replies: true };
+        url = `/api/v1/timelines/home?show_boosts=${hf.boosts ? '1' : '0'}&show_quotes=${hf.quotes ? '1' : '0'}&show_replies=${hf.replies ? '1' : '0'}`;
     } else if (currentTimeline === 'local') {
         url = '/api/v1/timelines/public?local=true';
     } else if (currentTimeline === 'bookmarks') {
         url = '/api/v1/bookmarks';
+    } else if (currentTimeline === 'favourites') {
+        url = '/api/v1/favourites';
     } else if (currentTimeline === 'direct') {
         url = '/api/v1/conversations';
     } else if (currentTimeline.startsWith('list_')) {
@@ -2270,7 +2281,7 @@ function showTab(tabName, fromHashChange = false) {
 
     document.querySelectorAll('.nav-link').forEach(link => link.classList.remove('active'));
     
-    const tabs = ['feed', 'profile', 'profile-view', 'thread-view', 'notifications', 'users-list', 'search-results', 'lists', 'collections', 'followed-hashtags', 'catchup'];
+    const tabs = ['feed', 'explore', 'profile', 'profile-view', 'thread-view', 'notifications', 'users-list', 'search-results', 'lists', 'collections', 'followed-hashtags', 'catchup'];
     tabs.forEach(t => {
         const el = document.getElementById('tab-' + t);
         if (el) el.style.display = 'none';
@@ -2278,6 +2289,11 @@ function showTab(tabName, fromHashChange = false) {
 
     if (tabElement) {
         tabElement.style.display = (tabName === 'lists' || tabName === 'collections') ? 'flex' : 'block';
+    }
+
+    const homeHeader = document.getElementById('home-timeline-header');
+    if (homeHeader) {
+        homeHeader.style.display = (tabName === 'feed' && currentTimeline === 'home') ? 'flex' : 'none';
     }
 
     updateRightSidebarVisibility(tabName, currentTimeline);
@@ -2340,6 +2356,10 @@ function showTab(tabName, fromHashChange = false) {
         const navCatchup = document.getElementById('nav-catchup');
         if (navCatchup) navCatchup.classList.add('active');
         initCatchUpTab();
+    } else if (tabName === 'explore') {
+        const navExp = document.getElementById('nav-explore');
+        if (navExp) navExp.classList.add('active');
+        initExplorePage();
     }
 }
 
@@ -3478,7 +3498,13 @@ async function loadUsersList(type, accountId) {
     
     const titleEl = document.getElementById('users-list-title');
     if (titleEl) {
-        titleEl.innerText = type === 'followers' ? 'Seguidores' : 'Siguiendo';
+        const titles = {
+            followers: 'Seguidores',
+            following: 'Siguiendo',
+            mutes: 'Silenciados',
+            blocks: 'Bloqueados'
+        };
+        titleEl.innerText = titles[type] || 'Usuarios';
     }
     
     const container = document.getElementById('users-list-container');
@@ -3487,9 +3513,10 @@ async function loadUsersList(type, accountId) {
     }
     
     try {
-        const endpoint = type === 'followers' 
-            ? `/api/v1/accounts/${accountId}/followers?limit=80` 
-            : `/api/v1/accounts/${accountId}/following?limit=80`;
+        let endpoint = `/api/v1/accounts/${accountId}/following?limit=80`;
+        if (type === 'followers') endpoint = `/api/v1/accounts/${accountId}/followers?limit=80`;
+        else if (type === 'mutes') endpoint = '/api/v1/mutes?limit=80';
+        else if (type === 'blocks') endpoint = '/api/v1/blocks?limit=80';
             
         const res = await fetch(endpoint, {
             headers: { 'Authorization': `Bearer ${token}` }
@@ -4369,6 +4396,16 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
     activeTootOptionsMenu = menu;
     document.body.appendChild(menu);
 
+    // Opción: Expandir publicación
+    const optExpand = document.createElement('button');
+    optExpand.innerHTML = `<span class="material-icons-outlined">open_in_full</span> <span>${__('toot_expand', 'Expandir publicación')}</span>`;
+    setupMenuBtn(optExpand, () => {
+        menu.remove();
+        activeTootOptionsMenu = null;
+        viewTootThread(toot.id);
+    });
+    menu.appendChild(optExpand);
+
     // Opción: Abrir página original
     const postUrl = toot.url || toot.uri;
     if (postUrl) {
@@ -4398,6 +4435,59 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
             }
         });
         menu.appendChild(optCopy);
+
+        // Opción: Compartir
+        const optShare = document.createElement('button');
+        optShare.innerHTML = `<span class="material-icons-outlined">share</span> <span>${__('toot_share', 'Compartir')}</span>`;
+        setupMenuBtn(optShare, async () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            if (navigator.share) {
+                try { await navigator.share({ url: postUrl }); } catch (e) {}
+            } else if (navigator.clipboard) {
+                await navigator.clipboard.writeText(postUrl);
+                alert(__('copied_to_clipboard', 'Enlace copiado al portapapeles'));
+            }
+        });
+        menu.appendChild(optShare);
+    }
+
+    // Opción: Silenciar conversación
+    if (token) {
+        const optMuteConv = document.createElement('button');
+        optMuteConv.innerHTML = `<span class="material-icons-outlined">notifications_off</span> <span>${__('toot_mute_conversation', 'Silenciar conversación')}</span>`;
+        setupMenuBtn(optMuteConv, async () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            const res = await fetch(`/api/v1/statuses/${toot.id}/mute`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok && card) card.remove();
+        });
+        menu.appendChild(optMuteConv);
+    }
+
+    // Opciones: Mencionar y Enviar mensaje directo
+    const acctMention = account.acct || account.username || '';
+    if (acctMention) {
+        const optMention = document.createElement('button');
+        optMention.innerHTML = `<span class="material-icons-outlined">alternate_email</span> <span>${__('toot_mention_user', 'Mencionar a')} @${escapeHTML(acctMention)}</span>`;
+        setupMenuBtn(optMention, () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            openComposerWithMention(`@${acctMention} `, 'public');
+        });
+        menu.appendChild(optMention);
+
+        const optDM = document.createElement('button');
+        optDM.innerHTML = `<span class="material-icons-outlined">mail_outline</span> <span>${__('toot_message_user', 'Mensaje a')} @${escapeHTML(acctMention)}</span>`;
+        setupMenuBtn(optDM, () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            openComposerWithMention(`@${acctMention} `, 'direct');
+        });
+        menu.appendChild(optDM);
     }
 
     // Opción: Ver perfil
@@ -7775,5 +7865,178 @@ async function selectGif(gifUrl, title) {
         console.error('Error al procesar/subir GIF de GIPHY:', err);
         tempDiv.remove();
         alert('Error al descargar o subir el GIF seleccionado.');
+    }
+}
+
+// === Home Timeline Filters, Composer Mention & Explore Page ===
+function getHomeFilters() {
+    try {
+        const raw = localStorage.getItem('kutsocial_home_filters');
+        if (raw) {
+            const p = JSON.parse(raw);
+            return {
+                boosts: p.boosts !== false,
+                quotes: p.quotes !== false,
+                replies: p.replies !== false
+            };
+        }
+    } catch (e) {}
+    return { boosts: true, quotes: true, replies: true };
+}
+
+function toggleHomeFilterPopover(event) {
+    if (event) event.stopPropagation();
+    const pop = document.getElementById('home-filter-popover');
+    if (!pop) return;
+    const hf = getHomeFilters();
+    const cbB = document.getElementById('filter-show-boosts');
+    const cbQ = document.getElementById('filter-show-quotes');
+    const cbR = document.getElementById('filter-show-replies');
+    if (cbB) cbB.checked = hf.boosts;
+    if (cbQ) cbQ.checked = hf.quotes;
+    if (cbR) cbR.checked = hf.replies;
+    pop.style.display = (pop.style.display === 'none' || !pop.style.display) ? 'block' : 'none';
+}
+
+document.addEventListener('click', () => {
+    const pop = document.getElementById('home-filter-popover');
+    if (pop && pop.style.display === 'block') pop.style.display = 'none';
+});
+
+function onHomeFilterChange() {
+    const boosts = document.getElementById('filter-show-boosts')?.checked ?? true;
+    const quotes = document.getElementById('filter-show-quotes')?.checked ?? true;
+    const replies = document.getElementById('filter-show-replies')?.checked ?? true;
+    localStorage.setItem('kutsocial_home_filters', JSON.stringify({ boosts, quotes, replies }));
+    if (typeof loadTimeline === 'function') loadTimeline();
+}
+
+function openComposerWithMention(prefix, visibility) {
+    if (typeof openM5NewPost === 'function') openM5NewPost();
+    const textarea = document.getElementById('composer-text');
+    if (textarea) {
+        textarea.value = prefix;
+        textarea.focus();
+    }
+    const visSelect = document.getElementById('composer-visibility');
+    if (visSelect && visibility) visSelect.value = visibility;
+}
+
+let activeExploreTab = 'posts';
+
+function initExplorePage() {
+    switchExploreTab(activeExploreTab || 'posts');
+}
+
+function submitExploreSearch() {
+    const q = (document.getElementById('explore-search-input')?.value || '').trim();
+    if (!q) return;
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+    window.location.href = `${base}/search-results?q=${encodeURIComponent(q)}`;
+}
+
+function renderExploreSparkline(history) {
+    if (!Array.isArray(history) || history.length === 0) return '';
+    const pts = history.slice(0, 7).reverse().map(h => parseInt(h.uses || '0', 10));
+    const max = Math.max(1, ...pts);
+    const w = 72, h = 26;
+    const step = pts.length > 1 ? w / (pts.length - 1) : w;
+    const coords = pts.map((v, i) => `${(i * step).toFixed(1)},${(h - 3 - (v / max) * (h - 6)).toFixed(1)}`).join(' ');
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="flex-shrink:0;"><polyline fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="${coords}"/></svg>`;
+}
+
+async function switchExploreTab(tab) {
+    activeExploreTab = tab;
+    document.querySelectorAll('.explore-tab-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.exploreTab === tab);
+    });
+    const container = document.getElementById('explore-content-container');
+    if (!container) return;
+    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">Cargando...</div>';
+    const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+    const base = window.KUTSOCIAL_BASE_PATH || '';
+
+    try {
+        if (tab === 'posts') {
+            const res = await fetch('/api/v1/trends/statuses?limit=20', { headers });
+            const items = await res.json();
+            container.innerHTML = '';
+            if (!Array.isArray(items) || items.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No hay publicaciones en tendencia aún.</div>';
+                return;
+            }
+            items.forEach(st => container.appendChild(renderTootCard(st)));
+        } else if (tab === 'hashtags') {
+            const res = await fetch('/api/v1/trends/tags?limit=20', { headers });
+            const tags = await res.json();
+            if (!Array.isArray(tags) || tags.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No hay hashtags en tendencia aún.</div>';
+                return;
+            }
+            container.innerHTML = '<div style="border:1px solid var(--border-color); border-radius:14px; overflow:hidden;">' + tags.map(t => {
+                const people = t.total_accounts || (t.history?.[0]?.accounts || 0);
+                return `<a class="explore-tag-row" href="${base}/tag_${encodeURIComponent(t.name)}">
+                    <div>
+                        <div style="font-weight:700; font-size:15px;">#${escapeHTML(t.name)}</div>
+                        <div style="font-size:12.5px; color:var(--text-muted);">${people} personas recientemente</div>
+                    </div>
+                    ${renderExploreSparkline(t.history)}
+                </a>`;
+            }).join('') + '</div>';
+        } else if (tab === 'people') {
+            const res = await fetch('/api/v1/directory?limit=24', { headers });
+            const users = await res.json();
+            if (!Array.isArray(users) || users.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No hay perfiles disponibles.</div>';
+                return;
+            }
+            container.innerHTML = '<div style="display:flex; flex-direction:column; gap:10px;">' + users.map(u => {
+                const doc = new DOMParser().parseFromString(u.note || '', 'text/html');
+                const bio = escapeHTML((doc.body.textContent || '').trim().slice(0, 120));
+                return `<a href="${base}/@${encodeURIComponent(u.acct)}" onclick="event.preventDefault(); viewProfile('${u.id}')" style="display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border-color); border-radius:12px; text-decoration:none; color:inherit; background:rgba(255,255,255,0.02);">
+                    <img src="${proxyUrl(u.avatar)}" alt="" style="width:44px; height:44px; border-radius:50%; object-fit:cover;">
+                    <div style="min-width:0; flex:1;">
+                        <div style="font-weight:700; font-size:14.5px;">${escapeHTML(u.display_name || u.username)}</div>
+                        <div style="font-size:12.5px; color:var(--text-muted);">@${escapeHTML(u.acct)}</div>
+                        ${bio ? `<div style="font-size:12.5px; color:var(--text-muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bio}</div>` : ''}
+                    </div>
+                    <span class="explore-posts-badge">${u.statuses_count || 0} posts</span>
+                </a>`;
+            }).join('') + '</div>';
+        } else if (tab === 'news') {
+            const res = await fetch('/api/v1/trends/links?limit=15', { headers });
+            const links = await res.json();
+            if (!Array.isArray(links) || links.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No hay noticias compartidas aún.</div>';
+                return;
+            }
+            const first = links[0];
+            const firstUses = first.history?.[0]?.uses || 1;
+            let html = `<a class="explore-news-hero" href="${escapeHTML(first.url)}" target="_blank" rel="noopener noreferrer">
+                ${first.image ? `<img src="${proxyUrl(first.image)}" alt="">` : ''}
+                <div style="padding:14px 16px;">
+                    <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">${escapeHTML(first.provider_name || '')}</div>
+                    <div style="font-size:17px; font-weight:700; line-height:1.3; margin-bottom:10px;">${escapeHTML(first.title)}</div>
+                    <span class="explore-posts-badge">${firstUses} posts</span>
+                </div>
+            </a>`;
+            if (links.length > 1) {
+                html += '<div style="border:1px solid var(--border-color); border-radius:14px; overflow:hidden;">' + links.slice(1).map(l => {
+                    const uses = l.history?.[0]?.uses || 1;
+                    return `<a class="explore-news-row" href="${escapeHTML(l.url)}" target="_blank" rel="noopener noreferrer">
+                        <div style="min-width:0; flex:1;">
+                            <div style="font-size:12px; color:var(--text-muted); margin-bottom:3px;">${escapeHTML(l.provider_name || '')}</div>
+                            <div style="font-size:14.5px; font-weight:700; line-height:1.3; margin-bottom:8px;">${escapeHTML(l.title)}</div>
+                            <span class="explore-posts-badge">${uses} posts</span>
+                        </div>
+                        ${l.image ? `<img class="explore-news-thumb" src="${proxyUrl(l.image)}" alt="">` : ''}
+                    </a>`;
+                }).join('') + '</div>';
+            }
+            container.innerHTML = html;
+        }
+    } catch (e) {
+        console.error(e);
+        container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--error, #ef4444);">Error al cargar Explorar.</div>';
     }
 }
