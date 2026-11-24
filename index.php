@@ -35,15 +35,20 @@ if (!defined('KUTSOCIAL_ROOT')) {
     define('KUTSOCIAL_ROOT', __DIR__);
 }
 
-// Servir /assets/pages.css y /assets/pages.js con caché inmutable y ETag sin tocar la BD
+// Servir /assets/*.css y /assets/pages.js con caché inmutable y ETag sin tocar la BD
 $rawPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
-if ($rawPath === '/assets/pages.css' || $rawPath === '/assets/pages.js') {
-    $isCss = ($rawPath === '/assets/pages.css');
-    $assetFile = __DIR__ . '/src/views/pages/' . ($isCss ? 'pages.css' : 'pages.js');
+$fastAssetMap = [
+    '/assets/pages.css' => [__DIR__ . '/src/views/pages/pages.css', 'text/css; charset=utf-8'],
+    '/assets/pages.js' => [__DIR__ . '/src/views/pages/pages.js', 'application/javascript; charset=utf-8'],
+    '/assets/admin.css' => [__DIR__ . '/assets/admin.css', 'text/css; charset=utf-8'],
+    '/assets/theme-mastodon.css' => [__DIR__ . '/assets/theme-mastodon.css', 'text/css; charset=utf-8'],
+];
+if (isset($fastAssetMap[$rawPath])) {
+    [$assetFile, $mime] = $fastAssetMap[$rawPath];
     if (is_file($assetFile)) {
         $ver = defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.0';
         $etag = '"' . md5($ver . ':' . @filemtime($assetFile) . ':' . @filesize($assetFile)) . '"';
-        header('Content-Type: ' . ($isCss ? 'text/css; charset=utf-8' : 'application/javascript; charset=utf-8'));
+        header('Content-Type: ' . $mime);
         header('Cache-Control: public, max-age=31536000, immutable');
         header('ETag: ' . $etag);
         $ifNoneMatch = $_SERVER['HTTP_IF_NONE_MATCH'] ?? '';
