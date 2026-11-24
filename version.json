@@ -1,5 +1,5 @@
 {
-  "version": "2.1.31",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.31/kutsocial-v2.1.31.zip",
-  "changelog": "Restore all timeline items and infinite scroll pagination by removing post-pagination batch filter"
+  "version": "2.1.32",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.32/kutsocial-v2.1.32.zip",
+  "changelog": "Hydrate empty remote statuses/Announces on demand and support quote/contentMap in handleCreate"
 }
