@@ -1246,13 +1246,13 @@ class AdminController {
         }
 
         if ($targetUser['role'] === 'owner' && $admin['role'] !== 'owner') {
-            $_SESSION['admin_error_msg'] = "No tienes permisos.";
+            $_SESSION['admin_error_msg'] = __raw('admin_no_permission', 'No tienes permisos.');
             header("Location: /admin/dashboard/users");
             exit;
         }
 
         if (($role === 'owner' || $targetUser['role'] === 'owner') && $admin['role'] !== 'owner') {
-            $_SESSION['admin_error_msg'] = "No tienes permisos.";
+            $_SESSION['admin_error_msg'] = __raw('admin_no_permission', 'No tienes permisos.');
             header("Location: /admin/dashboard/users");
             exit;
         }

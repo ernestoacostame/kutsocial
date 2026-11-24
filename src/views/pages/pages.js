@@ -7969,7 +7969,7 @@ async function switchExploreTab(tab) {
     });
     const container = document.getElementById('explore-content-container');
     if (!container) return;
-    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">Cargando...</div>';
+    container.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--text-muted);">${__('loading', 'Cargando...')}</div>`;
     const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
     const base = window.KUTSOCIAL_BASE_PATH || '';
 
@@ -7979,7 +7979,7 @@ async function switchExploreTab(tab) {
             const items = await res.json();
             container.innerHTML = '';
             if (!Array.isArray(items) || items.length === 0) {
-                container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No hay publicaciones en tendencia aún.</div>';
+                container.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--text-muted);">${__('explore_no_posts', 'No hay publicaciones en tendencia aún.')}</div>`;
                 return;
             }
             items.forEach(st => container.appendChild(createThreadTootElement(st, false)));
@@ -7987,7 +7987,7 @@ async function switchExploreTab(tab) {
             const res = await fetch('/api/v1/trends/tags?limit=20', { headers });
             const tags = await res.json();
             if (!Array.isArray(tags) || tags.length === 0) {
-                container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No hay hashtags en tendencia aún.</div>';
+                container.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--text-muted);">${__('explore_no_hashtags', 'No hay hashtags en tendencia aún.')}</div>`;
                 return;
             }
             container.innerHTML = '<div style="border:1px solid var(--border-color); border-radius:14px; overflow:hidden;">' + tags.map(t => {
@@ -7995,7 +7995,7 @@ async function switchExploreTab(tab) {
                 return `<a class="explore-tag-row" href="${base}/tag_${encodeURIComponent(t.name)}">
                     <div>
                         <div style="font-weight:700; font-size:15px;">#${escapeHTML(t.name)}</div>
-                        <div style="font-size:12.5px; color:var(--text-muted);">${people} personas recientemente</div>
+                        <div style="font-size:12.5px; color:var(--text-muted);">${people} ${__('explore_people_recently', 'personas recientemente')}</div>
                     </div>
                     ${renderExploreSparkline(t.history)}
                 </a>`;
@@ -8004,7 +8004,7 @@ async function switchExploreTab(tab) {
             const res = await fetch('/api/v1/directory?limit=24', { headers });
             const users = await res.json();
             if (!Array.isArray(users) || users.length === 0) {
-                container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No hay perfiles disponibles.</div>';
+                container.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--text-muted);">${__('explore_no_people', 'No hay perfiles disponibles.')}</div>`;
                 return;
             }
             container.innerHTML = '<div style="display:flex; flex-direction:column; gap:10px;">' + users.map(u => {
@@ -8017,14 +8017,14 @@ async function switchExploreTab(tab) {
                         <div style="font-size:12.5px; color:var(--text-muted);">@${escapeHTML(u.acct)}</div>
                         ${bio ? `<div style="font-size:12.5px; color:var(--text-muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${bio}</div>` : ''}
                     </div>
-                    <span class="explore-posts-badge">${u.statuses_count || 0} posts</span>
+                    <span class="explore-posts-badge">${u.statuses_count || 0} ${__('explore_posts_count', 'publicaciones')}</span>
                 </a>`;
             }).join('') + '</div>';
         } else if (tab === 'news') {
             const res = await fetch('/api/v1/trends/links?limit=15', { headers });
             const links = await res.json();
             if (!Array.isArray(links) || links.length === 0) {
-                container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No hay noticias compartidas aún.</div>';
+                container.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--text-muted);">${__('explore_no_news', 'No hay noticias compartidas aún.')}</div>`;
                 return;
             }
             const first = links[0];
@@ -8034,7 +8034,7 @@ async function switchExploreTab(tab) {
                 <div style="padding:14px 16px;">
                     <div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">${escapeHTML(first.provider_name || '')}</div>
                     <div style="font-size:17px; font-weight:700; line-height:1.3; margin-bottom:10px;">${escapeHTML(first.title)}</div>
-                    <span class="explore-posts-badge">${firstUses} posts</span>
+                    <span class="explore-posts-badge">${firstUses} ${__('explore_posts_count', 'publicaciones')}</span>
                 </div>
             </a>`;
             if (links.length > 1) {
@@ -8044,7 +8044,7 @@ async function switchExploreTab(tab) {
                         <div style="min-width:0; flex:1;">
                             <div style="font-size:12px; color:var(--text-muted); margin-bottom:3px;">${escapeHTML(l.provider_name || '')}</div>
                             <div style="font-size:14.5px; font-weight:700; line-height:1.3; margin-bottom:8px;">${escapeHTML(l.title)}</div>
-                            <span class="explore-posts-badge">${uses} posts</span>
+                            <span class="explore-posts-badge">${uses} ${__('explore_posts_count', 'publicaciones')}</span>
                         </div>
                         ${l.image ? `<img class="explore-news-thumb" src="${proxyUrl(l.image)}" alt="">` : ''}
                     </a>`;
@@ -8054,6 +8054,6 @@ async function switchExploreTab(tab) {
         }
     } catch (e) {
         console.error(e);
-        container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--error, #ef4444);">Error al cargar Explorar.</div>';
+        container.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--error, #ef4444);">${__('explore_error', 'Error al cargar Explorar.')}</div>`;
     }
 }

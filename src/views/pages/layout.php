@@ -586,7 +586,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
     <!-- Modal: Información Técnica de Perfil -->
     <div id="modal-profile-tech-info" class="modal-overlay" style="display: none;">
         <div class="modal-card">
-            <h3 class="modal-title">🛠️ Información Técnica</h3>
+            <h3 class="modal-title"><?= __('profile_tech_info_title', '🛠️ Información Técnica') ?></h3>
             <div id="profile-tech-info-content" style="display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; color: var(--text-color);"></div>
             <div class="modal-actions">
                 <button class="modal-btn-confirm" onclick="closeProfileTechInfoModal()">Aceptar</button>

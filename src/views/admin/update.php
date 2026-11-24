@@ -34,7 +34,7 @@ if ($ks_update_cache && !empty($ks_update_cache['available']) && !empty($ks_upda
     </div>
     
     <div id="update-progress" style="display: none; margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 12px;">
-        <div style="font-weight: 600; margin-bottom: 10px; font-size: 14px;" id="progress-label">Preparando...</div>
+        <div style="font-weight: 600; margin-bottom: 10px; font-size: 14px;" id="progress-label"><?= __('admin_update_preparing', 'Preparando...') ?></div>
         <div style="background: rgba(255,255,255,0.05); border-radius: 6px; height: 8px; overflow: hidden; margin-bottom: 10px;">
             <div id="progress-bar" style="background: var(--primary); height: 100%; width: 0%; transition: width 0.4s ease;"></div>
         </div>

@@ -229,7 +229,7 @@
                 var items = await res.json();
                 container.innerHTML = '';
                 if (!Array.isArray(items) || items.length === 0) {
-                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No trending posts yet.</div>';
+                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);"><?= addslashes(__('explore_no_posts', 'No trending posts yet.')) ?></div>';
                     return;
                 }
                 items.forEach(function (st) {
@@ -247,21 +247,21 @@
                 var resT = await fetch('/api/v1/trends/tags?limit=20', { headers: headers });
                 var tags = await resT.json();
                 if (!Array.isArray(tags) || tags.length === 0) {
-                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No trending hashtags yet.</div>';
+                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);"><?= addslashes(__('explore_no_hashtags', 'No trending hashtags yet.')) ?></div>';
                     return;
                 }
                 container.innerHTML = tags.map(function (t) {
                     var people = t.total_accounts || (t.history && t.history[0] ? t.history[0].accounts : 0);
                     return '<a class="explore-tag-row" href="' + base + '/tag_' + encodeURIComponent(t.name) + '">' +
                         '<div><div style="font-weight:700; font-size:15px;">#' + esc(t.name) + '</div>' +
-                        '<div style="font-size:12.5px; color:var(--text-muted);">' + people + ' people recently</div></div>' +
+                        '<div style="font-size:12.5px; color:var(--text-muted);">' + people + ' <?= addslashes(__('explore_people_recently', 'people recently')) ?></div></div>' +
                         sparkline(t.history) + '</a>';
                 }).join('');
             } else if (tab === 'people') {
                 var resP = await fetch('/api/v1/directory?limit=24', { headers: headers });
                 var users = await resP.json();
                 if (!Array.isArray(users) || users.length === 0) {
-                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No profiles available.</div>';
+                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);"><?= addslashes(__('explore_no_people', 'No profiles available.')) ?></div>';
                     return;
                 }
                 container.innerHTML = '<div style="padding:12px 16px; display:flex; flex-direction:column; gap:10px;">' + users.map(function (u) {
@@ -272,13 +272,13 @@
                         '<div style="min-width:0; flex:1;"><div style="font-weight:700; font-size:14.5px;">' + esc(u.display_name || u.username) + '</div>' +
                         '<div style="font-size:12.5px; color:var(--text-muted);">@' + esc(u.acct) + '</div>' +
                         (bio ? '<div style="font-size:12.5px; color:var(--text-muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + bio + '</div>' : '') +
-                        '</div><span class="explore-posts-badge">' + (u.statuses_count || 0) + ' posts</span></a>';
+                        '</div><span class="explore-posts-badge">' + (u.statuses_count || 0) + ' <?= addslashes(__('explore_posts_count', 'posts')) ?></span></a>';
                 }).join('') + '</div>';
             } else if (tab === 'news') {
                 var resN = await fetch('/api/v1/trends/links?limit=15', { headers: headers });
                 var links = await resN.json();
                 if (!Array.isArray(links) || links.length === 0) {
-                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No trending links yet.</div>';
+                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);"><?= addslashes(__('explore_no_news', 'No trending links yet.')) ?></div>';
                     return;
                 }
                 var first = links[0];
@@ -287,14 +287,14 @@
                     (first.image ? '<img src="' + pUrl(first.image) + '" alt="">' : '') +
                     '<div style="padding:14px 16px;"><div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">' + esc(first.provider_name || '') + '</div>' +
                     '<div style="font-size:17px; font-weight:700; line-height:1.3; margin-bottom:10px;">' + esc(first.title) + '</div>' +
-                    '<span class="explore-posts-badge">' + firstUses + ' posts</span></div></a>';
+                    '<span class="explore-posts-badge">' + firstUses + ' <?= addslashes(__('explore_posts_count', 'posts')) ?></span></div></a>';
                 if (links.length > 1) {
                     html += '<div style="border:1px solid var(--border-color); border-radius:14px; overflow:hidden;">' + links.slice(1).map(function (l) {
                         var uses = (l.history && l.history[0]) ? l.history[0].uses : 1;
                         return '<a class="explore-news-row" href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer">' +
                             '<div style="min-width:0; flex:1;"><div style="font-size:12px; color:var(--text-muted); margin-bottom:3px;">' + esc(l.provider_name || '') + '</div>' +
                             '<div style="font-size:14.5px; font-weight:700; line-height:1.3; margin-bottom:8px;">' + esc(l.title) + '</div>' +
-                            '<span class="explore-posts-badge">' + uses + ' posts</span></div>' +
+                            '<span class="explore-posts-badge">' + uses + ' <?= addslashes(__('explore_posts_count', 'posts')) ?></span></div>' +
                             (l.image ? '<img class="explore-news-thumb" src="' + pUrl(l.image) + '" alt="">' : '') + '</a>';
                     }).join('') + '</div>';
                 }
@@ -303,7 +303,7 @@
             }
         } catch (err) {
             console.error(err);
-            container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--error, #ef4444);">Error loading Explore.</div>';
+            container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--error, #ef4444);"><?= addslashes(__('explore_error', 'Error loading Explore.')) ?></div>';
         }
     };
 

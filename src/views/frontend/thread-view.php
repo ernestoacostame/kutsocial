@@ -1,7 +1,7 @@
-<div id="tab-thread-view" style="display: none;">
+<div id="tab-thread-view">
     <!-- Back Header -->
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 15px; cursor: pointer; color: var(--text-muted); font-weight: 500;" onclick="goBackToFeed()">
-        <span style="font-size: 18px;">←</span> <span>Volver a la línea de tiempo</span>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px 18px 4px 18px; margin-bottom: 10px; cursor: pointer; color: var(--text-muted); font-weight: 500;" onclick="goBackToFeed()">
+        <span style="font-size: 18px;">←</span> <span><?= __('back_to_timeline', 'Volver a la línea de tiempo') ?></span>
     </div>
 
     <div class="composer-card" style="padding: 20px; display: flex; flex-direction: column; gap: 14px;">
