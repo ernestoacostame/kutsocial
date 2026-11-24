@@ -1,5 +1,5 @@
 {
-  "version": "2.1.38",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.38/kutsocial-v2.1.38.zip",
-  "changelog": "Fix mixed ES/EN strings in admin panel and frontend views"
+  "version": "2.1.39",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.39/kutsocial-v2.1.39.zip",
+  "changelog": "Instant toot context menu with relationship cache and eliminate sidebar FOUC"
 }
