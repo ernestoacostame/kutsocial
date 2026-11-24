@@ -103,6 +103,66 @@
     border-top: none !important;
     margin-bottom: 0 !important;
 }
+#tab-explore .explore-tag-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    padding: 14px 16px !important;
+    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    text-decoration: none !important;
+    color: var(--text-color, #fff) !important;
+    background: transparent !important;
+}
+#tab-explore .explore-tag-row:hover {
+    background: rgba(255,255,255,0.04) !important;
+}
+#tab-explore .explore-news-hero {
+    display: block !important;
+    text-decoration: none !important;
+    color: var(--text-color, #fff) !important;
+    border: 1px solid rgba(255,255,255,0.1) !important;
+    border-radius: 14px !important;
+    overflow: hidden !important;
+    margin-bottom: 12px !important;
+    background: rgba(255,255,255,0.02) !important;
+}
+#tab-explore .explore-news-hero img {
+    width: 100% !important;
+    max-height: 280px !important;
+    object-fit: cover !important;
+    display: block !important;
+}
+#tab-explore .explore-news-row {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 14px !important;
+    padding: 14px 16px !important;
+    border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+    text-decoration: none !important;
+    color: var(--text-color, #fff) !important;
+    background: transparent !important;
+}
+#tab-explore .explore-news-row:hover {
+    background: rgba(255,255,255,0.04) !important;
+}
+#tab-explore .explore-news-thumb {
+    width: 84px !important;
+    height: 84px !important;
+    border-radius: 10px !important;
+    object-fit: cover !important;
+    flex-shrink: 0 !important;
+}
+#tab-explore .explore-posts-badge {
+    display: inline-block !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    padding: 3px 8px !important;
+    border-radius: 6px !important;
+    background: rgba(255,255,255,0.08) !important;
+    color: var(--text-muted, #9ca3af) !important;
+}
 </style>
 <div id="tab-explore" class="explore-page">
     <div class="explore-header">
@@ -247,7 +307,15 @@
     };
 
     window.initExplorePage = function () {
-        window.switchExploreTab('posts');
+        var attempts = 0;
+        function start() {
+            if (typeof renderTootCard === 'function' || attempts++ > 30) {
+                window.switchExploreTab('posts');
+            } else {
+                setTimeout(start, 60);
+            }
+        }
+        start();
     };
 
     if (document.readyState === 'loading') {

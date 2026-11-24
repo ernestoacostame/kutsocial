@@ -9827,22 +9827,51 @@ HTML;
     public static function getTrendingLinks(): void {
         $db = Database::connect();
         $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? min(30, max(1, (int)$_GET['limit'])) : 15;
-        $rows = $db->query("SELECT id, account_id, content, card_json, created_at FROM statuses WHERE visibility = 'public' AND card_json IS NOT NULL AND card_json != '' ORDER BY id DESC LIMIT 300")->fetchAll(\PDO::FETCH_ASSOC);
+        $rows = $db->query("SELECT id, account_id, content, card, created_at FROM statuses WHERE visibility = 'public' AND reblog_of_id IS NULL ORDER BY id DESC LIMIT 300")->fetchAll(\PDO::FETCH_ASSOC);
 
         $links = [];
         foreach ($rows as $r) {
-            $card = json_decode((string)$r['card_json'], true);
-            if (!is_array($card) || empty($card['url']) || empty($card['title'])) continue;
-            $u = $card['url'];
+            $card = !empty($r['card']) ? json_decode((string)$r['card'], true) : null;
+            $u = '';
+            $title = '';
+            $desc = '';
+            $img = null;
+            $provider = '';
+            $author = '';
+
+            if (is_array($card) && !empty($card['url']) && !empty($card['title'])) {
+                $u = $card['url'];
+                $title = $card['title'];
+                $desc = $card['description'] ?? '';
+                $img = $card['image'] ?? null;
+                $provider = $card['provider_name'] ?? (parse_url($u, PHP_URL_HOST) ?: '');
+                $author = $card['author_name'] ?? '';
+            } elseif (!empty($r['content']) && preg_match_all('/<a\b[^>]*href=["\'](https?:\/\/[^"\']+)["\'][^>]*>(.*?)<\/a>/is', (string)$r['content'], $m, PREG_SET_ORDER)) {
+                foreach ($m as $match) {
+                    $fullTag = $match[0];
+                    $href = html_entity_decode($match[1], ENT_QUOTES, 'UTF-8');
+                    $anchorText = trim(strip_tags($match[2]));
+                    if (str_contains($fullTag, 'mention') || str_contains($fullTag, 'hashtag') || str_starts_with($anchorText, '@') || str_starts_with($anchorText, '#')) {
+                        continue;
+                    }
+                    $u = $href;
+                    $provider = parse_url($u, PHP_URL_HOST) ?: '';
+                    $plainText = trim(preg_replace('/\s+/', ' ', strip_tags((string)$r['content'])));
+                    $title = mb_substr(trim(str_replace($anchorText, '', $plainText)) ?: $anchorText ?: $u, 0, 140);
+                    break;
+                }
+            }
+
+            if ($u === '' || $title === '') continue;
             if (!isset($links[$u])) {
                 $links[$u] = [
                     'url' => $u,
-                    'title' => $card['title'],
-                    'description' => $card['description'] ?? '',
-                    'type' => $card['type'] ?? 'link',
-                    'author_name' => $card['author_name'] ?? '',
-                    'provider_name' => $card['provider_name'] ?? (parse_url($u, PHP_URL_HOST) ?: ''),
-                    'image' => $card['image'] ?? null,
+                    'title' => $title,
+                    'description' => $desc,
+                    'type' => 'link',
+                    'author_name' => $author,
+                    'provider_name' => $provider,
+                    'image' => $img,
                     'published_at' => $r['created_at'] ?? gmdate('c'),
                     'uses' => 0,
                     'accounts' => [],
