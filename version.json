@@ -1,5 +1,5 @@
 {
-  "version": "2.1.21",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.21/kutsocial-v2.1.21.zip",
-  "changelog": "Allow login with email, @handle, or case-insensitive username"
+  "version": "2.1.22",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.22/kutsocial-v2.1.22.zip",
+  "changelog": "Fix OAuth login matching remote/empty-password accounts"
 }
