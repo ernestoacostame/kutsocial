@@ -210,7 +210,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                         </a>
                     </li>
                     <?php endif; ?>
-                    <li class="nav-item">
+                    <li class="nav-item auth-only">
                         <a href="<?= $basePath ?>/explore" id="nav-explore" class="nav-link <?= ($section === 'explore') ? 'active' : '' ?>" title="<?= __('nav_explore', 'Explorar') ?>">
                             <span class="material-icons-outlined">explore</span> <span class="nav-label"><?= __('nav_explore', 'Explorar') ?></span>
                         </a>

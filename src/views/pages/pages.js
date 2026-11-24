@@ -400,7 +400,7 @@ function initPublicView() {
     document.documentElement.classList.add('is-guest');
 
     // Asegurar que Explorar, Timeline Local y Federación Pública estén visibles para visitantes
-    const linksToShow = ['nav-explore', 'nav-local', 'nav-public'];
+    const linksToShow = ['nav-local', 'nav-public'];
     linksToShow.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.style.display = '';
@@ -575,6 +575,7 @@ function handlePathRouting() {
         switchTimeline(type, true);
         return true;
     } else if (path === '/explore') {
+        if (!token) return false;
         showTab('explore', true);
         return true;
     } else if (path === '/mutes' || path === '/blocks' || path === '/followers' || path === '/following') {
