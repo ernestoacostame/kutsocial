@@ -1,5 +1,5 @@
 {
-  "version": "2.1.28",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.28/kutsocial-v2.1.28.zip",
-  "changelog": "Fix Explore Hashtags/News styling, wait for renderTootCard, and populate News from card/content"
+  "version": "2.1.29",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.29/kutsocial-v2.1.29.zip",
+  "changelog": "Use createThreadTootElement in Explore Posts tab for full card styling and link colors"
 }
