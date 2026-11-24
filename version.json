@@ -1,5 +1,5 @@
 {
-  "version": "2.1.22",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.22/kutsocial-v2.1.22.zip",
-  "changelog": "Fix OAuth login matching remote/empty-password accounts"
+  "version": "2.1.23",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.23/kutsocial-v2.1.23.zip",
+  "changelog": "Mastodon-inspired UI: Explore with sparklines and News, Home timeline filters, Relationships/Liked menu, and post actions"
 }
