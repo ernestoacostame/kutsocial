@@ -739,6 +739,10 @@ async function loadTimeline(loadMore = false) {
     isLoadingToots = true;
 
     const feed = showFeedContainer(currentTimeline);
+    const homeHeader = document.getElementById('home-timeline-header');
+    if (homeHeader) {
+        homeHeader.style.display = (currentTimeline === 'home') ? 'flex' : 'none';
+    }
     let loadingIndicator = null;
     const isTimelineChange = !loadMore && (lastRenderedTimeline !== currentTimeline || feed.innerHTML === '' || feed.innerHTML.includes('Cargando toots...'));
 
@@ -4342,6 +4346,10 @@ function reloadCurrentTimeline(forceReset = false) {
             lastId = 0;
             oldestId = null;
             const feed = showFeedContainer(currentTimeline);
+    const homeHeader = document.getElementById('home-timeline-header');
+    if (homeHeader) {
+        homeHeader.style.display = (currentTimeline === 'home') ? 'flex' : 'none';
+    }
             if (feed) feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">' + __('loading', 'Cargando toots...') + '</div>';
             isLoadingToots = false;
         }
