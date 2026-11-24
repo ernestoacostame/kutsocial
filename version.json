@@ -1,5 +1,5 @@
 {
-  "version": "2.1.42",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.42/kutsocial-v2.1.42.zip",
-  "changelog": "Self-host DOMPurify locally and remove remaining Google Fonts from installer"
+  "version": "2.1.43",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.43/kutsocial-v2.1.43.zip",
+  "changelog": "Clean guest/incognito mode: hide auth-only sidebar/account controls, show Sign In, and route /home to public profile"
 }
