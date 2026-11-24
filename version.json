@@ -1,5 +1,5 @@
 {
-  "version": "2.1.35",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.35/kutsocial-v2.1.35.zip",
-  "changelog": "Make Home filter bar visible by default in pages/feed.php and frontend/feed.php"
+  "version": "2.1.36",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.36/kutsocial-v2.1.36.zip",
+  "changelog": "Scope Home filter bar CSS inline so button and header match Mastodon dark UI"
 }
