@@ -1,5 +1,5 @@
 {
-  "version": "2.1.45",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.45/kutsocial-v2.1.45.zip",
-  "changelog": "Fix duplicate Sign In button in Mastodon theme guest mode"
+  "version": "2.1.46",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.46/kutsocial-v2.1.46.zip",
+  "changelog": "Hide Explore tab in guest mode"
 }
