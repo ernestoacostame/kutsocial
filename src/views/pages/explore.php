@@ -233,12 +233,13 @@
                     return;
                 }
                 items.forEach(function (st) {
-                    if (typeof renderTootCard === 'function') {
-                        container.appendChild(renderTootCard(st));
+                    if (typeof createThreadTootElement === 'function') {
+                        container.appendChild(createThreadTootElement(st, false));
                     } else {
                         var div = document.createElement('div');
-                        div.style.cssText = 'padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.08);';
-                        div.innerHTML = '<strong>' + esc(st.account?.display_name || st.account?.username) + '</strong> ' + (st.content || '');
+                        div.className = 'toot-card';
+                        div.style.cssText = 'padding:16px 20px; border-bottom:1px solid rgba(255,255,255,0.08);';
+                        div.innerHTML = '<div style="font-weight:700; margin-bottom:6px;">' + esc(st.account?.display_name || st.account?.username) + ' <span style="font-weight:400; color:var(--text-muted); font-size:12.5px;">@' + esc(st.account?.acct || st.account?.username || '') + '</span></div><div class="toot-content">' + (st.content || '') + '</div>';
                         container.appendChild(div);
                     }
                 });
@@ -309,7 +310,7 @@
     window.initExplorePage = function () {
         var attempts = 0;
         function start() {
-            if (typeof renderTootCard === 'function' || attempts++ > 30) {
+            if (typeof createThreadTootElement === 'function' || attempts++ > 30) {
                 window.switchExploreTab('posts');
             } else {
                 setTimeout(start, 60);

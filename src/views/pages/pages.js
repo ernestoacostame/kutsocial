@@ -7974,7 +7974,7 @@ async function switchExploreTab(tab) {
                 container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No hay publicaciones en tendencia aún.</div>';
                 return;
             }
-            items.forEach(st => container.appendChild(renderTootCard(st)));
+            items.forEach(st => container.appendChild(createThreadTootElement(st, false)));
         } else if (tab === 'hashtags') {
             const res = await fetch('/api/v1/trends/tags?limit=20', { headers });
             const tags = await res.json();
