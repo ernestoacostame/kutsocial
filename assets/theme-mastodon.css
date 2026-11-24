@@ -435,11 +435,13 @@ html[data-ui-theme="mastodon"].m5-sidebar-collapsed .nav-item {
 }
 
 html[data-ui-theme="mastodon"].m5-sidebar-collapsed .nav-link {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
     width: 42px;
     height: 42px;
-    padding: 0;
+    padding: 0 !important;
     margin: 0 !important;
-    justify-content: center;
     border-radius: 9999px;
 }
 
