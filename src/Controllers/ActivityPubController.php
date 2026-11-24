@@ -1879,7 +1879,10 @@ XML;
         \KutSocial\NotificationHelper::notifyReblog((int)$origStatusId, (int)$remoteAccount['id']);
     }
 
-    public static function fetchAndRegisterRemoteStatus(string $url, bool $forceRefresh = false): ?int {
+    public static function fetchAndRegisterRemoteStatus(string $url, bool $forceRefresh = false, int $depth = 0): ?int {
+        if ($depth > 2) {
+            return null;
+        }
         $db = Database::connect();
         $stmtCheck = $db->prepare("SELECT id FROM statuses WHERE uri = ? LIMIT 1");
         $stmtCheck->execute([$url]);
@@ -1899,6 +1902,9 @@ XML;
 
             if (isset($json['type']) && ($json['type'] === 'Create' || $json['type'] === 'Announce') && isset($json['object'])) {
                 $object = $json['object'];
+                if ($json['type'] === 'Announce' && is_string($object) && filter_var($object, FILTER_VALIDATE_URL)) {
+                    return self::fetchAndRegisterRemoteStatus($object, $forceRefresh, $depth + 1);
+                }
                 $actorUrl = $json['actor'] ?? ($object['attributedTo'] ?? '');
                 if (is_array($object) && empty($object['published']) && !empty($json['published'])) {
                     $object['published'] = $json['published'];
