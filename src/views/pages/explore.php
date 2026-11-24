@@ -1,12 +1,11 @@
 <style>
 #tab-explore.explore-page {
     width: 100%;
-    max-width: 680px;
-    margin: 0 auto;
-    background: var(--card-bg, #151722);
-    border: 1px solid var(--border-color, rgba(255,255,255,0.1));
-    border-radius: 14px;
-    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
 }
 #tab-explore .explore-header {
     padding: 0 !important;
@@ -108,15 +107,15 @@
 <div id="tab-explore" class="explore-page">
     <div class="explore-header">
         <h2 class="explore-title"><?= __('nav_explore', 'Explore') ?></h2>
-        <form class="explore-search-form" onsubmit="event.preventDefault(); submitExploreSearch();">
+        <form class="explore-search-form" onsubmit="event.preventDefault(); window.submitExploreSearch();">
             <span class="material-icons-outlined">search</span>
             <input type="text" id="explore-search-input" placeholder="<?= __('explore_search_placeholder', 'Search or paste link...') ?>" autocomplete="off">
         </form>
         <div class="explore-tabs" role="tablist">
-            <button type="button" class="explore-tab-btn active" data-explore-tab="posts" onclick="switchExploreTab('posts')"><?= __('explore_posts', 'Posts') ?></button>
-            <button type="button" class="explore-tab-btn" data-explore-tab="hashtags" onclick="switchExploreTab('hashtags')"><?= __('explore_hashtags', 'Hashtags') ?></button>
-            <button type="button" class="explore-tab-btn" data-explore-tab="people" onclick="switchExploreTab('people')"><?= __('explore_people', 'People') ?></button>
-            <button type="button" class="explore-tab-btn" data-explore-tab="news" onclick="switchExploreTab('news')"><?= __('explore_news', 'News') ?></button>
+            <button type="button" class="explore-tab-btn active" data-explore-tab="posts" onclick="window.switchExploreTab('posts')"><?= __('explore_posts', 'Posts') ?></button>
+            <button type="button" class="explore-tab-btn" data-explore-tab="hashtags" onclick="window.switchExploreTab('hashtags')"><?= __('explore_hashtags', 'Hashtags') ?></button>
+            <button type="button" class="explore-tab-btn" data-explore-tab="people" onclick="window.switchExploreTab('people')"><?= __('explore_people', 'People') ?></button>
+            <button type="button" class="explore-tab-btn" data-explore-tab="news" onclick="window.switchExploreTab('news')"><?= __('explore_news', 'News') ?></button>
         </div>
     </div>
     <div id="explore-content-container" class="explore-content">
@@ -124,14 +123,137 @@
     </div>
 </div>
 <script>
-document.addEventListener('DOMContentLoaded', function () {
-    setTimeout(function () {
-        if (typeof initExplorePage === 'function') {
-            var c = document.getElementById('explore-content-container');
-            if (c && c.children.length === 1 && !c.querySelector('.toot-card, .explore-tag-row, .explore-news-hero')) {
-                initExplorePage();
+(function () {
+    function esc(s) {
+        if (typeof escapeHTML === 'function') return escapeHTML(s);
+        return String(s || '').replace(/[&<>"']/g, function (c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+    }
+    function pUrl(u) {
+        if (typeof proxyUrl === 'function') return proxyUrl(u);
+        return u || '';
+    }
+    function sparkline(history) {
+        if (!Array.isArray(history) || history.length === 0) return '';
+        var pts = history.slice(0, 7).reverse().map(function (h) { return parseInt(h.uses || '0', 10); });
+        var max = Math.max.apply(null, [1].concat(pts));
+        var w = 72, h = 26, step = pts.length > 1 ? w / (pts.length - 1) : w;
+        var coords = pts.map(function (v, i) {
+            return (i * step).toFixed(1) + ',' + (h - 3 - (v / max) * (h - 6)).toFixed(1);
+        }).join(' ');
+        return '<svg width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" style="flex-shrink:0;"><polyline fill="none" stroke="#858afa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points="' + coords + '"/></svg>';
+    }
+
+    window.submitExploreSearch = function () {
+        var q = (document.getElementById('explore-search-input')?.value || '').trim();
+        if (!q) return;
+        var base = window.KUTSOCIAL_BASE_PATH || '';
+        window.location.href = base + '/search-results?q=' + encodeURIComponent(q);
+    };
+
+    window.switchExploreTab = async function (tab) {
+        document.querySelectorAll('#tab-explore .explore-tab-btn').forEach(function (b) {
+            b.classList.toggle('active', b.dataset.exploreTab === tab);
+        });
+        var container = document.getElementById('explore-content-container');
+        if (!container) return;
+        container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);"><?= __('loading', 'Loading...') ?></div>';
+        var tok = (typeof token !== 'undefined' && token) ? token : (localStorage.getItem('kutsocial_token') || window.KUTSOCIAL_AUTO_TOKEN || '');
+        var headers = tok ? { 'Authorization': 'Bearer ' + tok } : {};
+        var base = window.KUTSOCIAL_BASE_PATH || '';
+
+        try {
+            if (tab === 'posts') {
+                var res = await fetch('/api/v1/trends/statuses?limit=20', { headers: headers });
+                var items = await res.json();
+                container.innerHTML = '';
+                if (!Array.isArray(items) || items.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No trending posts yet.</div>';
+                    return;
+                }
+                items.forEach(function (st) {
+                    if (typeof renderTootCard === 'function') {
+                        container.appendChild(renderTootCard(st));
+                    } else {
+                        var div = document.createElement('div');
+                        div.style.cssText = 'padding:14px 16px; border-bottom:1px solid rgba(255,255,255,0.08);';
+                        div.innerHTML = '<strong>' + esc(st.account?.display_name || st.account?.username) + '</strong> ' + (st.content || '');
+                        container.appendChild(div);
+                    }
+                });
+            } else if (tab === 'hashtags') {
+                var resT = await fetch('/api/v1/trends/tags?limit=20', { headers: headers });
+                var tags = await resT.json();
+                if (!Array.isArray(tags) || tags.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No trending hashtags yet.</div>';
+                    return;
+                }
+                container.innerHTML = tags.map(function (t) {
+                    var people = t.total_accounts || (t.history && t.history[0] ? t.history[0].accounts : 0);
+                    return '<a class="explore-tag-row" href="' + base + '/tag_' + encodeURIComponent(t.name) + '">' +
+                        '<div><div style="font-weight:700; font-size:15px;">#' + esc(t.name) + '</div>' +
+                        '<div style="font-size:12.5px; color:var(--text-muted);">' + people + ' people recently</div></div>' +
+                        sparkline(t.history) + '</a>';
+                }).join('');
+            } else if (tab === 'people') {
+                var resP = await fetch('/api/v1/directory?limit=24', { headers: headers });
+                var users = await resP.json();
+                if (!Array.isArray(users) || users.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No profiles available.</div>';
+                    return;
+                }
+                container.innerHTML = '<div style="padding:12px 16px; display:flex; flex-direction:column; gap:10px;">' + users.map(function (u) {
+                    var doc = new DOMParser().parseFromString(u.note || '', 'text/html');
+                    var bio = esc((doc.body.textContent || '').trim().slice(0, 120));
+                    return '<a href="' + base + '/@' + encodeURIComponent(u.acct) + '" style="display:flex; align-items:center; gap:12px; padding:12px 14px; border:1px solid var(--border-color); border-radius:12px; text-decoration:none; color:inherit; background:rgba(255,255,255,0.02);">' +
+                        '<img src="' + pUrl(u.avatar) + '" alt="" style="width:44px; height:44px; border-radius:50%; object-fit:cover;">' +
+                        '<div style="min-width:0; flex:1;"><div style="font-weight:700; font-size:14.5px;">' + esc(u.display_name || u.username) + '</div>' +
+                        '<div style="font-size:12.5px; color:var(--text-muted);">@' + esc(u.acct) + '</div>' +
+                        (bio ? '<div style="font-size:12.5px; color:var(--text-muted); margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + bio + '</div>' : '') +
+                        '</div><span class="explore-posts-badge">' + (u.statuses_count || 0) + ' posts</span></a>';
+                }).join('') + '</div>';
+            } else if (tab === 'news') {
+                var resN = await fetch('/api/v1/trends/links?limit=15', { headers: headers });
+                var links = await resN.json();
+                if (!Array.isArray(links) || links.length === 0) {
+                    container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--text-muted);">No trending links yet.</div>';
+                    return;
+                }
+                var first = links[0];
+                var firstUses = (first.history && first.history[0]) ? first.history[0].uses : 1;
+                var html = '<div style="padding:12px 16px;"><a class="explore-news-hero" href="' + esc(first.url) + '" target="_blank" rel="noopener noreferrer">' +
+                    (first.image ? '<img src="' + pUrl(first.image) + '" alt="">' : '') +
+                    '<div style="padding:14px 16px;"><div style="font-size:12px; color:var(--text-muted); margin-bottom:4px;">' + esc(first.provider_name || '') + '</div>' +
+                    '<div style="font-size:17px; font-weight:700; line-height:1.3; margin-bottom:10px;">' + esc(first.title) + '</div>' +
+                    '<span class="explore-posts-badge">' + firstUses + ' posts</span></div></a>';
+                if (links.length > 1) {
+                    html += '<div style="border:1px solid var(--border-color); border-radius:14px; overflow:hidden;">' + links.slice(1).map(function (l) {
+                        var uses = (l.history && l.history[0]) ? l.history[0].uses : 1;
+                        return '<a class="explore-news-row" href="' + esc(l.url) + '" target="_blank" rel="noopener noreferrer">' +
+                            '<div style="min-width:0; flex:1;"><div style="font-size:12px; color:var(--text-muted); margin-bottom:3px;">' + esc(l.provider_name || '') + '</div>' +
+                            '<div style="font-size:14.5px; font-weight:700; line-height:1.3; margin-bottom:8px;">' + esc(l.title) + '</div>' +
+                            '<span class="explore-posts-badge">' + uses + ' posts</span></div>' +
+                            (l.image ? '<img class="explore-news-thumb" src="' + pUrl(l.image) + '" alt="">' : '') + '</a>';
+                    }).join('') + '</div>';
+                }
+                html += '</div>';
+                container.innerHTML = html;
             }
+        } catch (err) {
+            console.error(err);
+            container.innerHTML = '<div style="text-align:center; padding: 30px; color: var(--error, #ef4444);">Error loading Explore.</div>';
         }
-    }, 120);
-});
+    };
+
+    window.initExplorePage = function () {
+        window.switchExploreTab('posts');
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', window.initExplorePage);
+    } else {
+        window.initExplorePage();
+    }
+})();
 </script>
