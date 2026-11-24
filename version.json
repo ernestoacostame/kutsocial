@@ -1,5 +1,5 @@
 {
-  "version": "2.1.23",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.23/kutsocial-v2.1.23.zip",
-  "changelog": "Mastodon-inspired UI: Explore with sparklines and News, Home timeline filters, Relationships/Liked menu, and post actions"
+  "version": "2.1.24",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.24/kutsocial-v2.1.24.zip",
+  "changelog": "Fix Explore layout, i18n keys, and init() loading"
 }
