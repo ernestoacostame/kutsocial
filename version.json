@@ -1,5 +1,5 @@
 {
-  "version": "2.1.48",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.48/kutsocial-v2.1.48.zip",
-  "changelog": "Force flex centering on collapsed Mastodon nav-link icons"
+  "version": "2.1.49",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.49/kutsocial-v2.1.49.zip",
+  "changelog": "Async on-demand hydration for empty remote cards in Catch-up and timelines without blocking load"
 }
