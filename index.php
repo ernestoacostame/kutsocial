@@ -43,6 +43,7 @@ $fastAssetMap = [
     '/assets/admin.css' => [__DIR__ . '/assets/admin.css', 'text/css; charset=utf-8'],
     '/assets/theme-mastodon.css' => [__DIR__ . '/assets/theme-mastodon.css', 'text/css; charset=utf-8'],
     '/assets/fonts.css' => [__DIR__ . '/assets/fonts.css', 'text/css; charset=utf-8'],
+    '/assets/js/purify.min.js' => [__DIR__ . '/assets/js/purify.min.js', 'application/javascript; charset=utf-8'],
 ];
 if (!isset($fastAssetMap[$rawPath]) && preg_match('#^/assets/fonts/([a-zA-Z0-9._-]+\.woff2?)$#', (string)$rawPath, $fm)) {
     $fastAssetMap[$rawPath] = [__DIR__ . '/assets/fonts/' . $fm[1], str_ends_with($fm[1], '.woff2') ? 'font/woff2' : 'font/woff'];

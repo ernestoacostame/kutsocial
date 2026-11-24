@@ -18,7 +18,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
     <link id="ui-theme-mastodon-css" rel="stylesheet" href="/assets/theme-mastodon.css?v=<?= $ver ?>" <?= $uiTheme === 'mastodon' ? '' : 'disabled' ?>>
     <link rel="stylesheet" href="/assets/fonts.css?v=<?= $ver ?>">
     <!-- DOMPurify para Saneamiento XSS -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script>
+    <script src="/assets/js/purify.min.js?v=<?= $ver ?>" defer></script>
     <?php if ($uiTheme === 'mastodon'): ?>
     <script>
     (function() {
