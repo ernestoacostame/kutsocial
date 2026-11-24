@@ -1,5 +1,5 @@
 {
-  "version": "2.1.46",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.46/kutsocial-v2.1.46.zip",
-  "changelog": "Hide Explore tab in guest mode"
+  "version": "2.1.47",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.47/kutsocial-v2.1.47.zip",
+  "changelog": "Center nav icons in collapsed Mastodon sidebar (guest mode)"
 }
