@@ -1,6 +1,6 @@
 <div id="tab-feed">
     <!-- Cabecera Home con filtros rápidos -->
-    <div id="home-timeline-header" class="home-filter-bar" style="display: none;">
+    <div id="home-timeline-header" class="home-filter-bar">
         <span class="home-filter-title"><?= __('nav_home', 'Inicio') ?></span>
         <div style="position: relative;">
             <button type="button" id="home-filter-btn" class="home-filter-btn" onclick="toggleHomeFilterPopover(event)" title="<?= __('timeline_filters', 'Filtros de inicio') ?>">
