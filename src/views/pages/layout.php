@@ -320,9 +320,11 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
             </div>
 
             <!-- Perfil del usuario actual -->
+            <?php if ($uiTheme !== 'mastodon'): ?>
             <div class="user-profile-summary-guest guest-only" style="padding: 12px 0;">
                 <button type="button" onclick="showLoginModal()" style="margin: 0; width: 100%; padding: 12px; font-weight: 600; background: var(--primary); border: none; border-radius: 10px; color: white; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;"><span class="material-icons-outlined">login</span> <?= __('sign_in', 'Iniciar sesión') ?></button>
             </div>
+            <?php endif; ?>
             <div class="user-profile-summary auth-only" style="cursor: pointer;" onclick="const u = (typeof currentProfileData !== 'undefined' && currentProfileData?.username) ? currentProfileData.username : '<?= htmlspecialchars($localUser['username'] ?? '') ?>'; if(u) window.location.href='<?= $basePath ?>/@' + u;">
                 <img id="my-avatar" class="user-avatar" src="<?= htmlspecialchars($localUser['avatar'] ?: '/assets/default-avatar.svg') ?>" alt="Mi Avatar">
                 <div class="user-info">
