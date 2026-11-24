@@ -1,4 +1,79 @@
 <div id="tab-feed">
+    <style>
+    #home-timeline-header.home-filter-bar {
+        display: flex;
+        flex-direction: row !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 12px 16px !important;
+        margin: 0 !important;
+        border: none !important;
+        border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+    }
+    #home-timeline-header .home-filter-title {
+        font-size: 16px !important;
+        font-weight: 700 !important;
+        color: var(--text-color, #fff) !important;
+        margin: 0 !important;
+    }
+    #home-timeline-header .home-filter-btn {
+        width: 34px !important;
+        min-width: 34px !important;
+        max-width: 34px !important;
+        height: 34px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-radius: 50% !important;
+        border: 1px solid rgba(255,255,255,0.16) !important;
+        background: rgba(255,255,255,0.06) !important;
+        background-image: none !important;
+        box-shadow: none !important;
+        color: var(--text-color, #fff) !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        cursor: pointer !important;
+    }
+    #home-timeline-header .home-filter-btn:hover {
+        background: rgba(255,255,255,0.12) !important;
+    }
+    #home-timeline-header .home-filter-btn .material-icons-outlined {
+        font-size: 18px !important;
+        margin: 0 !important;
+    }
+    #home-timeline-header .home-filter-popover {
+        position: absolute !important;
+        right: 0 !important;
+        top: 40px !important;
+        width: 220px !important;
+        background: #181b24 !important;
+        border: 1px solid rgba(255,255,255,0.15) !important;
+        border-radius: 12px !important;
+        padding: 8px 12px !important;
+        box-shadow: 0 12px 32px rgba(0,0,0,0.45) !important;
+        z-index: 200 !important;
+    }
+    #home-timeline-header .home-filter-row {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 8px 0 !important;
+        font-size: 13.5px !important;
+        color: var(--text-color, #fff) !important;
+        cursor: pointer !important;
+        gap: 10px !important;
+        margin: 0 !important;
+    }
+    #home-timeline-header .home-filter-row input[type="checkbox"] {
+        width: 17px !important;
+        height: 17px !important;
+        accent-color: #858afa !important;
+        cursor: pointer !important;
+        margin: 0 !important;
+    }
+    </style>
     <!-- Cabecera Home con filtros rápidos -->
     <div id="home-timeline-header" class="home-filter-bar">
         <span class="home-filter-title"><?= __('nav_home', 'Inicio') ?></span>
