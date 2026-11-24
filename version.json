@@ -1,5 +1,5 @@
 {
-  "version": "2.1.39",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.39/kutsocial-v2.1.39.zip",
-  "changelog": "Instant toot context menu with relationship cache and eliminate sidebar FOUC"
+  "version": "2.1.40",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.40/kutsocial-v2.1.40.zip",
+  "changelog": "Instant Home reload via sessionStorage cache, prevent icon-font sidebar shift, and sync frontend.js context menu"
 }
