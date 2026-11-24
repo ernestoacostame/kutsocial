@@ -5330,12 +5330,7 @@ HTML;
         self::preloadStatusesContext($rows, $currentAccountId);
         $formatted = [];
         foreach ($rows as $row) {
-            $item = self::formatStatus($row, $currentAccountId);
-            $hasContent = trim(strip_tags((string)($item['content'] ?? ''))) !== '' || trim((string)($item['text'] ?? '')) !== '';
-            if (!$hasContent && empty($item['reblog']) && empty($item['quote']) && empty($item['media_attachments']) && empty($item['poll'])) {
-                continue;
-            }
-            $formatted[] = $item;
+            $formatted[] = self::formatStatus($row, $currentAccountId);
         }
         return $formatted;
     }
