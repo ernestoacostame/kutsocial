@@ -409,7 +409,7 @@ function initPublicView() {
     // Mostrar link "Propietario"
     const itemOwner = document.getElementById('nav-item-owner');
     if (itemOwner) {
-        itemOwner.style.display = 'block';
+        itemOwner.style.display = '';
         const ownerLink = document.getElementById('nav-owner-profile');
         if (ownerLink && window.KUTSOCIAL_OWNER) {
             const ownerHandle = window.KUTSOCIAL_OWNER.username || ('id-' + window.KUTSOCIAL_OWNER.id);
