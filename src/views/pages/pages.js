@@ -646,8 +646,9 @@ async function initApp() {
     }
 
     // Cargar la versión dinámica desde el servidor
-    if (window.KUTSOCIAL_VERSION) {
-        document.getElementById('stat-version').innerText = 'v' + window.KUTSOCIAL_VERSION;
+    const statVersionEl = document.getElementById('stat-version');
+    if (window.KUTSOCIAL_VERSION && statVersionEl) {
+        statVersionEl.innerText = 'v' + window.KUTSOCIAL_VERSION;
     }
 
     // 2. Obtener estadísticas de instancia
@@ -685,6 +686,14 @@ async function initApp() {
             const searchInputs = document.querySelectorAll('.sidebar-search-input');
             searchInputs.forEach(input => input.value = q);
             performSearch(q);
+        }
+    } else if (activeSection === 'users-list') {
+        const cleanPath = window.location.pathname.replace(window.KUTSOCIAL_BASE_PATH || '', '').replace(/^\//, '');
+        if (['mutes', 'blocks', 'followers', 'following'].includes(cleanPath)) {
+            const ownerId = window.KUTSOCIAL_CURRENT_USER?.id || window.KUTSOCIAL_OWNER?.id || currentProfileData?.id;
+            loadUsersList(cleanPath, ownerId);
+        } else {
+            showTab('users-list', true);
         }
     } else {
         showTab(activeSection, true);
