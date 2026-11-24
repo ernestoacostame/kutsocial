@@ -1,5 +1,5 @@
 {
-  "version": "2.1.27",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.27/kutsocial-v2.1.27.zip",
-  "changelog": "Fix home timeline SQL query using moderation_blocks.target"
+  "version": "2.1.28",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.28/kutsocial-v2.1.28.zip",
+  "changelog": "Fix Explore Hashtags/News styling, wait for renderTootCard, and populate News from card/content"
 }
