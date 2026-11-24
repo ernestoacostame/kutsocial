@@ -422,7 +422,7 @@ class AdminController {
             $loginId = explode('@', ltrim($loginId, '@'))[0];
         }
 
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE (LOWER(username) = LOWER(?) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?))) AND (domain IS NULL OR domain = '') AND role IN ('admin', 'owner') LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE (LOWER(username) = LOWER(?) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?))) AND (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' AND role IN ('admin', 'owner') LIMIT 1");
         $stmt->execute([$loginId, $loginId]);
         $user = $stmt->fetch();
 

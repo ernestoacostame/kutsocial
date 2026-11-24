@@ -598,7 +598,7 @@ HTML;
         if (str_starts_with($loginId, '@')) {
             $loginId = explode('@', ltrim($loginId, '@'))[0];
         }
-        $stmt = $db->prepare("SELECT * FROM accounts WHERE (LOWER(username) = LOWER(?) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?))) AND (domain IS NULL OR domain = '') LIMIT 1");
+        $stmt = $db->prepare("SELECT * FROM accounts WHERE (LOWER(username) = LOWER(?) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?))) AND (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' LIMIT 1");
         $stmt->execute([$loginId, $loginId]);
         $account = $stmt->fetch();
 
@@ -911,7 +911,7 @@ HTML;
             if (str_starts_with($loginId, '@')) {
                 $loginId = explode('@', ltrim($loginId, '@'))[0];
             }
-            $stmt = $db->prepare("SELECT * FROM accounts WHERE (LOWER(username) = LOWER(?) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?))) AND (domain IS NULL OR domain = '') LIMIT 1");
+            $stmt = $db->prepare("SELECT * FROM accounts WHERE (LOWER(username) = LOWER(?) OR (email IS NOT NULL AND email != '' AND LOWER(email) = LOWER(?))) AND (domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != '' LIMIT 1");
             $stmt->execute([$loginId, $loginId]);
             $account = $stmt->fetch();
 
