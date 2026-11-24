@@ -26,8 +26,8 @@
         padding: 0 !important;
         margin: 0 !important;
         border-radius: 50% !important;
-        border: 1px solid rgba(255,255,255,0.16) !important;
-        background: rgba(255,255,255,0.06) !important;
+        border: none !important;
+        background: transparent !important;
         background-image: none !important;
         box-shadow: none !important;
         color: var(--text-color, #fff) !important;
@@ -110,3 +110,46 @@
         <span class="material-icons-outlined" style="font-size: 22px;">keyboard_arrow_up</span>
     </button>
 </div>
+<script>
+(function () {
+    if (typeof window.getHomeFilters !== 'function') {
+        window.getHomeFilters = function () {
+            try {
+                var raw = localStorage.getItem('kutsocial_home_filters');
+                if (raw) {
+                    var p = JSON.parse(raw);
+                    return { boosts: p.boosts !== false, quotes: p.quotes !== false, replies: p.replies !== false };
+                }
+            } catch (e) {}
+            return { boosts: true, quotes: true, replies: true };
+        };
+    }
+    window.toggleHomeFilterPopover = function (event) {
+        if (event) { event.preventDefault(); event.stopPropagation(); }
+        var pop = document.getElementById('home-filter-popover');
+        if (!pop) return;
+        var hf = window.getHomeFilters();
+        var cbB = document.getElementById('filter-show-boosts');
+        var cbQ = document.getElementById('filter-show-quotes');
+        var cbR = document.getElementById('filter-show-replies');
+        if (cbB) cbB.checked = hf.boosts;
+        if (cbQ) cbQ.checked = hf.quotes;
+        if (cbR) cbR.checked = hf.replies;
+        pop.style.display = (pop.style.display === 'none' || !pop.style.display) ? 'block' : 'none';
+    };
+    window.onHomeFilterChange = function () {
+        var boosts = document.getElementById('filter-show-boosts')?.checked ?? true;
+        var quotes = document.getElementById('filter-show-quotes')?.checked ?? true;
+        var replies = document.getElementById('filter-show-replies')?.checked ?? true;
+        localStorage.setItem('kutsocial_home_filters', JSON.stringify({ boosts: boosts, quotes: quotes, replies: replies }));
+        if (typeof loadTimeline === 'function') loadTimeline();
+    };
+    if (!window.__homeFilterDocBound) {
+        window.__homeFilterDocBound = true;
+        document.addEventListener('click', function () {
+            var pop = document.getElementById('home-filter-popover');
+            if (pop && pop.style.display === 'block') pop.style.display = 'none';
+        });
+    }
+})();
+</script>
