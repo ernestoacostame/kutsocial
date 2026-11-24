@@ -3665,7 +3665,13 @@ HTML;
         if (!$showReplies) {
             $whereClauses[] = "s.in_reply_to_id IS NULL";
         }
-        $whereClauses[] = "NOT EXISTS (SELECT 1 FROM moderation_blocks mb WHERE mb.type = 'muted_conversation' AND mb.value = CAST(s.id AS TEXT))";
+        $mutedConvIds = [];
+        try {
+            $stmtMc = $db->query("SELECT target FROM moderation_blocks WHERE type = 'muted_conversation'");
+            if ($stmtMc) {
+                $mutedConvIds = array_flip($stmtMc->fetchAll(\PDO::FETCH_COLUMN));
+            }
+        } catch (\Throwable $e) {}
 
         if ($maxId !== null) {
             $whereClauses[] = "s.id < ?";
@@ -3681,6 +3687,9 @@ HTML;
         }
 
         $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
+        if (!empty($mutedConvIds)) {
+            $rows = array_values(array_filter($rows, fn($r) => !isset($mutedConvIds[(string)($r['id'] ?? '')])));
+        }
 
         $timeline = self::formatStatusesBatch($rows, (int)$account['id']);
         if (!$showQuotes) {
@@ -9890,10 +9899,10 @@ HTML;
             return;
         }
         $db = Database::connect();
-        $stmtChk = $db->prepare("SELECT id FROM moderation_blocks WHERE type = 'muted_conversation' AND value = ? LIMIT 1");
+        $stmtChk = $db->prepare("SELECT id FROM moderation_blocks WHERE type = 'muted_conversation' AND target = ? LIMIT 1");
         $stmtChk->execute([(string)$id]);
         if (!$stmtChk->fetchColumn()) {
-            $stmtIns = $db->prepare("INSERT INTO moderation_blocks (type, value, created_at) VALUES ('muted_conversation', ?, ?)");
+            $stmtIns = $db->prepare("INSERT INTO moderation_blocks (type, target, created_at) VALUES ('muted_conversation', ?, ?)");
             $stmtIns->execute([(string)$id, gmdate('Y-m-d H:i:s')]);
         }
         Router::json(['id' => (string)$id, 'muted' => true]);
@@ -9910,7 +9919,7 @@ HTML;
         }
         $id = (int)($params['id'] ?? 0);
         $db = Database::connect();
-        $stmtDel = $db->prepare("DELETE FROM moderation_blocks WHERE type = 'muted_conversation' AND value = ?");
+        $stmtDel = $db->prepare("DELETE FROM moderation_blocks WHERE type = 'muted_conversation' AND target = ?");
         $stmtDel->execute([(string)$id]);
         Router::json(['id' => (string)$id, 'muted' => false]);
     }
