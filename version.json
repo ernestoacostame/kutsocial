@@ -1,5 +1,5 @@
 {
-  "version": "2.1.40",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.40/kutsocial-v2.1.40.zip",
-  "changelog": "Instant Home reload via sessionStorage cache, prevent icon-font sidebar shift, and sync frontend.js context menu"
+  "version": "2.1.41",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.41/kutsocial-v2.1.41.zip",
+  "changelog": "Self-host Outfit and Material Icons fonts locally to eliminate Google Fonts requests and FOUC"
 }
