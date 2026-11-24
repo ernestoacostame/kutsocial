@@ -1,5 +1,5 @@
 {
-  "version": "2.1.41",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.41/kutsocial-v2.1.41.zip",
-  "changelog": "Self-host Outfit and Material Icons fonts locally to eliminate Google Fonts requests and FOUC"
+  "version": "2.1.42",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.42/kutsocial-v2.1.42.zip",
+  "changelog": "Self-host DOMPurify locally and remove remaining Google Fonts from installer"
 }
