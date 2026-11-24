@@ -4342,33 +4342,40 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
         separator.style = 'height: 1px; background: rgba(255,255,255,0.08); margin: 4px 0;';
         menu.appendChild(separator);
 
-        const relLoading = document.createElement('div');
-        relLoading.style = 'padding: 6px 14px; font-size: 12px; color: var(--text-muted);';
-        relLoading.innerText = 'Cargando opciones...';
-        menu.appendChild(relLoading);
+        window.__tootRelCache = window.__tootRelCache || {};
+        const accKey = String(account.id || '');
+        const initialRel = window.__tootRelCache[accKey] || {
+            muting: false,
+            blocking: false,
+            domain_blocking: false,
+            following: !!(account.relationship && account.relationship.following),
+            only_replies_to_me: false
+        };
 
-        try {
-            const relRes = await fetch(`/api/v1/accounts/relationships?id[]=${encodeURIComponent(account.id)}`, {
+        const modBox = document.createElement('div');
+        modBox.style = 'display: flex; flex-direction: column;';
+        menu.appendChild(modBox);
+        renderTootModerationItems(modBox, account, toot, initialRel, btn, rect);
+
+        if (!window.__tootRelCache[accKey]) {
+            fetch(`/api/v1/accounts/relationships?id[]=${encodeURIComponent(account.id)}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (relLoading.parentNode) {
-                relLoading.remove();
-            }
-            if (activeTootOptionsMenu !== menu) return;
-
-            let rel = { muting: false, blocking: false, domain_blocking: false };
-            if (relRes.ok) {
-                const rels = await relRes.json();
-                if (rels && rels[0]) rel = rels[0];
-            }
-            renderTootModerationItems(menu, account, toot, rel, btn, rect);
-        } catch (err) {
-            console.error(err);
-            if (relLoading.parentNode) {
-                relLoading.remove();
-            }
-            if (activeTootOptionsMenu !== menu) return;
-            renderTootModerationItems(menu, account, toot, { muting: false, blocking: false, domain_blocking: false }, btn, rect);
+            }).then(r => r.ok ? r.json() : null).then(rels => {
+                const fresh = rels && rels[0] ? rels[0] : null;
+                if (!fresh) return;
+                window.__tootRelCache[accKey] = fresh;
+                if (activeTootOptionsMenu !== menu || !modBox.parentNode) return;
+                const changed = !!fresh.muting !== !!initialRel.muting ||
+                    !!fresh.blocking !== !!initialRel.blocking ||
+                    !!fresh.domain_blocking !== !!initialRel.domain_blocking ||
+                    !!fresh.following !== !!initialRel.following ||
+                    !!fresh.only_replies_to_me !== !!initialRel.only_replies_to_me;
+                if (changed) {
+                    modBox.innerHTML = '';
+                    renderTootModerationItems(modBox, account, toot, fresh, btn, rect);
+                    adjustMenuPosition(menu, rect);
+                }
+            }).catch(() => {});
         }
     }
 

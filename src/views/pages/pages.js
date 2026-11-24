@@ -744,13 +744,40 @@ async function loadTimeline(loadMore = false) {
         homeHeader.style.display = (currentTimeline === 'home') ? 'flex' : 'none';
     }
     let loadingIndicator = null;
-    const isTimelineChange = !loadMore && (lastRenderedTimeline !== currentTimeline || feed.innerHTML === '' || feed.innerHTML.includes('Cargando toots...'));
+    let isTimelineChange = !loadMore && (lastRenderedTimeline !== currentTimeline || feed.innerHTML === '' || feed.innerHTML.includes('Cargando toots...'));
+    const hf = (currentTimeline === 'home' && typeof getHomeFilters === 'function') ? getHomeFilters() : { boosts: true, quotes: true, replies: true };
+    const homeFilterKey = `${hf.boosts ? 1 : 0}${hf.quotes ? 1 : 0}${hf.replies ? 1 : 0}`;
 
     if (!loadMore) {
         if (isTimelineChange) {
-            feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
-            lastId = 0;
-            oldestId = null;
+            let renderedFromCache = false;
+            if (currentTimeline === 'home') {
+                try {
+                    const cachedRaw = sessionStorage.getItem('kutsocial_home_cache_v1');
+                    if (cachedRaw) {
+                        const cached = JSON.parse(cachedRaw);
+                        if (cached && cached.key === homeFilterKey && Array.isArray(cached.toots) && cached.toots.length > 0) {
+                            feed.innerHTML = '';
+                            lastId = 0;
+                            oldestId = null;
+                            cached.toots.forEach(toot => {
+                                const idInt = parseInt(toot.id);
+                                if (idInt > lastId) lastId = idInt;
+                                if (oldestId === null || idInt < oldestId) oldestId = idInt;
+                                prependToot(toot, false);
+                            });
+                            lastRenderedTimeline = 'home';
+                            isTimelineChange = false;
+                            renderedFromCache = true;
+                        }
+                    }
+                } catch (e) {}
+            }
+            if (!renderedFromCache) {
+                feed.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando toots...</div>';
+                lastId = 0;
+                oldestId = null;
+            }
         }
         hasMoreToots = true;
     } else {
@@ -847,6 +874,11 @@ async function loadTimeline(loadMore = false) {
         }
 
         if (!loadMore) {
+            if (currentTimeline === 'home') {
+                try {
+                    sessionStorage.setItem('kutsocial_home_cache_v1', JSON.stringify({ key: homeFilterKey, toots: toots }));
+                } catch (e) {}
+            }
             lastRenderedTimeline = currentTimeline;
             if (currentTimeline !== 'bookmarks' && currentTimeline !== 'direct') {
                 startStreaming();

@@ -36,6 +36,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
     </script>
     <?php endif; ?>
     <style>
+    .material-icons, .material-icons-outlined { width: 1em; height: 1em; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; vertical-align: middle; }
     #tab-<?= htmlspecialchars($section) ?> { display: <?= in_array($section, ['lists', 'collections']) ? 'flex' : 'block' ?>; }
     #tab-users-list { display: none; }
     #modal-composer .composer-card { border: none !important; margin-bottom: 0 !important; padding: 0 !important; background: transparent !important; }
