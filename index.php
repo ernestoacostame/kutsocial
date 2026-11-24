@@ -788,6 +788,7 @@ $router->post('/api/v1/statuses/:id/unfavourite', [MastodonApiController::class,
 $router->post('/api/v1/statuses/:id/bookmark', [MastodonApiController::class, 'bookmarkStatus']);
 $router->post('/api/v1/statuses/:id/unbookmark', [MastodonApiController::class, 'unbookmarkStatus']);
 $router->post('/api/v1/statuses/:id/reblog', [MastodonApiController::class, 'reblogStatus']);
+$router->post('/api/v1/statuses/:id/hydrate', [MastodonApiController::class, 'hydrateStatus']);
 $router->post('/api/v1/statuses/:id/unreblog', [MastodonApiController::class, 'unreblogStatus']);
 $router->post('/api/v1/statuses/:id/mute', [MastodonApiController::class, 'muteStatus']);
 $router->post('/api/v1/statuses/:id/unmute', [MastodonApiController::class, 'unmuteStatus']);

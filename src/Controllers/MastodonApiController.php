@@ -9097,6 +9097,30 @@ HTML;
         Router::json(self::formatStatus($row, (int)$account['id']));
     }
 
+    public static function hydrateStatus(array $params): void {
+        $account = self::getAuthenticatedAccount();
+        if (!$account) {
+            Router::json(['error' => 'Unauthorized'], 401);
+            return;
+        }
+        $id = (int)($params['id'] ?? 0);
+        if ($id <= 0) {
+            Router::json(['error' => 'Invalid status id'], 400);
+            return;
+        }
+        $db = Database::connect();
+        $row = self::fetchStatusRow($db, $id);
+        if (!$row) {
+            Router::json(['error' => 'Status not found'], 404);
+            return;
+        }
+        if (!empty($row['status_uri'])) {
+            ActivityPubController::hydrateEmptyStatus($id, (string)$row['status_uri']);
+            $row = self::fetchStatusRow($db, $id) ?: $row;
+        }
+        Router::json(self::formatStatus($row, (int)$account['id']));
+    }
+
     public static function unreblogStatus(array $params): void {
         $account = self::getAuthenticatedAccount();
         if (!$account) {

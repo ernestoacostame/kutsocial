@@ -1080,6 +1080,60 @@ function prependToot(toot, isNew = false) {
     }
 }
 
+const __hydrateQueue = [];
+const __hydrateInFlight = new Set();
+let __hydrateActive = 0;
+
+function queueHydrateEmptyToot(card, toot, isMain) {
+    const id = String(toot.id || '');
+    if (!id || __hydrateInFlight.has(id)) return;
+    __hydrateInFlight.add(id);
+    __hydrateQueue.push({ card, toot, isMain });
+    drainHydrateQueue();
+}
+
+function drainHydrateQueue() {
+    while (__hydrateActive < 3 && __hydrateQueue.length > 0) {
+        const job = __hydrateQueue.shift();
+        __hydrateActive++;
+        fetch(`/api/v1/statuses/${encodeURIComponent(job.toot.id)}/hydrate`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        .then(r => r.ok ? r.json() : null)
+        .then(hydrated => {
+            if (!job.card || !job.card.isConnected) return;
+            const tmp = document.createElement('div');
+            tmp.innerHTML = (hydrated && hydrated.content) ? hydrated.content : '';
+            const hasNow = hydrated && (
+                hydrated.reblog ||
+                hydrated.quote ||
+                (Array.isArray(hydrated.media_attachments) && hydrated.media_attachments.length > 0) ||
+                hydrated.poll ||
+                hydrated.card ||
+                (tmp.textContent || '').trim() !== ''
+            );
+            if (hasNow) {
+                const freshCard = createThreadTootElement(hydrated, job.isMain);
+                job.card.replaceWith(freshCard);
+            } else {
+                const ph = job.card.querySelector('.toot-empty-hydrate');
+                if (ph) {
+                    const link = job.toot.url || job.toot.uri || '';
+                    ph.innerHTML = link
+                        ? `<a href="${escapeHTML(link)}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color: var(--text-muted); text-decoration: underline;">${escapeHTML(link)}</a>`
+                        : '—';
+                }
+            }
+        })
+        .catch(() => {})
+        .finally(() => {
+            __hydrateActive--;
+            drainHydrateQueue();
+        });
+    }
+}
+
 function createThreadTootElement(toot, isMain = false) {
     let isReblog = false;
     let rebloggedBy = null;
@@ -1426,6 +1480,14 @@ function createThreadTootElement(toot, isMain = false) {
         displayNameHTML = replaceCustomEmojis(displayNameHTML, toot.account.emojis);
     }
 
+    const hasMedia = Array.isArray(toot.media_attachments) && toot.media_attachments.length > 0;
+    const tmpText = document.createElement('div');
+    tmpText.innerHTML = toot.content || '';
+    const isEmptyCard = !isReblog && !toot.quote && !hasMedia && !toot.poll && !toot.card && (tmpText.textContent || '').trim() === '';
+    const effectiveContentHTML = isEmptyCard
+        ? `<div class="toot-content toot-empty-hydrate" style="color: var(--text-muted); font-size: 13px; font-style: italic;">${__('loading', 'Cargando...')}</div>`
+        : contentHTML;
+
     card.innerHTML = `
         ${reblogHeaderHTML}
         <div class="toot-card-body">
@@ -1441,7 +1503,7 @@ function createThreadTootElement(toot, isMain = false) {
                     </a>
                     <a href="${tootStatusHref}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewTootThread('${toot.id}')" title="${absoluteDateStr}">${relativeDateStr}</a>
                 </div>
-                ${contentHTML}
+                ${effectiveContentHTML}
                 ${mediaHTML}
                 ${cardHTML}
                 ${pollHTML}
@@ -1478,6 +1540,9 @@ function createThreadTootElement(toot, isMain = false) {
     `;
 
     // Click on the card to navigate to the thread
+    if (isEmptyCard && token) {
+        queueHydrateEmptyToot(card, toot, isMain);
+    }
     card.addEventListener('click', (e) => {
         if (isMain) return;
         
