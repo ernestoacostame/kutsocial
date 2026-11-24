@@ -1,5 +1,5 @@
 {
-  "version": "2.1.47",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.47/kutsocial-v2.1.47.zip",
-  "changelog": "Center nav icons in collapsed Mastodon sidebar (guest mode)"
+  "version": "2.1.48",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.48/kutsocial-v2.1.48.zip",
+  "changelog": "Force flex centering on collapsed Mastodon nav-link icons"
 }
