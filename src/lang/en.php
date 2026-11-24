@@ -589,5 +589,6 @@ return [
     'hashtags_view_posts' => 'View posts',
     'hashtags_follow' => 'Follow',
     'hashtags_unfollow' => 'Unfollow hashtag',
+    'sign_in' => 'Sign in',
 ];
 

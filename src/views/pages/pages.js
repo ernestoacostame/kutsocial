@@ -379,7 +379,7 @@ function initPublicView() {
     document.getElementById('app-container').style.display = 'flex';
     document.getElementById('login-container').style.display = 'none';
     
-    // Ocultar elementos exclusivos de usuarios registrados en el sidebar
+    // Ocultar elementos exclusivos de usuarios registrados en el sidebar (tema clásico y Mastodon 5.0)
     const linksToHide = [
         'nav-home', 'nav-catchup', 'nav-notifications', 'nav-bookmarks', 'nav-direct',
         'nav-lists', 'nav-collections', 'nav-hashtags', 'nav-profile', 'nav-settings',
@@ -390,11 +390,25 @@ function initPublicView() {
         if (el) el.style.display = 'none';
     });
 
-    // Asegurar que Timeline Local y Federación Pública estén visibles para visitantes
-    const linksToShow = ['nav-local', 'nav-public'];
+    const homeHeader = document.getElementById('home-timeline-header');
+    if (homeHeader) homeHeader.style.display = 'none';
+
+    document.querySelectorAll('.m5-icon-bar a[href$="/home"], .m5-icon-bar a[href$="/direct"], .m5-icon-bar a[href$="/notifications"], .m5-account-wrap').forEach(el => {
+        el.style.display = 'none';
+    });
+
+    const newPostBtn = document.querySelector('.m5-new-post-btn');
+    if (newPostBtn) {
+        newPostBtn.onclick = () => showLoginModal();
+        newPostBtn.title = __('sign_in', 'Iniciar sesión');
+        newPostBtn.innerHTML = `<span class="material-icons-outlined">login</span><span class="m5-new-post-label">${__('sign_in', 'Iniciar sesión')}</span>`;
+    }
+
+    // Asegurar que Explorar, Timeline Local y Federación Pública estén visibles para visitantes
+    const linksToShow = ['nav-explore', 'nav-local', 'nav-public'];
     linksToShow.forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.style.display = 'block';
+        if (el) el.style.display = '';
     });
     
     // Mostrar link "Propietario"
@@ -559,7 +573,10 @@ function handlePathRouting() {
         if (!path.startsWith('/')) path = '/' + path;
     }
     if (path === '/public' || path === '/home' || path === '/local' || path === '/bookmarks' || path === '/favourites' || path === '/liked' || path === '/direct' || path.startsWith('/list_') || path.startsWith('/tag_')) {
-        const type = (path === '/liked') ? 'favourites' : path.substring(1);
+        let type = (path === '/liked') ? 'favourites' : path.substring(1);
+        if (!token && (type === 'home' || type === 'bookmarks' || type === 'favourites' || type === 'direct')) {
+            return false;
+        }
         switchTimeline(type, true);
         return true;
     } else if (path === '/explore') {

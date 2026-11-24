@@ -589,5 +589,6 @@ return [
     'hashtags_view_posts' => 'Ver publicaciones',
     'hashtags_follow' => 'Seguir',
     'hashtags_unfollow' => 'Dejar de seguir hashtag',
+    'sign_in' => 'Iniciar sesión',
 ];
 
