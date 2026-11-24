@@ -1,5 +1,5 @@
 {
-  "version": "2.1.24",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.24/kutsocial-v2.1.24.zip",
-  "changelog": "Fix Explore layout, i18n keys, and init() loading"
+  "version": "2.1.25",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.25/kutsocial-v2.1.25.zip",
+  "changelog": "Polish Explore UI to match Mastodon.social and ensure auto-loading"
 }
