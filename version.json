@@ -1,5 +1,5 @@
 {
-  "version": "2.1.30",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.30/kutsocial-v2.1.30.zip",
-  "changelog": "Follow string Announce object URLs and filter empty orphan statuses in timelines"
+  "version": "2.1.31",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.31/kutsocial-v2.1.31.zip",
+  "changelog": "Restore all timeline items and infinite scroll pagination by removing post-pagination batch filter"
 }
