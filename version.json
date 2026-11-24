@@ -1,5 +1,5 @@
 {
-  "version": "2.1.29",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.29/kutsocial-v2.1.29.zip",
-  "changelog": "Use createThreadTootElement in Explore Posts tab for full card styling and link colors"
+  "version": "2.1.30",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.30/kutsocial-v2.1.30.zip",
+  "changelog": "Follow string Announce object URLs and filter empty orphan statuses in timelines"
 }
