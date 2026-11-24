@@ -16,12 +16,7 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="stylesheet" href="/assets/pages.css?v=<?= $ver ?>">
     <link id="ui-theme-mastodon-css" rel="stylesheet" href="/assets/theme-mastodon.css?v=<?= $ver ?>" <?= $uiTheme === 'mastodon' ? '' : 'disabled' ?>>
-    <!-- Google Fonts Outfit -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Google Material Icons -->
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons|Material+Icons+Outlined" rel="stylesheet">
+    <link rel="stylesheet" href="/assets/fonts.css?v=<?= $ver ?>">
     <!-- DOMPurify para Saneamiento XSS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js" defer></script>
     <?php if ($uiTheme === 'mastodon'): ?>
