@@ -1,5 +1,5 @@
 {
-  "version": "2.1.32",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.32/kutsocial-v2.1.32.zip",
-  "changelog": "Hydrate empty remote statuses/Announces on demand and support quote/contentMap in handleCreate"
+  "version": "2.1.33",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.33/kutsocial-v2.1.33.zip",
+  "changelog": "Remove synchronous remote HTTP hydration from timeline formatting for fast loads"
 }
