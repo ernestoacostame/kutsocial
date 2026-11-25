@@ -1,5 +1,5 @@
 {
-  "version": "2.1.49",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.49/kutsocial-v2.1.49.zip",
-  "changelog": "Async on-demand hydration for empty remote cards in Catch-up and timelines without blocking load"
+  "version": "2.1.50",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.50/kutsocial-v2.1.50.zip",
+  "changelog": "Sort timelines chronologically by created_at DESC so fetched old outbox posts don't jump to top"
 }
