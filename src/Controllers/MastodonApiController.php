@@ -3359,19 +3359,6 @@ HTML;
             $whereClauses[] = "(s.media_attachments IS NOT NULL AND s.media_attachments != '' AND s.media_attachments != '[]')";
         }
 
-        if ($maxId !== null) {
-            $whereClauses[] = "s.id < ?";
-            $queryParams[] = $maxId;
-        }
-        if ($sinceId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $sinceId;
-        }
-        if ($minId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $minId;
-        }
-
         $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $timeline = self::formatStatusesBatch($rows, $currUserId);
@@ -3673,19 +3660,6 @@ HTML;
             }
         } catch (\Throwable $e) {}
 
-        if ($maxId !== null) {
-            $whereClauses[] = "s.id < ?";
-            $queryParams[] = $maxId;
-        }
-        if ($sinceId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $sinceId;
-        }
-        if ($minId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $minId;
-        }
-
         $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
         if (!empty($mutedConvIds)) {
             $rows = array_values(array_filter($rows, fn($r) => !isset($mutedConvIds[(string)($r['id'] ?? '')])));
@@ -3736,7 +3710,7 @@ HTML;
             FROM statuses s
             JOIN accounts a ON s.account_id = a.id
             WHERE $whereSql
-            ORDER BY s.id DESC
+            ORDER BY s.created_at DESC, s.id DESC
             LIMIT 1000
         ");
         $stmt->execute($queryParams);
@@ -3799,19 +3773,6 @@ HTML;
             OR s.content LIKE '<p><a% class=\"u-url mention\"%'
             OR s.content LIKE '<p><a% class=\"mention\"%'
         )";
-
-        if ($maxId !== null) {
-            $whereClauses[] = "s.id < ?";
-            $queryParams[] = $maxId;
-        }
-        if ($sinceId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $sinceId;
-        }
-        if ($minId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $minId;
-        }
 
         $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
@@ -6988,6 +6949,25 @@ HTML;
         return $filtered;
     }
 
+    private static function appendCursorCondition(\PDO $db, array &$whereClauses, array &$queryParams, int $anchorId, string $op): void {
+        static $createdAtCache = [];
+        if (!array_key_exists($anchorId, $createdAtCache)) {
+            $stmt = $db->prepare("SELECT created_at FROM statuses WHERE id = ? LIMIT 1");
+            $stmt->execute([$anchorId]);
+            $createdAtCache[$anchorId] = $stmt->fetchColumn() ?: null;
+        }
+        $anchorCreatedAt = $createdAtCache[$anchorId];
+        if ($anchorCreatedAt !== null) {
+            $whereClauses[] = "(s.created_at $op ? OR (s.created_at = ? AND s.id $op ?))";
+            $queryParams[] = $anchorCreatedAt;
+            $queryParams[] = $anchorCreatedAt;
+            $queryParams[] = $anchorId;
+        } else {
+            $whereClauses[] = "s.id $op ?";
+            $queryParams[] = $anchorId;
+        }
+    }
+
     private static function paginateAndFilterStatuses(
         \PDO $db,
         array $baseWhereClauses,
@@ -7005,16 +6985,13 @@ HTML;
             $queryParams = $baseQueryParams;
 
             if ($currentMaxId !== null) {
-                $whereClauses[] = "s.id < ?";
-                $queryParams[] = $currentMaxId;
+                self::appendCursorCondition($db, $whereClauses, $queryParams, $currentMaxId, '<');
             }
             if ($sinceId !== null) {
-                $whereClauses[] = "s.id > ?";
-                $queryParams[] = $sinceId;
+                self::appendCursorCondition($db, $whereClauses, $queryParams, $sinceId, '>');
             }
             if ($minId !== null) {
-                $whereClauses[] = "s.id > ?";
-                $queryParams[] = $minId;
+                self::appendCursorCondition($db, $whereClauses, $queryParams, $minId, '>');
             }
 
             $whereSql = implode(" AND ", $whereClauses);
@@ -7034,7 +7011,7 @@ HTML;
                 FROM statuses s
                 JOIN accounts a ON s.account_id = a.id
                 $whereSql
-                ORDER BY s.id DESC
+                ORDER BY s.created_at DESC, s.id DESC
                 LIMIT $remaining
             ");
             $stmt->execute($queryParams);
@@ -8496,19 +8473,6 @@ HTML;
         ];
         $queryParams = [$listId];
 
-        if ($maxId !== null) {
-            $whereClauses[] = "s.id < ?";
-            $queryParams[] = $maxId;
-        }
-        if ($sinceId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $sinceId;
-        }
-        if ($minId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $minId;
-        }
-
         $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
         $statuses = self::formatStatusesBatch($rows, (int)$account['id']);
@@ -8793,19 +8757,6 @@ HTML;
             "(s.content LIKE ? OR s.content LIKE ?)"
         ];
         $queryParams = ['%#' . $tagName . '%', '%/tags/' . $tagName . '%'];
-
-        if ($maxId !== null) {
-            $whereClauses[] = "s.id < ?";
-            $queryParams[] = $maxId;
-        }
-        if ($sinceId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $sinceId;
-        }
-        if ($minId !== null) {
-            $whereClauses[] = "s.id > ?";
-            $queryParams[] = $minId;
-        }
 
         $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, $maxId, $sinceId, $minId, $limit);
 
