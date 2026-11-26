@@ -192,6 +192,8 @@ return [
     'rel_follower' => 'Te sigue',
     'profile_interface_language' => 'Idioma de la Interfaz',
     'profile_interface_language_desc' => 'Elige tu idioma preferido para navegar y usar KutSocial.',
+    'profile_explore_languages' => 'Idiomas en Descubrir / Explorar',
+    'profile_explore_languages_desc' => 'Selecciona los idiomas de los toots que quieres ver en la sección Explorar.',
     'profile_tab_profile' => 'Perfil',
     'profile_tab_privacy' => 'Privacidad',
     'profile_import_export' => 'Importar & Exportar',

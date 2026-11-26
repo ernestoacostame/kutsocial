@@ -262,6 +262,19 @@ window.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Inicializar checkboxes de idiomas para Descubrir / Explorar
+    const exploreLangChecks = document.querySelectorAll('.pref-explore-lang');
+    if (exploreLangChecks.length > 0) {
+        const savedExploreLangs = getExploreLanguages();
+        exploreLangChecks.forEach(cb => {
+            cb.checked = savedExploreLangs.includes(cb.value);
+            cb.addEventListener('change', () => {
+                const selected = Array.from(exploreLangChecks).filter(c => c.checked).map(c => c.value);
+                localStorage.setItem('kutsocial_explore_languages', JSON.stringify(selected.length ? selected : ['es', 'en']));
+            });
+        });
+    }
+
     // Registrar listener de cambio de visibilidad en el composer para actualizar icono
     const visSelect = document.getElementById('composer-visibility');
     if (visSelect) {
@@ -8060,6 +8073,17 @@ function openComposerWithMention(prefix, visibility) {
 
 let activeExploreTab = 'posts';
 
+function getExploreLanguages() {
+    try {
+        const raw = localStorage.getItem('kutsocial_explore_languages');
+        if (raw) {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr) && arr.length > 0) return arr;
+        }
+    } catch (e) {}
+    return ['es', 'en'];
+}
+
 function initExplorePage() {
     switchExploreTab(activeExploreTab || 'posts');
 }
@@ -8094,7 +8118,8 @@ async function switchExploreTab(tab) {
 
     try {
         if (tab === 'posts') {
-            const res = await fetch('/api/v1/trends/statuses?limit=20', { headers });
+            const langsParam = encodeURIComponent(getExploreLanguages().join(','));
+            const res = await fetch(`/api/v1/trends/statuses?limit=20&langs=${langsParam}`, { headers });
             const items = await res.json();
             container.innerHTML = '';
             if (!Array.isArray(items) || items.length === 0) {

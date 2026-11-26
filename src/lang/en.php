@@ -192,6 +192,8 @@ return [
     'rel_follower' => 'Follows you',
     'profile_interface_language' => 'Interface Language',
     'profile_interface_language_desc' => 'Choose your preferred language for navigating KutSocial.',
+    'profile_explore_languages' => 'Discover / Explore Languages',
+    'profile_explore_languages_desc' => 'Select the languages of posts you want to see in the Explore section.',
     'profile_tab_profile' => 'Profile',
     'profile_tab_privacy' => 'Privacy',
     'profile_import_export' => 'Import & Export',

@@ -154,6 +154,22 @@
                     <option value="es" <?= \KutSocial\I18n::getLang() === 'es' ? 'selected' : '' ?>><?= __('spanish') ?> (Spanish)</option>
                     <option value="en" <?= \KutSocial\I18n::getLang() === 'en' ? 'selected' : '' ?>><?= __('english') ?> (English)</option>
                 </select>
+
+                <div style="margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                    <label style="display: block; margin-bottom: 6px; font-size: 13.5px; font-weight: 600; color: var(--text-color); text-transform: none;"><?= __('profile_explore_languages', 'Idiomas en Descubrir / Explorar') ?></label>
+                    <p style="font-size: 12.5px; color: var(--text-muted); margin: 0 0 12px 0;"><?= __('profile_explore_languages_desc', 'Selecciona los idiomas de los toots que quieres ver en la sección Explorar.') ?></p>
+                    <div id="pref-explore-languages-group" style="display: flex; flex-wrap: wrap; gap: 10px 18px;">
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13.5px; color: var(--text-color); margin: 0;"><input type="checkbox" class="pref-explore-lang" value="es" style="width: auto;" checked> Español (ES)</label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13.5px; color: var(--text-color); margin: 0;"><input type="checkbox" class="pref-explore-lang" value="en" style="width: auto;" checked> English (EN)</label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13.5px; color: var(--text-color); margin: 0;"><input type="checkbox" class="pref-explore-lang" value="pt" style="width: auto;"> Português (PT)</label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13.5px; color: var(--text-color); margin: 0;"><input type="checkbox" class="pref-explore-lang" value="fr" style="width: auto;"> Français (FR)</label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13.5px; color: var(--text-color); margin: 0;"><input type="checkbox" class="pref-explore-lang" value="de" style="width: auto;"> Deutsch (DE)</label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13.5px; color: var(--text-color); margin: 0;"><input type="checkbox" class="pref-explore-lang" value="it" style="width: auto;"> Italiano (IT)</label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13.5px; color: var(--text-color); margin: 0;"><input type="checkbox" class="pref-explore-lang" value="ca" style="width: auto;"> Català (CA)</label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13.5px; color: var(--text-color); margin: 0;"><input type="checkbox" class="pref-explore-lang" value="gl" style="width: auto;"> Galego (GL)</label>
+                        <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; font-size: 13.5px; color: var(--text-color); margin: 0;"><input type="checkbox" class="pref-explore-lang" value="eu" style="width: auto;"> Euskara (EU)</label>
+                    </div>
+                </div>
             </div>
             
             <button type="submit" style="margin-top: 22px; padding: 12px 24px; font-size: 14px;"><?= __('profile_save_privacy') ?></button>

@@ -9776,6 +9776,8 @@ HTML;
 
     /**
      * Endpoint GET /api/v1/trends/statuses
+     * Devuelve toots públicos en tendencia de cuentas NO seguidas (locales de terceros/relays + instancias remotas)
+     * filtrados por los idiomas preferidos del usuario (por defecto: es, en).
      */
     public static function getTrendingStatuses(): void {
         $db = Database::connect();
@@ -9783,17 +9785,250 @@ HTML;
         $viewerId = $account ? (int)$account['id'] : null;
         $limit = isset($_GET['limit']) && is_numeric($_GET['limit']) ? min(40, max(1, (int)$_GET['limit'])) : 20;
 
+        // Idiomas permitidos: parámetro ?langs=es,en (por defecto es,en; 'all' desactiva el filtro)
+        $rawLangs = isset($_GET['langs']) ? trim((string)$_GET['langs']) : '';
+        $allowedLangs = ['es', 'en'];
+        if ($rawLangs !== '') {
+            if (strtolower($rawLangs) === 'all') {
+                $allowedLangs = [];
+            } else {
+                $parsed = array_values(array_unique(array_filter(array_map(function($l) {
+                    $l = strtolower(trim($l));
+                    if ($l === '') return '';
+                    return substr(explode('-', str_replace('_', '-', $l))[0], 0, 2);
+                }, explode(',', $rawLangs)))));
+                if (!empty($parsed)) {
+                    $allowedLangs = $parsed;
+                }
+            }
+        }
+
+        // Bloqueos de moderación
+        $modBlocks = self::getActiveModerationBlocks($db);
+        $blockedLangs = array_map('strtolower', $modBlocks['languages'] ?? []);
+        $blockedDomains = array_map('strtolower', $modBlocks['domains'] ?? []);
+        $blockedAccounts = array_map('strtolower', $modBlocks['accounts'] ?? []);
+        $blockedWords = array_map('mb_strtolower', $modBlocks['words'] ?? []);
+        $blockedTags = array_map('mb_strtolower', $modBlocks['hashtags'] ?? []);
+
+        if (!empty($allowedLangs) && !empty($blockedLangs)) {
+            $allowedLangs = array_values(array_diff($allowedLangs, $blockedLangs));
+        }
+
+        // Cuentas a excluir (el propio usuario + todas las cuentas seguidas)
+        $excludedAccts = [];
+        $excludedUrls = [];
+        if ($viewerId) {
+            $selfAcct = strtolower(trim((string)($account['username'] ?? '')));
+            if (!empty($account['domain'])) {
+                $selfAcct .= '@' . strtolower(trim((string)$account['domain']));
+            }
+            if ($selfAcct !== '') $excludedAccts[$selfAcct] = true;
+            if (!empty($account['url'])) $excludedUrls[strtolower(trim((string)$account['url']))] = true;
+
+            $stmtFol = $db->prepare("
+                SELECT a.username, a.domain, a.url
+                FROM follows f
+                JOIN accounts a ON a.id = f.target_account_id
+                WHERE f.account_id = ?
+            ");
+            $stmtFol->execute([$viewerId]);
+            foreach ($stmtFol->fetchAll(\PDO::FETCH_ASSOC) as $f) {
+                $u = strtolower(trim((string)($f['username'] ?? '')));
+                $d = strtolower(trim((string)($f['domain'] ?? '')));
+                if ($u !== '') {
+                    $excludedAccts[$d !== '' ? "{$u}@{$d}" : $u] = true;
+                }
+                if (!empty($f['url'])) {
+                    $excludedUrls[strtolower(trim((string)$f['url']))] = true;
+                }
+            }
+        }
+
+        // 1. Posts locales públicos de terceros (excluyendo propios y seguidos)
         $whereClauses = ["s.visibility = 'public'", "s.reblog_of_id IS NULL"];
         $queryParams = [];
-        $rows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, null, null, null, 80);
-        usort($rows, function($a, $b) {
+        if ($viewerId) {
+            $whereClauses[] = "s.account_id != ?";
+            $queryParams[] = $viewerId;
+            $whereClauses[] = "s.account_id NOT IN (SELECT target_account_id FROM follows WHERE account_id = ?)";
+            $queryParams[] = $viewerId;
+        }
+        $localRows = self::paginateAndFilterStatuses($db, $whereClauses, $queryParams, null, null, null, 80);
+        $localFormatted = self::formatStatusesBatch($localRows, $viewerId);
+
+        $seenKeys = [];
+        $combined = [];
+
+        $passesLangFilter = function(?string $lang) use ($allowedLangs, $blockedLangs): bool {
+            $norm = $lang ? strtolower(substr(explode('-', str_replace('_', '-', trim($lang)))[0], 0, 2)) : '';
+            if ($norm !== '' && in_array($norm, $blockedLangs, true)) return false;
+            if (empty($allowedLangs)) return true;
+            return $norm !== '' && in_array($norm, $allowedLangs, true);
+        };
+
+        foreach ($localFormatted as $st) {
+            if (!$passesLangFilter($st['language'] ?? null)) continue;
+            $key = strtolower((string)($st['uri'] ?? $st['url'] ?? ('local:' . ($st['id'] ?? ''))));
+            if ($key !== '' && isset($seenKeys[$key])) continue;
+            if ($key !== '') $seenKeys[$key] = true;
+            $combined[] = $st;
+        }
+
+        // 2. Tendencias remotas de instancias públicas del Fediverso (con caché)
+        $remoteStatuses = self::fetchRemoteTrendingStatuses();
+        foreach ($remoteStatuses as $st) {
+            $acc = $st['account'] ?? null;
+            if (!is_array($acc)) continue;
+
+            $acct = strtolower(trim((string)($acc['acct'] ?? '')));
+            $accUrl = strtolower(trim((string)($acc['url'] ?? '')));
+            $accDomain = '';
+            if (str_contains($acct, '@')) {
+                $parts = explode('@', $acct, 2);
+                $accDomain = $parts[1] ?? '';
+            } elseif ($accUrl !== '') {
+                $accDomain = strtolower((string)(parse_url($accUrl, PHP_URL_HOST) ?: ''));
+            }
+
+            // Excluir seguidos y bloqueos
+            if ($acct !== '' && isset($excludedAccts[$acct])) continue;
+            if ($accUrl !== '' && isset($excludedUrls[$accUrl])) continue;
+            if ($accDomain !== '' && in_array($accDomain, $blockedDomains, true)) continue;
+            if ($acct !== '' && in_array($acct, $blockedAccounts, true)) continue;
+
+            // Filtro de idioma
+            if (!$passesLangFilter($st['language'] ?? null)) continue;
+
+            // Filtro de palabras y hashtags bloqueados
+            $plain = mb_strtolower(strip_tags((string)($st['content'] ?? '') . ' ' . (string)($st['spoiler_text'] ?? '')));
+            $blockedMatch = false;
+            foreach ($blockedWords as $bw) {
+                if ($bw !== '' && str_contains($plain, $bw)) {
+                    $blockedMatch = true;
+                    break;
+                }
+            }
+            if ($blockedMatch) continue;
+            if (!empty($blockedTags) && !empty($st['tags']) && is_array($st['tags'])) {
+                foreach ($st['tags'] as $tg) {
+                    $tName = mb_strtolower((string)($tg['name'] ?? ''));
+                    if ($tName !== '' && in_array($tName, $blockedTags, true)) {
+                        $blockedMatch = true;
+                        break;
+                    }
+                }
+                if ($blockedMatch) continue;
+            }
+
+            $key = strtolower((string)($st['uri'] ?? $st['url'] ?? ''));
+            if ($key !== '' && isset($seenKeys[$key])) continue;
+            if ($key !== '') $seenKeys[$key] = true;
+
+            $combined[] = $st;
+        }
+
+        // Ordenar por interacción + recencia
+        usort($combined, function($a, $b) {
             $scoreA = ((int)($a['favourites_count'] ?? 0)) + ((int)($a['reblogs_count'] ?? 0) * 2) + ((int)($a['replies_count'] ?? 0));
             $scoreB = ((int)($b['favourites_count'] ?? 0)) + ((int)($b['reblogs_count'] ?? 0) * 2) + ((int)($b['replies_count'] ?? 0));
             if ($scoreB !== $scoreA) return $scoreB <=> $scoreA;
-            return (int)$b['id'] <=> (int)$a['id'];
+            return strtotime((string)($b['created_at'] ?? '0')) <=> strtotime((string)($a['created_at'] ?? '0'));
         });
-        $rows = array_slice($rows, 0, $limit);
-        Router::json(self::formatStatusesBatch($rows, $viewerId));
+
+        Router::json(array_slice($combined, 0, $limit));
+    }
+
+    /**
+     * Obtiene y cachea (10 min) tendencias públicas de instancias Mastodon variadas del Fediverso.
+     */
+    private static function fetchRemoteTrendingStatuses(): array {
+        $cacheFile = sys_get_temp_dir() . '/kutsocial_remote_trends_v1.json';
+        if (file_exists($cacheFile) && (time() - @filemtime($cacheFile)) < 600) {
+            $cached = @json_decode((string)@file_get_contents($cacheFile), true);
+            if (is_array($cached)) {
+                return $cached;
+            }
+        }
+
+        if (!function_exists('curl_multi_init')) {
+            return [];
+        }
+
+        $instances = [
+            'mastodon.social',
+            'mstdn.social',
+            'mastodon.online',
+            'fosstodon.org',
+            'hachyderm.io',
+            'mastodon.la',
+            'tkz.one',
+        ];
+
+        // Excluir el propio dominio de la instancia si coincide
+        $selfHost = strtolower((string)(parse_url($_SERVER['HTTP_HOST'] ?? '', PHP_URL_HOST) ?: ($_SERVER['HTTP_HOST'] ?? '')));
+        $selfHost = preg_replace('/:\d+$/', '', $selfHost);
+
+        $mh = curl_multi_init();
+        $handles = [];
+        foreach ($instances as $domain) {
+            if ($selfHost !== '' && $domain === $selfHost) continue;
+            $ch = curl_init("https://{$domain}/api/v1/trends/statuses?limit=30");
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 2,
+                CURLOPT_CONNECTTIMEOUT => 2,
+                CURLOPT_TIMEOUT => 3,
+                CURLOPT_USERAGENT => 'KutSocial/' . (defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0'),
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            ]);
+            curl_multi_add_handle($mh, $ch);
+            $handles[$domain] = $ch;
+        }
+
+        $running = null;
+        do {
+            $status = curl_multi_exec($mh, $running);
+            if ($running > 0) {
+                curl_multi_select($mh, 0.2);
+            }
+        } while ($running > 0 && $status === CURLM_OK);
+
+        $results = [];
+        foreach ($handles as $domain => $ch) {
+            $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $raw = curl_multi_getcontent($ch);
+            curl_multi_remove_handle($mh, $ch);
+            curl_close($ch);
+
+            if ($httpCode !== 200 || empty($raw)) continue;
+            $items = json_decode((string)$raw, true);
+            if (!is_array($items)) continue;
+
+            foreach ($items as $st) {
+                if (!is_array($st) || empty($st['account']) || !is_array($st['account'])) continue;
+                if (($st['visibility'] ?? 'public') !== 'public' || !empty($st['reblog'])) continue;
+
+                // Asegurar que acct incluya el dominio remoto completo
+                $acct = (string)($st['account']['acct'] ?? '');
+                if ($acct !== '' && !str_contains($acct, '@')) {
+                    $st['account']['acct'] = $acct . '@' . $domain;
+                }
+                $st['favourited'] = false;
+                $st['reblogged'] = false;
+                $st['bookmarked'] = false;
+                $st['muted'] = false;
+                $results[] = $st;
+            }
+        }
+        curl_multi_close($mh);
+
+        if (!empty($results)) {
+            @file_put_contents($cacheFile, json_encode($results, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), LOCK_EX);
+        }
+
+        return $results;
     }
 
     /**

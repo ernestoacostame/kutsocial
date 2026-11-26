@@ -225,7 +225,15 @@
 
         try {
             if (tab === 'posts') {
-                var res = await fetch('/api/v1/trends/statuses?limit=20', { headers: headers });
+                var savedLangs = ['es', 'en'];
+                try {
+                    var rawLangs = localStorage.getItem('kutsocial_explore_languages');
+                    if (rawLangs) {
+                        var parsedLangs = JSON.parse(rawLangs);
+                        if (Array.isArray(parsedLangs) && parsedLangs.length > 0) savedLangs = parsedLangs;
+                    }
+                } catch (e) {}
+                var res = await fetch('/api/v1/trends/statuses?limit=20&langs=' + encodeURIComponent(savedLangs.join(',')), { headers: headers });
                 var items = await res.json();
                 container.innerHTML = '';
                 if (!Array.isArray(items) || items.length === 0) {
