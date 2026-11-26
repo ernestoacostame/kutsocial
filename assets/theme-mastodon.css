@@ -737,3 +737,107 @@ html[data-ui-theme="mastodon"][data-color-mode="light"][data-contrast="high"] {
     --text-color: #000000;
     --text-muted: #1f2937;
 }
+
+/* ==========================================================================
+   Account Preferences (#tab-profile) con estética Mastodon 5.0
+   ========================================================================== */
+html[data-ui-theme="mastodon"] #tab-profile {
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+    box-shadow: none;
+}
+
+html[data-ui-theme="mastodon"] #tab-profile > div:first-child {
+    padding: 16px 20px 0 20px !important;
+    margin-bottom: 0 !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+}
+
+html[data-ui-theme="mastodon"] #tab-profile .pill-toggle-group {
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    display: flex !important;
+    width: 100% !important;
+    overflow-x: auto;
+}
+
+html[data-ui-theme="mastodon"] .profile-subtab-btn {
+    flex: 1 1 0%;
+    justify-content: center !important;
+    border-radius: 0 !important;
+    padding: 12px 10px !important;
+    border-bottom: 2px solid transparent !important;
+    color: var(--text-muted) !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+html[data-ui-theme="mastodon"] .profile-subtab-btn:hover {
+    background: rgba(255, 255, 255, 0.04) !important;
+    color: var(--text-color) !important;
+}
+
+html[data-ui-theme="mastodon"][data-color-mode="light"] .profile-subtab-btn:hover {
+    background: rgba(15, 23, 42, 0.04) !important;
+}
+
+html[data-ui-theme="mastodon"] .profile-subtab-btn.active {
+    background: transparent !important;
+    color: var(--text-color) !important;
+    border-bottom-color: var(--primary) !important;
+    box-shadow: none !important;
+    font-weight: 700 !important;
+}
+
+html[data-ui-theme="mastodon"] #subtab-content-profile-edit,
+html[data-ui-theme="mastodon"] #subtab-content-profile-privacy,
+html[data-ui-theme="mastodon"] #subtab-content-profile-appearance,
+html[data-ui-theme="mastodon"] #subtab-content-profile-import {
+    padding: 20px;
+}
+
+html[data-ui-theme="mastodon"] #tab-profile input[type="text"],
+html[data-ui-theme="mastodon"] #tab-profile input[type="file"],
+html[data-ui-theme="mastodon"] #tab-profile textarea,
+html[data-ui-theme="mastodon"] #tab-profile select {
+    background: var(--surface-elevated);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-color);
+}
+
+html[data-ui-theme="mastodon"] #tab-profile input[type="text"]:focus,
+html[data-ui-theme="mastodon"] #tab-profile textarea:focus,
+html[data-ui-theme="mastodon"] #tab-profile select:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+
+html[data-ui-theme="mastodon"] #tab-profile input[type="radio"],
+html[data-ui-theme="mastodon"] #tab-profile input[type="checkbox"] {
+    accent-color: var(--primary);
+}
+
+html[data-ui-theme="mastodon"] #tab-profile button[type="submit"] {
+    background: var(--pill-bg) !important;
+    color: var(--pill-text) !important;
+    border-radius: 9999px !important;
+    font-weight: 700 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background-image: none !important;
+}
+
+html[data-ui-theme="mastodon"] #tab-profile button[type="submit"]:hover {
+    background: var(--pill-bg-hover) !important;
+    color: var(--pill-text) !important;
+}
