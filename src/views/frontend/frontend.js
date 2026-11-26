@@ -489,30 +489,86 @@ const popularEmojis = [
     '❤️‍🔥', '❤️‍🩹', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝'
 ];
 
+let _notificationsCache = null;
+let _notificationsInFlight = null;
+
+function getNotificationsSignature(followRequests, data) {
+    const frIds = Array.isArray(followRequests) ? followRequests.map(r => r.id).join(',') : '';
+    const nIds = Array.isArray(data) ? data.map(n => `${n.id}:${n.read ? 1 : 0}`).join(',') : '';
+    return `${frIds}|${nIds}`;
+}
+
+function saveNotificationsCache(followRequests, data) {
+    const signature = getNotificationsSignature(followRequests, data);
+    _notificationsCache = { followRequests, data, signature };
+    try {
+        sessionStorage.setItem('kutsocial_notif_cache', JSON.stringify(_notificationsCache));
+    } catch (e) {}
+    return _notificationsCache;
+}
+
+function getCachedNotifications() {
+    if (_notificationsCache) return _notificationsCache;
+    try {
+        const raw = sessionStorage.getItem('kutsocial_notif_cache');
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && Array.isArray(parsed.data)) {
+                _notificationsCache = parsed;
+                return _notificationsCache;
+            }
+        }
+    } catch (e) {}
+    return null;
+}
+
+function invalidateNotificationsCache() {
+    _notificationsCache = null;
+    try { sessionStorage.removeItem('kutsocial_notif_cache'); } catch (e) {}
+    const list = document.getElementById('notifications-list');
+    if (list) list.dataset.signature = '';
+}
+
+async function fetchNotificationsBundle() {
+    if (_notificationsInFlight) return _notificationsInFlight;
+    _notificationsInFlight = (async () => {
+        const headers = { 'Authorization': `Bearer ${token}` };
+        const [frRes, notifRes] = await Promise.all([
+            fetch('/api/v1/follow_requests', { headers }).catch(() => null),
+            fetch('/api/v1/notifications', { headers })
+        ]);
+
+        let followRequests = [];
+        if (frRes && frRes.ok) {
+            try { followRequests = await frRes.json(); } catch (e) {}
+        }
+
+        const resText = await notifRes.text();
+        let data;
+        try {
+            data = JSON.parse(resText);
+        } catch (jsonErr) {
+            const err = new Error('INVALID_JSON');
+            err.rawText = resText;
+            throw err;
+        }
+
+        return saveNotificationsCache(
+            Array.isArray(followRequests) ? followRequests : [],
+            Array.isArray(data) ? data : []
+        );
+    })().finally(() => {
+        _notificationsInFlight = null;
+    });
+    return _notificationsInFlight;
+}
+
 async function updateNotificationBadge() {
     if (!token) return;
     try {
-        let frCount = 0;
-        try {
-            const frRes = await fetch('/api/v1/follow_requests', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (frRes.ok) {
-                const frData = await frRes.json();
-                frCount = Array.isArray(frData) ? frData.length : 0;
-            }
-        } catch (e) {}
-
-        let notifCount = 0;
-        try {
-            const res = await fetch('/api/v1/notifications', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (res.ok) {
-                const data = await res.json();
-                notifCount = Array.isArray(data) ? data.filter(n => !n.read).length : 0;
-            }
-        } catch (e) {}
+        const bundle = await fetchNotificationsBundle();
+        const frCount = bundle.followRequests.length;
+        const notifCount = bundle.data.filter(n => !n.read).length;
 
         const total = frCount + notifCount;
         const badge = document.getElementById('nav-notifications-count');
@@ -2278,44 +2334,18 @@ function showTab(tabName, fromHashChange = false) {
 
 async function loadNotifications() {
     const list = document.getElementById('notifications-list');
-    list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando notificaciones...</div>';
-    
-    updateNotificationBadge();
-    
-    try {
-        // 1. Obtener solicitudes de seguimiento pendientes
-        let followRequests = [];
-        try {
-            const frRes = await fetch('/api/v1/follow_requests', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
-            if (frRes.ok) {
-                followRequests = await frRes.json();
-            }
-        } catch (e) {
-            console.error("Error al cargar solicitudes de seguimiento", e);
-        }
+    if (!list) return;
 
-        // 2. Obtener notificaciones estándar
-        const res = await fetch('/api/v1/notifications', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        const resText = await res.text();
-        let data;
-        try {
-            data = JSON.parse(resText);
-        } catch (jsonErr) {
-            console.error("Error parsing JSON. Raw response was:", resText);
-            list.innerHTML = `<div style="text-align:left; padding: 20px; color: var(--error);">
-                <h4>Error del Servidor (no es JSON válido)</h4>
-                <p>El servidor devolvió HTML/Texto en lugar de JSON. Detalle:</p>
-                <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; font-family: monospace; max-height: 400px; overflow: auto; border: 1px solid var(--border-color); color: var(--text-color);">
-                    ${escapeHTML(resText)}
-                </div>
-            </div>`;
-            return;
-        }
-        list.innerHTML = '';
+    const cached = getCachedNotifications();
+    if (cached) {
+        renderNotificationsList(list, cached.followRequests, cached.data, cached.signature);
+    } else {
+        list.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Cargando notificaciones...</div>';
+    }
+
+    try {
+        const bundle = await fetchNotificationsBundle();
+        const { followRequests, data, signature } = bundle;
 
         // Sincronizar lectura con Markers API (Mona, Ivory, etc.) y ocultar badge
         if (Array.isArray(data) && data.length > 0) {
@@ -2341,6 +2371,36 @@ async function loadNotifications() {
                 badge.style.display = 'none';
             }
         }
+
+        renderNotificationsList(list, followRequests, data, signature);
+    } catch (e) {
+        if (e && e.message === 'INVALID_JSON') {
+            console.error("Error parsing JSON. Raw response was:", e.rawText);
+            if (!cached) {
+                list.innerHTML = `<div style="text-align:left; padding: 20px; color: var(--error);">
+                    <h4>Error del Servidor (no es JSON válido)</h4>
+                    <p>El servidor devolvió HTML/Texto en lugar de JSON. Detalle:</p>
+                    <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; font-family: monospace; max-height: 400px; overflow: auto; border: 1px solid var(--border-color); color: var(--text-color);">
+                        ${escapeHTML(e.rawText || '')}
+                    </div>
+                </div>`;
+            }
+            return;
+        }
+        console.error("Error al cargar notificaciones:", e);
+        if (!cached) {
+            list.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar notificaciones: ${escapeHTML(e.message)}<pre style="text-align:left; font-size:11px; margin-top:10px; max-height:200px; overflow:auto; background:rgba(0,0,0,0.2); padding:10px; border-radius:6px;">${escapeHTML(e.stack)}</pre></div>`;
+        }
+    }
+}
+
+function renderNotificationsList(list, followRequests, data, signature) {
+    if (list.dataset.hasCache === '1' && list.dataset.signature === signature) {
+        return;
+    }
+    list.dataset.hasCache = '1';
+    list.dataset.signature = signature;
+    list.innerHTML = '';
         
         // 3. Renderizar solicitudes de seguimiento pendientes en la parte superior
         followRequests.forEach(req => {
@@ -2649,10 +2709,6 @@ async function loadNotifications() {
                 list.appendChild(div);
             }
         });
-    } catch (e) {
-        console.error("Error al cargar notificaciones:", e);
-        list.innerHTML = `<div style="text-align:center; padding: 20px; color: var(--error);">Error al cargar notificaciones: ${escapeHTML(e.message)}<pre style="text-align:left; font-size:11px; margin-top:10px; max-height:200px; overflow:auto; background:rgba(0,0,0,0.2); padding:10px; border-radius:6px;">${escapeHTML(e.stack)}</pre></div>`;
-    }
 }
 
 async function respondFollowRequest(id, action) {
@@ -2662,6 +2718,7 @@ async function respondFollowRequest(id, action) {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
+            invalidateNotificationsCache();
             loadNotifications();
         } else {
             alert('Error al procesar la solicitud de seguimiento.');
@@ -2679,6 +2736,7 @@ async function dismissNotification(id, element) {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
+            invalidateNotificationsCache();
             element.remove();
             const list = document.getElementById('notifications-list');
             if (list.children.length === 0) {
@@ -2700,6 +2758,7 @@ async function clearAllNotifications() {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         if (res.ok) {
+            invalidateNotificationsCache();
             // Actualizar interfaz visual localmente de inmediato sin recargar el DOM
             const items = document.querySelectorAll('.notification-item');
             items.forEach(item => {
