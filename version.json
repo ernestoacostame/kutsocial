@@ -1,5 +1,5 @@
 {
-  "version": "2.1.55",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.55/kutsocial-v2.1.55.zip",
-  "changelog": "Clarify Preferences vs Administration labels and complete English/Spanish i18n translations"
+  "version": "2.1.56",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.56/kutsocial-v2.1.56.zip",
+  "changelog": "Style Account Preferences to match Mastodon 5.0 theme"
 }
