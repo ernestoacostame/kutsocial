@@ -1,5 +1,5 @@
 {
-  "version": "2.1.51",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.51/kutsocial-v2.1.51.zip",
-  "changelog": "Add theme accent colors and fix active favorite/bookmark star colors in Mastodon theme"
+  "version": "2.1.52",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.52/kutsocial-v2.1.52.zip",
+  "changelog": "Instant notifications via stale-while-revalidate cache, parallel fetch, and deduplicated badge preload"
 }
