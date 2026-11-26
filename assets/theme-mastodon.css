@@ -655,3 +655,85 @@ html[data-ui-theme="mastodon"].m5-sidebar-collapsed .m5-scroll-top-text {
         border-right: none;
     }
 }
+
+/* ==========================================================================
+   Preferencias de Apariencia para Mastodon 5.0 (Color de acento, Modo Claro, Contraste)
+   ========================================================================== */
+html[data-ui-theme="mastodon"][data-accent="indigo"] {
+    --primary: #8c86ff;
+    --primary-hover: #a5a0ff;
+    --accent: #8c86ff;
+    --accent-hover: #a5a0ff;
+    --pill-bg: #c4c0ff;
+    --pill-bg-hover: #d8d5ff;
+}
+html[data-ui-theme="mastodon"][data-accent="lime"] {
+    --primary: #84cc16;
+    --primary-hover: #a3e635;
+    --accent: #84cc16;
+    --accent-hover: #a3e635;
+    --pill-bg: #bef264;
+    --pill-bg-hover: #d9f99d;
+}
+html[data-ui-theme="mastodon"][data-accent="pink"] {
+    --primary: #f472b6;
+    --primary-hover: #f9a8d4;
+    --accent: #f472b6;
+    --accent-hover: #f9a8d4;
+    --pill-bg: #fbcfe8;
+    --pill-bg-hover: #fce7f3;
+}
+html[data-ui-theme="mastodon"][data-accent="orange"] {
+    --primary: #fb923c;
+    --primary-hover: #fdba74;
+    --accent: #fb923c;
+    --accent-hover: #fdba74;
+    --pill-bg: #fed7aa;
+    --pill-bg-hover: #ffedd5;
+}
+html[data-ui-theme="mastodon"][data-accent="cyan"] {
+    --primary: #22d3ee;
+    --primary-hover: #67e8f9;
+    --accent: #22d3ee;
+    --accent-hover: #67e8f9;
+    --pill-bg: #a5f3fc;
+    --pill-bg-hover: #cffafe;
+}
+
+html[data-ui-theme="mastodon"][data-color-mode="light"] {
+    --bg-color: #f3f4f8;
+    --surface-bg: #ffffff;
+    --surface-elevated: #f8fafc;
+    --card-bg: #ffffff;
+    --border-color: rgba(15, 23, 42, 0.12);
+    --pill-text: #111827;
+    --text-color: #111827;
+    --text-muted: #4b5563;
+    color-scheme: light;
+}
+
+html[data-ui-theme="mastodon"][data-color-mode="light"] .toot-card:not(.toot-main):hover,
+html[data-ui-theme="mastodon"][data-color-mode="light"] .nav-link:hover,
+html[data-ui-theme="mastodon"][data-color-mode="light"] .m5-icon-btn:hover,
+html[data-ui-theme="mastodon"][data-color-mode="light"] button.m5-icon-btn:hover,
+html[data-ui-theme="mastodon"][data-color-mode="light"] .toot-action-btn:hover {
+    background: rgba(15, 23, 42, 0.06);
+    color: var(--text-color);
+}
+
+html[data-ui-theme="mastodon"][data-color-mode="light"] .m5-popover-menu {
+    background: #ffffff;
+    border-color: rgba(15, 23, 42, 0.14);
+}
+
+html[data-ui-theme="mastodon"][data-contrast="high"] {
+    --border-color: rgba(255, 255, 255, 0.32);
+    --text-color: #ffffff;
+    --text-muted: #d1d5db;
+}
+
+html[data-ui-theme="mastodon"][data-color-mode="light"][data-contrast="high"] {
+    --border-color: rgba(0, 0, 0, 0.35);
+    --text-color: #000000;
+    --text-muted: #1f2937;
+}

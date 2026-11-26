@@ -10,6 +10,9 @@
             <button type="button" id="btn-subtab-profile-privacy" onclick="switchProfileSettingsTab('privacy')" class="profile-subtab-btn">
                 <span>🔒</span> <span><?= __('profile_tab_privacy') ?></span>
             </button>
+            <button type="button" id="btn-subtab-profile-appearance" onclick="switchProfileSettingsTab('appearance')" class="profile-subtab-btn">
+                <span>🎨</span> <span><?= __('profile_tab_appearance', 'Apariencia') ?></span>
+            </button>
             <button type="button" id="btn-subtab-profile-import" onclick="switchProfileSettingsTab('import')" class="profile-subtab-btn">
                 <span>📥</span> <span><?= __('profile_import_export') ?></span>
             </button>
@@ -125,7 +128,58 @@
         </div>
     </form>
 
-    <!-- Subtab 3: Importar & Exportar -->
+    <!-- Subtab 3: Apariencia -->
+    <div id="subtab-content-profile-appearance" style="display: none;">
+        <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 5px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('appearance_theme_and_colors', 'Tema y colores') ?></h3>
+        <div style="display: flex; flex-direction: column; gap: 18px; margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+            <div>
+                <label style="display: block; font-size: 13.5px; font-weight: 600; color: var(--text-color); margin-bottom: 8px;"><?= __('appearance_mode', 'Modo') ?></label>
+                <div style="display: flex; gap: 18px; flex-wrap: wrap;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_mode" value="auto" style="width: auto;"> <?= __('appearance_auto', 'Auto') ?></label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_mode" value="light" style="width: auto;"> <?= __('appearance_light', 'Claro') ?></label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_mode" value="dark" style="width: auto;"> <?= __('appearance_dark', 'Oscuro') ?></label>
+                </div>
+            </div>
+
+            <div>
+                <label style="display: block; font-size: 13.5px; font-weight: 600; color: var(--text-color); margin-bottom: 8px;"><?= __('appearance_accent_color', 'Color de acento') ?></label>
+                <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_accent" value="indigo" style="width: auto;"><span style="width: 12px; height: 12px; border-radius: 50%; background: #6366f1; display: inline-block;"></span> Indigo</label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_accent" value="lime" style="width: auto;"><span style="width: 12px; height: 12px; border-radius: 50%; background: #84cc16; display: inline-block;"></span> Lime</label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_accent" value="pink" style="width: auto;"><span style="width: 12px; height: 12px; border-radius: 50%; background: #ec4899; display: inline-block;"></span> Pink</label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_accent" value="orange" style="width: auto;"><span style="width: 12px; height: 12px; border-radius: 50%; background: #f97316; display: inline-block;"></span> Orange</label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_accent" value="cyan" style="width: auto;"><span style="width: 12px; height: 12px; border-radius: 50%; background: #06b6d4; display: inline-block;"></span> Cyan</label>
+                </div>
+            </div>
+
+            <div>
+                <label style="display: block; font-size: 13.5px; font-weight: 600; color: var(--text-color); margin-bottom: 8px;"><?= __('appearance_contrast', 'Contraste') ?></label>
+                <div style="display: flex; gap: 18px; flex-wrap: wrap;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_contrast" value="auto" style="width: auto;"> <?= __('appearance_auto', 'Auto') ?></label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_contrast" value="high" style="width: auto;"> <?= __('appearance_high_contrast', 'Alto contraste') ?></label>
+                </div>
+            </div>
+
+            <div>
+                <label style="display: block; font-size: 13.5px; font-weight: 600; color: var(--text-color); margin-bottom: 8px;"><?= __('appearance_emoji_style', 'Estilo de emojis') ?></label>
+                <div style="display: flex; gap: 18px; flex-wrap: wrap;">
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_emoji_style" value="auto" style="width: auto;"> <?= __('appearance_auto', 'Auto') ?></label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_emoji_style" value="native" style="width: auto;"> <?= __('appearance_emoji_native', 'Nativo') ?></label>
+                    <label style="display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: normal; margin: 0;"><input type="radio" name="appearance_emoji_style" value="twemoji" style="width: auto;"> Twemoji</label>
+                </div>
+            </div>
+
+            <div>
+                <label for="appearance-timezone-select" style="display: block; font-size: 13.5px; font-weight: 600; color: var(--text-color); margin-bottom: 8px;"><?= __('appearance_timezone', 'Zona horaria') ?></label>
+                <select id="appearance-timezone-select" style="max-width: 340px; width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; color: var(--text-color);">
+                    <option value="auto"><?= __('appearance_timezone_auto', 'Automática (navegador)') ?></option>
+                </select>
+            </div>
+        </div>
+        <p style="font-size: 12.5px; color: var(--text-muted);"><?= __('appearance_saved_auto', 'Los cambios de apariencia se aplican y guardan automáticamente.') ?></p>
+    </div>
+
+    <!-- Subtab 4: Importar & Exportar -->
     <div id="subtab-content-profile-import" style="display: none;">
         <!-- Exportar -->
         <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-bottom: 25px;">

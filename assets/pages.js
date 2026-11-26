@@ -109,11 +109,14 @@ function formatRelativeTime(dateInput) {
     } else {
         const isSameYear = date.getFullYear() === now.getFullYear();
         const locale = (window.KUTSOCIAL_LANG === 'en') ? 'en-US' : 'es-ES';
-        return date.toLocaleDateString(locale, {
+        const tz = (typeof localStorage !== 'undefined' && localStorage.getItem('kutsocial_timezone')) || 'auto';
+        const dateOpts = {
             day: 'numeric',
             month: 'short',
             year: isSameYear ? undefined : 'numeric'
-        });
+        };
+        if (tz && tz !== 'auto') dateOpts.timeZone = tz;
+        return date.toLocaleDateString(locale, dateOpts);
     }
 }
 
@@ -267,6 +270,9 @@ window.addEventListener('DOMContentLoaded', () => {
     if (visSelect) {
         visSelect.addEventListener('change', updateComposerVisibilityIcon);
     }
+
+    if (typeof applyAppearancePreferences === 'function') applyAppearancePreferences();
+    if (typeof initAppearanceSettingsUI === 'function') initAppearanceSettingsUI();
 });
 
 // Event listener de scroll para carga diferida (Infinite Scroll) y control de botones de volver arriba
@@ -3113,8 +3119,76 @@ function switchModalProfileSettingsTab(subtab = 'edit') {
     });
 }
 
+function applyAppearancePreferences() {
+    const mode = localStorage.getItem('kutsocial_color_mode') || 'dark';
+    const resolvedMode = mode === 'auto'
+        ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+        : mode;
+    document.documentElement.setAttribute('data-color-mode', resolvedMode);
+
+    const accent = localStorage.getItem('kutsocial_accent_color') || 'indigo';
+    document.documentElement.setAttribute('data-accent', accent);
+
+    const contrast = localStorage.getItem('kutsocial_contrast') || 'auto';
+    const resolvedContrast = contrast === 'auto'
+        ? (window.matchMedia && window.matchMedia('(prefers-contrast: more)').matches ? 'high' : 'normal')
+        : contrast;
+    document.documentElement.setAttribute('data-contrast', resolvedContrast);
+
+    const emojiStyle = localStorage.getItem('kutsocial_emoji_style') || 'auto';
+    document.documentElement.setAttribute('data-emoji-style', emojiStyle);
+}
+
+function initAppearanceSettingsUI() {
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => {
+            if ((localStorage.getItem('kutsocial_color_mode') || 'dark') === 'auto') applyAppearancePreferences();
+        });
+        window.matchMedia('(prefers-contrast: more)').addEventListener?.('change', () => {
+            if ((localStorage.getItem('kutsocial_contrast') || 'auto') === 'auto') applyAppearancePreferences();
+        });
+    }
+
+    const bindRadioGroup = (name, key, defaultVal) => {
+        const current = localStorage.getItem(key) || defaultVal;
+        document.querySelectorAll(`input[name="${name}"]`).forEach(radio => {
+            radio.checked = (radio.value === current);
+            radio.addEventListener('change', () => {
+                if (radio.checked) {
+                    localStorage.setItem(key, radio.value);
+                    applyAppearancePreferences();
+                }
+            });
+        });
+    };
+
+    bindRadioGroup('appearance_mode', 'kutsocial_color_mode', 'dark');
+    bindRadioGroup('appearance_accent', 'kutsocial_accent_color', 'indigo');
+    bindRadioGroup('appearance_contrast', 'kutsocial_contrast', 'auto');
+    bindRadioGroup('appearance_emoji_style', 'kutsocial_emoji_style', 'auto');
+
+    const tzSelect = document.getElementById('appearance-timezone-select');
+    if (tzSelect) {
+        const savedTz = localStorage.getItem('kutsocial_timezone') || 'auto';
+        let zones = ['UTC', 'America/Havana', 'America/Mexico_City', 'America/New_York', 'America/Bogota', 'America/Lima', 'America/Santiago', 'America/Argentina/Buenos_Aires', 'Europe/Madrid', 'Europe/London'];
+        if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+            try { zones = Intl.supportedValuesOf('timeZone'); } catch (e) {}
+        }
+        zones.forEach(z => {
+            const opt = document.createElement('option');
+            opt.value = z;
+            opt.textContent = z;
+            tzSelect.appendChild(opt);
+        });
+        tzSelect.value = savedTz;
+        tzSelect.addEventListener('change', () => {
+            localStorage.setItem('kutsocial_timezone', tzSelect.value);
+        });
+    }
+}
+
 function switchProfileSettingsTab(subtab = 'edit') {
-    const tabs = ['edit', 'privacy', 'import'];
+    const tabs = ['edit', 'privacy', 'appearance', 'import'];
     tabs.forEach(t => {
         const content = document.getElementById('subtab-content-profile-' + t);
         const btn = document.getElementById('btn-subtab-profile-' + t);

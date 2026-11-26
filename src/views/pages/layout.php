@@ -42,6 +42,20 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
             var t = localStorage.getItem('kutsocial_token') || window.KUTSOCIAL_AUTO_TOKEN;
             if (!t) document.documentElement.classList.add('is-guest');
         } catch (e) { document.documentElement.classList.add('is-guest'); }
+        try {
+            var mode = localStorage.getItem('kutsocial_color_mode') || 'dark';
+            var resolvedMode = mode === 'auto'
+                ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+                : mode;
+            document.documentElement.setAttribute('data-color-mode', resolvedMode);
+            document.documentElement.setAttribute('data-accent', localStorage.getItem('kutsocial_accent_color') || 'indigo');
+            var contrast = localStorage.getItem('kutsocial_contrast') || 'auto';
+            var resolvedContrast = contrast === 'auto'
+                ? (window.matchMedia && window.matchMedia('(prefers-contrast: more)').matches ? 'high' : 'normal')
+                : contrast;
+            document.documentElement.setAttribute('data-contrast', resolvedContrast);
+            document.documentElement.setAttribute('data-emoji-style', localStorage.getItem('kutsocial_emoji_style') || 'auto');
+        } catch (e) {}
     })();
     </script>
     <style>
