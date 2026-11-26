@@ -1,5 +1,5 @@
 {
-  "version": "2.1.66",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.66/kutsocial-v2.1.66.zip",
-  "changelog": "Hidrata automáticamente actividades Announce vacías en timelines y filtra toots sin contenido ni reblog válido para evitar tarjetas en blanco"
+  "version": "2.1.67",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.67/kutsocial-v2.1.67.zip",
+  "changelog": "Historial de ediciones en toots propios y de terceros (locales y remotos): tabla status_edits, ActivityPub Update, endpoint /api/v1/statuses/:id/history y modal visual"
 }
