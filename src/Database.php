@@ -97,6 +97,22 @@ class Database {
         return (int)$db->lastInsertId();
     }
 
+    /**
+     * Verifica que un ID entero esté dentro del rango válido de clave primaria
+     * del motor activo (32-bit en PostgreSQL/MySQL, 64-bit en SQLite), evitando
+     * excepciones SQLSTATE[22003] al consultar IDs remotos (snowflakes) en cualquier BD.
+     */
+    public static function isSafeIntId(int $id): bool {
+        if ($id <= 0) {
+            return false;
+        }
+        $driver = self::getDriver();
+        if ($driver === 'pgsql' || $driver === 'mysql') {
+            return $id <= 2147483647;
+        }
+        return true;
+    }
+
     public static function insertIgnoreSql(string $table, string $colsSql, string $placeholdersSql): string {
         $driver = self::getDriver();
         if ($driver === 'mysql') {

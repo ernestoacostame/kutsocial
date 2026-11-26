@@ -4692,7 +4692,7 @@ HTML;
             $id = (int)($stmtFind->fetchColumn() ?: 0);
         }
 
-        if ($id <= 0) {
+        if (!Database::isSafeIntId($id)) {
             Router::json(['error' => 'Record not found'], 404);
             return;
         }
@@ -4753,6 +4753,10 @@ HTML;
      */
     public static function getStatusSource(array $params): void {
         $id = (int)$params['id'];
+        if (!Database::isSafeIntId($id)) {
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
         $db = Database::connect();
 
         $stmt = $db->prepare("SELECT id, content, spoiler_text, account_id, visibility FROM statuses WHERE id = ? LIMIT 1");
@@ -6208,15 +6212,11 @@ HTML;
         }
 
         $status = null;
-        if ($id > 0) {
+        if (Database::isSafeIntId($id)) {
             try {
-                // Evitar SQLSTATE[22003] en PostgreSQL cuando el ID es un snowflake remoto (> int32)
-                $isPgsql = Database::getDriver() === 'pgsql';
-                if (!$isPgsql || $id <= 2147483647) {
-                    $stmt = $db->prepare("SELECT in_reply_to_id FROM statuses WHERE id = ?");
-                    $stmt->execute([$id]);
-                    $status = $stmt->fetch();
-                }
+                $stmt = $db->prepare("SELECT in_reply_to_id FROM statuses WHERE id = ?");
+                $stmt->execute([$id]);
+                $status = $stmt->fetch();
             } catch (\Throwable $e) {
                 $status = null;
             }
@@ -6410,7 +6410,7 @@ HTML;
             $id = (int)($stmtFind->fetchColumn() ?: 0);
         }
 
-        if ($id <= 0) {
+        if (!Database::isSafeIntId($id)) {
             Router::json(['error' => 'Record not found'], 404);
             return;
         }
@@ -6760,6 +6760,9 @@ HTML;
     }
 
     public static function fetchStatusRow(PDO $db, int $id): ?array {
+        if (!Database::isSafeIntId($id)) {
+            return null;
+        }
         $stmt = $db->prepare("
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
                    s.visibility as status_visibility, s.created_at as status_created_at, 
