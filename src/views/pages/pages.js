@@ -618,7 +618,8 @@ function handlePathRouting() {
     } else if (path.includes('/statuses/')) {
         const parts = path.split('/');
         const statusId = parts[parts.length - 1];
-        viewTootThread(statusId, true);
+        const sp = new URLSearchParams(window.location.search);
+        viewTootThread(statusId, true, sp.get('resolve_url'), sp.get('source_domain'), sp.get('remote_id'));
         return true;
     }
     return false;
@@ -1577,8 +1578,10 @@ function createThreadTootElement(toot, isMain = false) {
         }
 
         const remoteUrl = toot.is_remote_explore ? (toot.uri || toot.url || null) : null;
+        const srcDomain = toot.explore_source_domain || null;
+        const remId = toot.explore_remote_id || null;
         const localId = await resolveExploreCardStatus(toot);
-        viewTootThread(localId, false, remoteUrl);
+        viewTootThread(localId, false, remoteUrl, srcDomain, remId);
     });
 
     return card;
@@ -1617,8 +1620,10 @@ async function openCardThreadFromEl(el) {
     const toot = card?._toot;
     if (!toot) return;
     const remoteUrl = toot.is_remote_explore ? (toot.uri || toot.url || null) : null;
+    const srcDomain = toot.explore_source_domain || null;
+    const remId = toot.explore_remote_id || null;
     const localId = await resolveExploreCardStatus(toot);
-    viewTootThread(localId, false, remoteUrl);
+    viewTootThread(localId, false, remoteUrl, srcDomain, remId);
 }
 
 async function handleReplyButtonClick(btn) {
@@ -5195,11 +5200,16 @@ function formatStatNumber(num) {
 // ---------------------------
 // VISTA DE CONVERSACIÓN / HILO
 // ---------------------------
-async function viewTootThread(statusId, fromHashChange = false, resolveUrl = null) {
+async function viewTootThread(statusId, fromHashChange = false, resolveUrl = null, sourceDomain = null, remoteId = null) {
     if (!statusId) return;
     if (!document.getElementById('tab-thread-view')) {
         const base = window.KUTSOCIAL_BASE_PATH || '';
-        window.location.href = `${base}/statuses/${statusId}`;
+        const sp = new URLSearchParams();
+        if (resolveUrl) sp.set('resolve_url', resolveUrl);
+        if (sourceDomain) sp.set('source_domain', sourceDomain);
+        if (remoteId) sp.set('remote_id', remoteId);
+        const qs = sp.toString() ? `?${sp.toString()}` : '';
+        window.location.href = `${base}/statuses/${statusId}${qs}`;
         return;
     }
     
@@ -5233,7 +5243,11 @@ async function viewTootThread(statusId, fromHashChange = false, resolveUrl = nul
     try {
         const headers = { 'Accept': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const ctxQuery = resolveUrl ? `?resolve_url=${encodeURIComponent(resolveUrl)}` : '';
+        const ctxParams = new URLSearchParams();
+        if (resolveUrl) ctxParams.set('resolve_url', resolveUrl);
+        if (sourceDomain) ctxParams.set('source_domain', sourceDomain);
+        if (remoteId) ctxParams.set('remote_id', remoteId);
+        const ctxQuery = ctxParams.toString() ? `?${ctxParams.toString()}` : '';
         const res = await fetch(`/api/v1/statuses/${statusId}/context${ctxQuery}`, {
             headers: headers
         });

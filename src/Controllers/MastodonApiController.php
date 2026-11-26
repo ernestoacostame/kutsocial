@@ -6228,6 +6228,19 @@ HTML;
             } catch (\Throwable $e) {}
         }
 
+        // Fallback vía API pública Mastodon si el toot remoto no pudo importarse por ActivityPub
+        if (!$status && !empty($_GET['source_domain']) && !empty($_GET['remote_id'])) {
+            $srcDomain = preg_replace('/[^a-zA-Z0-9.\-]/', '', (string)$_GET['source_domain']);
+            $remId = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$_GET['remote_id']);
+            if ($srcDomain !== '' && $remId !== '' && \KutSocial\SecurityHelper::isSafeExternalUrl("https://{$srcDomain}/")) {
+                $remotePayload = self::fetchRemoteMastodonStatusAndContext($srcDomain, $remId);
+                if ($remotePayload !== null) {
+                    Router::json($remotePayload);
+                    return;
+                }
+            }
+        }
+
         if ($id <= 0 || !$status) {
             Router::json(['error' => 'Record not found'], 404);
             return;
@@ -9971,7 +9984,7 @@ HTML;
      * Obtiene y cachea (10 min) tendencias públicas de instancias Mastodon variadas del Fediverso.
      */
     private static function fetchRemoteTrendingStatuses(): array {
-        $cacheFile = sys_get_temp_dir() . '/kutsocial_remote_trends_v1.json';
+        $cacheFile = sys_get_temp_dir() . '/kutsocial_remote_trends_v2.json';
         if (file_exists($cacheFile) && (time() - @filemtime($cacheFile)) < 600) {
             $cached = @json_decode((string)@file_get_contents($cacheFile), true);
             if (is_array($cached)) {
@@ -10048,6 +10061,8 @@ HTML;
                 $st['bookmarked'] = false;
                 $st['muted'] = false;
                 $st['is_remote_explore'] = true;
+                $st['explore_source_domain'] = $domain;
+                $st['explore_remote_id'] = (string)($st['id'] ?? '');
                 $results[] = $st;
             }
         }
@@ -10058,6 +10073,82 @@ HTML;
         }
 
         return $results;
+    }
+
+    /**
+     * Obtiene un status y su contexto (ancestros/descendientes) desde la API pública Mastodon
+     * de la instancia remota cuando la importación directa por ActivityPub no está disponible.
+     */
+    private static function fetchRemoteMastodonStatusAndContext(string $domain, string $remoteId): ?array {
+        if (!function_exists('curl_multi_init')) return null;
+
+        $urls = [
+            'status'  => "https://{$domain}/api/v1/statuses/" . rawurlencode($remoteId),
+            'context' => "https://{$domain}/api/v1/statuses/" . rawurlencode($remoteId) . "/context",
+        ];
+
+        $mh = curl_multi_init();
+        $handles = [];
+        foreach ($urls as $key => $u) {
+            $ch = curl_init($u);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 2,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_TIMEOUT => 5,
+                CURLOPT_USERAGENT => 'KutSocial/' . (defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0'),
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            ]);
+            curl_multi_add_handle($mh, $ch);
+            $handles[$key] = $ch;
+        }
+
+        $running = null;
+        do {
+            $st = curl_multi_exec($mh, $running);
+            if ($running > 0) curl_multi_select($mh, 0.2);
+        } while ($running > 0 && $st === CURLM_OK);
+
+        $responses = [];
+        foreach ($handles as $key => $ch) {
+            $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            $body = curl_multi_getcontent($ch);
+            curl_multi_remove_handle($mh, $ch);
+            curl_close($ch);
+            $responses[$key] = ($code === 200 && !empty($body)) ? json_decode((string)$body, true) : null;
+        }
+        curl_multi_close($mh);
+
+        if (!is_array($responses['status']) || empty($responses['status']['id'])) {
+            return null;
+        }
+
+        $normalizeItem = function($item) use ($domain) {
+            if (!is_array($item)) return null;
+            if (!empty($item['account']['acct']) && !str_contains((string)$item['account']['acct'], '@')) {
+                $item['account']['acct'] .= '@' . $domain;
+            }
+            $item['favourited'] = false;
+            $item['reblogged'] = false;
+            $item['bookmarked'] = false;
+            $item['muted'] = false;
+            $item['is_remote_explore'] = true;
+            $item['explore_source_domain'] = $domain;
+            $item['explore_remote_id'] = (string)($item['id'] ?? '');
+            return $item;
+        };
+
+        $statusObj = $normalizeItem($responses['status']);
+        $ctx = is_array($responses['context']) ? $responses['context'] : [];
+        $ancestors = array_values(array_filter(array_map($normalizeItem, $ctx['ancestors'] ?? [])));
+        $descendants = array_values(array_filter(array_map($normalizeItem, $ctx['descendants'] ?? [])));
+
+        return [
+            'status'      => $statusObj,
+            'ancestors'   => $ancestors,
+            'descendants' => $descendants,
+        ];
     }
 
     /**
