@@ -1,5 +1,5 @@
 {
-  "version": "2.1.62",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.62/kutsocial-v2.1.62.zip",
-  "changelog": "Corrección definitiva al abrir hilos remotos desde Explore: initApp y viewTootThread leen los parámetros de resolución de la URL"
+  "version": "2.1.63",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.63/kutsocial-v2.1.63.zip",
+  "changelog": "Aplica la resolución automática de hilos remotos de Explorar y selector de idiomas a la SPA principal (frontend.js y frontend/profile.php)"
 }
