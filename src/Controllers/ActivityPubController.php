@@ -295,6 +295,10 @@ XML;
                     self::log("postInbox: Procesando actividad de Create");
                     self::handleCreate($account, $activity);
                     break;
+                case 'Update':
+                    self::log("postInbox: Procesando actividad de Update");
+                    self::handleUpdate($account, $activity);
+                    break;
                 case 'Like':
                     self::log("postInbox: Procesando actividad de Like");
                     self::handleLike($account, $activity);
@@ -1848,6 +1852,55 @@ XML;
         }
     }
 
+    private static function handleUpdate(array $localAccount, array $activity): void {
+        $object = $activity['object'] ?? null;
+        if (!is_array($object)) {
+            return;
+        }
+        $type = $object['type'] ?? '';
+        $supported = ['Note', 'Question', 'Audio', 'Article', 'Page', 'Video', 'Document', 'Event'];
+        if (!in_array($type, $supported, true)) {
+            return;
+        }
+        $uri = (string)($object['id'] ?? '');
+        if ($uri === '') {
+            return;
+        }
+
+        $db = Database::connect();
+        Database::ensureStatusEditsSchema($db);
+        $stmt = $db->prepare("SELECT id, content, sensitive, spoiler_text, media_attachments, created_at, edited_at FROM statuses WHERE uri = ? LIMIT 1");
+        $stmt->execute([$uri]);
+        $existing = $stmt->fetch();
+        if (!$existing) {
+            return;
+        }
+
+        $newContent = \KutSocial\SecurityHelper::sanitizeRemoteHtml(self::extractObjectContent($object));
+        $newSensitive = !empty($object['sensitive']) ? 1 : 0;
+        $newSpoiler = trim((string)($object['summary'] ?? ''));
+
+        // Guardar versión previa en status_edits si cambió el contenido o advertencia
+        $prevContent = (string)($existing['content'] ?? '');
+        if ($newContent !== $prevContent || $newSpoiler !== (string)($existing['spoiler_text'] ?? '') || $newSensitive !== (int)($existing['sensitive'] ?? 0)) {
+            $prevTime = !empty($existing['edited_at']) ? $existing['edited_at'] : $existing['created_at'];
+            $stmtEdit = $db->prepare("INSERT INTO status_edits (status_id, content, spoiler_text, sensitive, media_attachments, created_at) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmtEdit->execute([
+                (int)$existing['id'],
+                $prevContent,
+                (string)($existing['spoiler_text'] ?? ''),
+                (int)($existing['sensitive'] ?? 0),
+                $existing['media_attachments'] ?? null,
+                $prevTime
+            ]);
+        }
+
+        $editedAt = !empty($object['updated']) ? gmdate('Y-m-d H:i:s', strtotime((string)$object['updated']) ?: time()) : Database::nowUtc();
+        $stmtUpd = $db->prepare("UPDATE statuses SET content = ?, sensitive = ?, spoiler_text = ?, edited_at = ? WHERE id = ?");
+        $stmtUpd->execute([$newContent, $newSensitive, $newSpoiler, $editedAt, (int)$existing['id']]);
+        self::log("handleUpdate: Status {$existing['id']} actualizado ($uri)");
+    }
+
     private static function handleAnnounce(array $localAccount, array $activity): void {
         $actorUrl = $activity['actor'] ?? '';
         $rawObject = $activity['object'] ?? '';
@@ -2195,9 +2248,18 @@ XML;
             $reblogOfId = self::fetchAndRegisterRemoteStatus($quoteUrl);
         }
 
+        $editedAt = null;
+        if (!empty($object['updated']) && ($updTs = strtotime((string)$object['updated'])) !== false) {
+            $crtTs = strtotime((string)$createdAt) ?: 0;
+            if ($updTs > $crtTs) {
+                $editedAt = gmdate('Y-m-d H:i:s', $updTs);
+            }
+        }
+
+        Database::ensureStatusEditsSchema($db);
         $stmtIns = $db->prepare("
-            INSERT INTO statuses (account_id, uri, content, visibility, created_at, media_attachments, in_reply_to_id, in_reply_to_url, in_reply_to_account_id, reblog_of_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO statuses (account_id, uri, content, visibility, created_at, edited_at, media_attachments, in_reply_to_id, in_reply_to_url, in_reply_to_account_id, reblog_of_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmtIns->execute([
             $remoteAccount['id'],
@@ -2205,6 +2267,7 @@ XML;
             $content,
             $visibility,
             gmdate('Y-m-d H:i:s', strtotime($createdAt)),
+            $editedAt,
             $mediaJson,
             $inReplyToId,
             $inReplyToUri,

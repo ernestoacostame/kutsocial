@@ -1519,7 +1519,7 @@ function createThreadTootElement(toot, isMain = false) {
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
                     </a>
-                    <a href="${tootStatusHref}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); openCardThreadFromEl(this)" title="${absoluteDateStr}">${relativeDateStr}</a>
+                    <a href="${tootStatusHref}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); openCardThreadFromEl(this)" title="${absoluteDateStr}">${relativeDateStr}</a>${toot.edited_at ? `<button type="button" class="toot-edited-badge" onclick="event.preventDefault(); event.stopPropagation(); openStatusHistoryModalFromEl(this)" title="${__('toot_view_history', 'Ver historial de ediciones')}" style="background: none; border: none; padding: 0; margin-left: 6px; color: var(--text-muted); font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 2px; opacity: 0.85;"><span class="material-icons-outlined" style="font-size: 13px;">edit</span>${__('toot_edited', 'Editado')}</button>` : ''}
                 </div>
                 ${effectiveContentHTML}
                 ${mediaHTML}
@@ -1628,6 +1628,87 @@ async function openCardThreadFromEl(el) {
     const remId = toot.explore_remote_id || null;
     const localId = await resolveExploreCardStatus(toot);
     viewTootThread(localId, false, remoteUrl, srcDomain, remId);
+}
+
+function openStatusHistoryModalFromEl(el) {
+    const card = el?.closest ? el.closest('.toot-card') : null;
+    const toot = card?._toot;
+    if (toot) openStatusHistoryModal(toot);
+}
+
+async function openStatusHistoryModal(toot) {
+    if (!toot || !toot.id) return;
+    const existing = document.getElementById('status-history-modal');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'status-history-modal';
+    overlay.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.65); backdrop-filter:blur(4px); z-index:9999; display:flex; align-items:center; justify-content:center; padding:16px;';
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'width:100%; max-width:560px; max-height:82vh; overflow-y:auto; background:var(--card-bg, #18181f); color:var(--text-color, #fff); border:1px solid var(--border-color, rgba(255,255,255,0.12)); border-radius:16px; padding:20px; box-shadow:0 20px 50px rgba(0,0,0,0.45);';
+    modal.innerHTML = `
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid var(--border-color, rgba(255,255,255,0.1));">
+            <h3 style="margin:0; font-size:17px; display:flex; align-items:center; gap:8px;">
+                <span class="material-icons-outlined" style="font-size:20px; color:var(--primary, #6366f1);">history</span>
+                <span>${__('toot_history_title', 'Historial de ediciones')}</span>
+            </h3>
+            <button type="button" onclick="document.getElementById('status-history-modal')?.remove()" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:20px; padding:4px;">✕</button>
+        </div>
+        <div id="status-history-body" style="display:flex; flex-direction:column; gap:14px;">
+            <div style="text-align:center; padding:24px; color:var(--text-muted);">${__('loading', 'Cargando...')}</div>
+        </div>
+    `;
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const bodyEl = document.getElementById('status-history-body');
+    try {
+        const headers = { 'Accept': 'application/json' };
+        if (typeof token !== 'undefined' && token) headers['Authorization'] = `Bearer ${token}`;
+        const qs = new URLSearchParams();
+        if (toot.explore_source_domain) qs.set('source_domain', toot.explore_source_domain);
+        if (toot.explore_remote_id) qs.set('remote_id', toot.explore_remote_id);
+        const qStr = qs.toString() ? `?${qs.toString()}` : '';
+        const res = await fetch(`/api/v1/statuses/${encodeURIComponent(toot.id)}/history${qStr}`, { headers });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const edits = await res.json();
+        if (!Array.isArray(edits) || edits.length === 0) {
+            bodyEl.innerHTML = `<div style="text-align:center; padding:24px; color:var(--text-muted);">${__('toot_history_empty', 'No hay versiones anteriores registradas.')}</div>`;
+            return;
+        }
+
+        const total = edits.length;
+        const reversed = edits.map((ed, idx) => ({ ed, idx })).reverse();
+        bodyEl.innerHTML = '';
+        reversed.forEach(({ ed, idx }) => {
+            let label = __('toot_history_edit_n', 'Edición #:n').replace(':n', idx);
+            if (idx === 0) label = __('toot_history_original', 'Versión original');
+            if (idx === total - 1) label = __('toot_history_current', 'Versión actual');
+
+            const d = parseDate(ed.created_at);
+            const dateStr = d ? d.toLocaleString() : (ed.created_at || '');
+            let html = sanitizeHTML(ed.content || '');
+            if (ed.emojis) html = replaceCustomEmojis(html, ed.emojis);
+            const spoiler = ed.spoiler_text ? `<div style="font-size:12.5px; font-weight:600; color:var(--warning, #f59e0b); margin-bottom:6px;">CW: ${escapeHTML(ed.spoiler_text)}</div>` : '';
+
+            const item = document.createElement('div');
+            item.style.cssText = 'border:1px solid var(--border-color, rgba(255,255,255,0.1)); border-radius:12px; padding:14px; background:rgba(255,255,255,0.02);';
+            if (idx === total - 1) item.style.borderColor = 'var(--primary, #6366f1)';
+            item.innerHTML = `
+                <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; font-size:12px; color:var(--text-muted);">
+                    <span style="font-weight:700; color:${idx === total - 1 ? 'var(--primary, #6366f1)' : 'var(--text-color)'};">${escapeHTML(label)}</span>
+                    <span>${escapeHTML(dateStr)}</span>
+                </div>
+                ${spoiler}
+                <div class="toot-content" style="font-size:14.5px; line-height:1.5;">${html}</div>
+            `;
+            bodyEl.appendChild(item);
+        });
+    } catch (e) {
+        bodyEl.innerHTML = `<div style="text-align:center; padding:24px; color:var(--error, #ef4444);">${__('error_loading', 'Error al cargar el historial.')}</div>`;
+    }
 }
 
 async function handleReplyButtonClick(btn) {
@@ -4596,6 +4677,18 @@ async function toggleTootOptionsMenu(tootId, btn, event) {
         viewTootThread(toot.id);
     });
     menu.appendChild(optExpand);
+
+    // Opción: Ver historial de ediciones (si está editado)
+    if (toot.edited_at) {
+        const optHist = document.createElement('button');
+        optHist.innerHTML = `<span class="material-icons-outlined">history</span> <span>${__('toot_view_history', 'Ver historial de ediciones')}</span>`;
+        setupMenuBtn(optHist, () => {
+            menu.remove();
+            activeTootOptionsMenu = null;
+            openStatusHistoryModal(toot);
+        });
+        menu.appendChild(optHist);
+    }
 
     // Opción: Abrir página original
     const postUrl = toot.url || toot.uri;

@@ -1679,6 +1679,71 @@ class Database {
                 $insMig->execute([$v, $now]);
             }
         }
+
+        self::ensureStatusEditsSchema($db);
+    }
+
+    /**
+     * Garantiza de forma idempotente en SQLite, PostgreSQL y MySQL la columna
+     * statuses.edited_at y la tabla status_edits para el historial de ediciones.
+     */
+    public static function ensureStatusEditsSchema(PDO $db): void {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+        $ensured = true;
+        $driver = self::getDriver();
+
+        try {
+            if ($driver === 'pgsql') {
+                $db->exec("ALTER TABLE statuses ADD COLUMN IF NOT EXISTS edited_at TIMESTAMP NULL");
+                $db->exec("CREATE TABLE IF NOT EXISTS status_edits (
+                    id SERIAL PRIMARY KEY,
+                    status_id INTEGER NOT NULL REFERENCES statuses(id) ON DELETE CASCADE,
+                    content TEXT NOT NULL,
+                    spoiler_text TEXT DEFAULT '',
+                    sensitive INTEGER NOT NULL DEFAULT 0,
+                    media_attachments TEXT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )");
+                $db->exec("CREATE INDEX IF NOT EXISTS idx_status_edits_status_id ON status_edits(status_id, id ASC)");
+            } elseif ($driver === 'mysql') {
+                $colCheck = $db->query("SHOW COLUMNS FROM statuses LIKE 'edited_at'")->fetch();
+                if (!$colCheck) {
+                    $db->exec("ALTER TABLE statuses ADD COLUMN edited_at DATETIME NULL");
+                }
+                $db->exec("CREATE TABLE IF NOT EXISTS status_edits (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    status_id INT NOT NULL,
+                    content LONGTEXT NOT NULL,
+                    spoiler_text VARCHAR(500) NOT NULL DEFAULT '',
+                    sensitive TINYINT(1) NOT NULL DEFAULT 0,
+                    media_attachments LONGTEXT NULL,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_status_edits_status_id (status_id, id),
+                    CONSTRAINT fk_status_edits_status FOREIGN KEY (status_id) REFERENCES statuses(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+            } else {
+                $cols = $db->query("PRAGMA table_info(statuses)")->fetchAll(PDO::FETCH_COLUMN, 1);
+                if (!in_array('edited_at', $cols, true)) {
+                    $db->exec("ALTER TABLE statuses ADD COLUMN edited_at TEXT NULL");
+                }
+                $db->exec("CREATE TABLE IF NOT EXISTS status_edits (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    status_id INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    spoiler_text TEXT DEFAULT '',
+                    sensitive INTEGER NOT NULL DEFAULT 0,
+                    media_attachments TEXT NULL,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                    FOREIGN KEY (status_id) REFERENCES statuses(id) ON DELETE CASCADE
+                )");
+                $db->exec("CREATE INDEX IF NOT EXISTS idx_status_edits_status_id ON status_edits(status_id, id ASC)");
+            }
+        } catch (\Throwable $e) {
+            // Ignorar si ya existe en ejecución concurrente
+        }
     }
 
     public static function verifySsl(): bool {

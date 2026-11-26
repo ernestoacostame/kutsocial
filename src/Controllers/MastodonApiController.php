@@ -22,6 +22,7 @@ class MastodonApiController {
         'in_reply_to_accounts' => [],
         'cards' => [],
         'reblog_of_ids' => [],
+        'edited_ats' => [],
         'account_stats' => [],
     ];
     private static ?array $memoModerationBlocks = null;
@@ -5207,13 +5208,15 @@ HTML;
                 }
             }
 
-            // 6. Batch card & reblog_of_id
-            $stmtMeta = $db->prepare("SELECT id, reblog_of_id, card FROM statuses WHERE id IN ($ph)");
+            // 6. Batch card, reblog_of_id & edited_at
+            Database::ensureStatusEditsSchema($db);
+            $stmtMeta = $db->prepare("SELECT id, reblog_of_id, card, edited_at FROM statuses WHERE id IN ($ph)");
             $stmtMeta->execute($statusIdList);
             foreach ($stmtMeta->fetchAll() as $mr) {
                 $sid = (int)$mr['id'];
                 self::$statusCtx['reblog_of_ids'][$sid] = $mr['reblog_of_id'] ? (int)$mr['reblog_of_id'] : null;
                 self::$statusCtx['cards'][$sid] = !empty($mr['card']) ? json_decode($mr['card'], true) : null;
+                self::$statusCtx['edited_ats'][$sid] = !empty($mr['edited_at']) ? $mr['edited_at'] : null;
             }
         }
 
@@ -5706,7 +5709,10 @@ HTML;
             'muted' => false,
             'bookmarked' => $bookmarked,
             'pinned' => false,
-            'edited_at' => null,
+            'edited_at' => (function() use ($row, $statusId) {
+                $rawEdited = $row['edited_at'] ?? (self::$statusCtx['edited_ats'][$statusId] ?? null);
+                return !empty($rawEdited) ? date('c', strtotime((string)$rawEdited)) : null;
+            })(),
             'filtered' => [],
             'content' => $formattedContent,
             'text' => $rawStatusContent,
@@ -6426,6 +6432,151 @@ HTML;
     }
 
     /**
+     * Endpoint GET /api/v1/statuses/:id/history
+     * Devuelve el historial cronológico de ediciones (StatusEdit) de un toot local o remoto.
+     */
+    public static function getStatusHistory(array $params): void {
+        $db = Database::connect();
+        Database::ensureStatusEditsSchema($db);
+
+        $idParam = $params['id'] ?? '';
+        $id = 0;
+        if (is_numeric($idParam)) {
+            $id = (int)$idParam;
+        } else {
+            $stmtFind = $db->prepare("SELECT id FROM statuses WHERE uri = ? OR uri LIKE ? LIMIT 1");
+            $stmtFind->execute([$idParam, "%$idParam%"]);
+            $id = (int)($stmtFind->fetchColumn() ?: 0);
+        }
+
+        $row = Database::isSafeIntId($id) ? self::fetchStatusRow($db, $id) : null;
+
+        // 1. Si no existe localmente o es un toot remoto de Explorar, consultar /history en la instancia remota
+        if (!$row) {
+            $srcDomain = !empty($_GET['source_domain']) ? preg_replace('/[^a-zA-Z0-9.\-]/', '', (string)$_GET['source_domain']) : '';
+            $remId = !empty($_GET['remote_id']) ? preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$_GET['remote_id']) : (string)$idParam;
+            if ($srcDomain === '' && $remId !== '') {
+                foreach (self::fetchRemoteTrendingStatuses() as $cachedSt) {
+                    if ((string)($cachedSt['id'] ?? '') === $remId || (string)($cachedSt['explore_remote_id'] ?? '') === $remId) {
+                        $srcDomain = preg_replace('/[^a-zA-Z0-9.\-]/', '', (string)($cachedSt['explore_source_domain'] ?? ''));
+                        if ($srcDomain !== '') break;
+                    }
+                }
+            }
+            if ($srcDomain !== '' && $remId !== '' && \KutSocial\SecurityHelper::isSafeExternalUrl("https://{$srcDomain}/")) {
+                $remoteHist = self::fetchRemoteStatusHistory($srcDomain, $remId);
+                if ($remoteHist !== null) {
+                    Router::json($remoteHist);
+                    return;
+                }
+            }
+            Router::json(['error' => 'Record not found'], 404);
+            return;
+        }
+
+        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $accountObj = self::formatAccount([
+            'id' => $row['account_id'],
+            'username' => $row['username'],
+            'domain' => $row['domain'],
+            'display_name' => $row['display_name'],
+            'avatar' => $row['avatar'],
+            'header' => $row['header'],
+            'avatar_description' => $row['avatar_description'] ?? '',
+            'header_description' => $row['header_description'] ?? '',
+            'note' => $row['note'] ?? '',
+            'created_at' => $row['account_created_at'] ?? '',
+            'emojis' => $row['account_emojis'] ?? null,
+        ]);
+
+        // 2. Cargar ediciones guardadas en status_edits
+        $stmtEdits = $db->prepare("SELECT content, spoiler_text, sensitive, media_attachments, created_at FROM status_edits WHERE status_id = ? ORDER BY id ASC");
+        $stmtEdits->execute([$id]);
+        $edits = $stmtEdits->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Si es remoto y no tenemos ediciones locales guardadas, intentar traerlas de su instancia origen
+        if (empty($edits) && !empty($row['domain']) && !empty($row['status_uri'])) {
+            $remoteDomain = strtolower(trim((string)$row['domain']));
+            if (preg_match('#/statuses/([0-9a-zA-Z]+)#', (string)$row['status_uri'], $rm)) {
+                $remoteHist = self::fetchRemoteStatusHistory($remoteDomain, $rm[1]);
+                if (!empty($remoteHist)) {
+                    Router::json($remoteHist);
+                    return;
+                }
+            }
+        }
+
+        $history = [];
+        foreach ($edits as $ed) {
+            $edRaw = (string)($ed['content'] ?? '');
+            $edHtml = (!empty($row['domain']) || str_contains($edRaw, '<p>'))
+                ? $edRaw
+                : self::formatLocalContentToHtml($edRaw, $domain, $db, $proto);
+            $edMedia = !empty($ed['media_attachments']) ? (json_decode((string)$ed['media_attachments'], true) ?: []) : [];
+            $history[] = [
+                'content' => $edHtml,
+                'spoiler_text' => (string)($ed['spoiler_text'] ?? ''),
+                'sensitive' => !empty($ed['sensitive']),
+                'created_at' => date('c', strtotime((string)($ed['created_at'] ?? 'now'))),
+                'account' => $accountObj,
+                'poll' => null,
+                'media_attachments' => $edMedia,
+                'emojis' => self::extractEmojisFromContent($edHtml, $row),
+            ];
+        }
+
+        // Añadir la versión actual al final
+        $stmtCurMeta = $db->prepare("SELECT edited_at FROM statuses WHERE id = ? LIMIT 1");
+        $stmtCurMeta->execute([$id]);
+        $curEditedAt = $stmtCurMeta->fetchColumn() ?: null;
+
+        $curRaw = (string)($row['status_content'] ?? '');
+        $curHtml = (!empty($row['domain']) || str_contains($curRaw, '<p>'))
+            ? $curRaw
+            : self::formatLocalContentToHtml($curRaw, $domain, $db, $proto);
+        $curMedia = !empty($row['media_attachments']) ? (json_decode((string)$row['media_attachments'], true) ?: []) : [];
+        $curTime = !empty($curEditedAt) ? $curEditedAt : ($row['status_created_at'] ?? 'now');
+
+        $history[] = [
+            'content' => $curHtml,
+            'spoiler_text' => (string)($row['spoiler_text'] ?? ''),
+            'sensitive' => !empty($row['sensitive']),
+            'created_at' => date('c', strtotime((string)$curTime)),
+            'account' => $accountObj,
+            'poll' => null,
+            'media_attachments' => $curMedia,
+            'emojis' => self::extractEmojisFromContent($curHtml, $row),
+        ];
+
+        Router::json($history);
+    }
+
+    private static function fetchRemoteStatusHistory(string $domain, string $remoteId): ?array {
+        if (!\KutSocial\SecurityHelper::isSafeExternalUrl("https://{$domain}/")) {
+            return null;
+        }
+        $ch = curl_init("https://{$domain}/api/v1/statuses/" . rawurlencode($remoteId) . "/history");
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 2,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT => 5,
+            CURLOPT_USERAGENT => 'KutSocial/' . (defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0'),
+            CURLOPT_HTTPHEADER => ['Accept: application/json'],
+        ]);
+        $raw = curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($code !== 200 || empty($raw)) {
+            return null;
+        }
+        $arr = json_decode((string)$raw, true);
+        return is_array($arr) ? $arr : null;
+    }
+
+    /**
      * Endpoint GET /api/v1/statuses/:id/card
      * Retorna la PreviewCard asociada a una publicación.
      */
@@ -6492,8 +6643,9 @@ HTML;
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
 
         $db = Database::connect();
+        Database::ensureStatusEditsSchema($db);
         
-        $stmtCheck = $db->prepare("SELECT account_id, uri, visibility, created_at FROM statuses WHERE id = ? LIMIT 1");
+        $stmtCheck = $db->prepare("SELECT account_id, uri, visibility, created_at, content, sensitive, spoiler_text, media_attachments, edited_at FROM statuses WHERE id = ? LIMIT 1");
         $stmtCheck->execute([$id]);
         $existingStatus = $stmtCheck->fetch();
 
@@ -6565,17 +6717,33 @@ HTML;
         }
 
         $mediaJson = !empty($mediaAttachments) ? json_encode($mediaAttachments, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null;
+        $editedAt = Database::nowUtc();
+
+        // Guardar snapshot de la versión anterior en status_edits antes de sobrescribir
+        $prevCreatedAt = !empty($existingStatus['edited_at']) ? $existingStatus['edited_at'] : ($existingStatus['created_at'] ?? $editedAt);
+        $stmtEditIns = $db->prepare("
+            INSERT INTO status_edits (status_id, content, spoiler_text, sensitive, media_attachments, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmtEditIns->execute([
+            $id,
+            (string)($existingStatus['content'] ?? ''),
+            (string)($existingStatus['spoiler_text'] ?? ''),
+            (int)($existingStatus['sensitive'] ?? 0),
+            $existingStatus['media_attachments'] ?? null,
+            $prevCreatedAt
+        ]);
 
         $stmt = $db->prepare("
             UPDATE statuses 
-            SET content = ?, sensitive = ?, spoiler_text = ?, media_attachments = ? 
+            SET content = ?, sensitive = ?, spoiler_text = ?, media_attachments = ?, edited_at = ?
             WHERE id = ?
         ");
-        $stmt->execute([$content, $sensitive, $spoilerText, $mediaJson, $id]);
+        $stmt->execute([$content, $sensitive, $spoilerText, $mediaJson, $editedAt, $id]);
 
         $stmtFetch = $db->prepare("
             SELECT s.id as status_id, s.uri as status_uri, s.content as status_content, 
-                   s.visibility as status_visibility, s.created_at as status_created_at, 
+                   s.visibility as status_visibility, s.created_at as status_created_at, s.edited_at,
                    s.in_reply_to_id, s.sensitive, s.spoiler_text, s.media_attachments,
                    a.id as account_id, a.username, a.domain, a.display_name, a.avatar, a.header,
                    a.avatar_description, a.header_description, a.note, a.created_at as account_created_at
