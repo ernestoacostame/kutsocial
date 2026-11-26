@@ -1,5 +1,5 @@
 {
-  "version": "2.1.58",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.58/kutsocial-v2.1.58.zip",
-  "changelog": "Corrección en Discover > Posts: usa getMemoizedModerationBlocks para evitar error 500 al filtrar tendencias"
+  "version": "2.1.59",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.59/kutsocial-v2.1.59.zip",
+  "changelog": "Resolución automática de toots remotos de Explorar al abrir comentarios o interactuar (favorito, re-toot, guardar, responder)"
 }
