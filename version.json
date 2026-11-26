@@ -1,5 +1,5 @@
 {
-  "version": "2.1.65",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.65/kutsocial-v2.1.65.zip",
-  "changelog": "Validación uniforme de IDs (32-bit/64-bit) en SQLite, PostgreSQL y MySQL mediante Database::isSafeIntId() y paridad verificada de las 31 tablas"
+  "version": "2.1.66",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.66/kutsocial-v2.1.66.zip",
+  "changelog": "Hidrata automáticamente actividades Announce vacías en timelines y filtra toots sin contenido ni reblog válido para evitar tarjetas en blanco"
 }
