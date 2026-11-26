@@ -1514,7 +1514,7 @@ function createThreadTootElement(toot, isMain = false) {
                         ${toot.visibility === 'direct' ? `<span class="badge-direct">MENSAJE PRIVADO</span>` : ''}
                         ${toot.visibility === 'private' ? `<span class="badge-private">SOLO SEGUIDORES</span>` : ''}
                     </a>
-                    <a href="${tootStatusHref}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); viewTootThread('${toot.id}')" title="${absoluteDateStr}">${relativeDateStr}</a>
+                    <a href="${tootStatusHref}" class="toot-time clickable-actor" onclick="event.preventDefault(); event.stopPropagation(); openCardThreadFromEl(this)" title="${absoluteDateStr}">${relativeDateStr}</a>
                 </div>
                 ${effectiveContentHTML}
                 ${mediaHTML}
@@ -1556,7 +1556,7 @@ function createThreadTootElement(toot, isMain = false) {
     if (isEmptyCard && token) {
         queueHydrateEmptyToot(card, toot, isMain);
     }
-    card.addEventListener('click', (e) => {
+    card.addEventListener('click', async (e) => {
         if (isMain) return;
         
         // Don't navigate if selecting text
@@ -1576,13 +1576,51 @@ function createThreadTootElement(toot, isMain = false) {
             return;
         }
 
-        viewTootThread(toot.id);
+        const remoteUrl = toot.is_remote_explore ? (toot.url || toot.uri || null) : null;
+        const localId = await resolveExploreCardStatus(toot);
+        viewTootThread(localId, false, remoteUrl);
     });
 
     return card;
 }
 
-function handleReplyButtonClick(btn) {
+async function resolveExploreCardStatus(elOrToot) {
+    const toot = elOrToot && elOrToot.closest ? elOrToot.closest('.toot-card')?._toot : elOrToot;
+    if (!toot) return elOrToot;
+    if (!toot.is_remote_explore || !(toot.url || toot.uri)) return toot.id;
+
+    try {
+        const headers = { 'Accept': 'application/json' };
+        if (typeof token !== 'undefined' && token) headers['Authorization'] = `Bearer ${token}`;
+        const targetUrl = toot.url || toot.uri;
+        const res = await fetch(`/api/v1/statuses/resolve?url=${encodeURIComponent(targetUrl)}`, { headers });
+        if (res.ok) {
+            const resolved = await res.json();
+            if (resolved && resolved.id) {
+                toot.id = resolved.id;
+                toot.is_remote_explore = false;
+                if (resolved.account && resolved.account.id && toot.account) {
+                    toot.account.id = resolved.account.id;
+                }
+                return resolved.id;
+            }
+        }
+    } catch (e) {
+        console.error('Error resolving explore status:', e);
+    }
+    return toot.id;
+}
+
+async function openCardThreadFromEl(el) {
+    const card = el?.closest ? el.closest('.toot-card') : null;
+    const toot = card?._toot;
+    if (!toot) return;
+    const remoteUrl = toot.is_remote_explore ? (toot.url || toot.uri || null) : null;
+    const localId = await resolveExploreCardStatus(toot);
+    viewTootThread(localId, false, remoteUrl);
+}
+
+async function handleReplyButtonClick(btn) {
     if (!token) {
         showLoginModal();
         return;
@@ -1590,6 +1628,7 @@ function handleReplyButtonClick(btn) {
     const card = btn.closest('.toot-card');
     if (card && card._toot) {
         const toot = card._toot;
+        await resolveExploreCardStatus(toot);
         initReplyToToot(toot);
     }
 }
@@ -1604,7 +1643,7 @@ function handleEditButtonClick(btn) {
 
 let activeReblogMenu = null;
 
-function handleReblogButtonClick(tootId, btn, event) {
+async function handleReblogButtonClick(tootId, btn, event) {
     if (event) {
         event.stopPropagation();
         event.preventDefault();
@@ -1622,6 +1661,7 @@ function handleReblogButtonClick(tootId, btn, event) {
     const card = btn.closest('.toot-card');
     if (!card || !card._toot) return;
     const toot = card._toot;
+    tootId = await resolveExploreCardStatus(toot);
 
     const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
@@ -5154,7 +5194,7 @@ function formatStatNumber(num) {
 // ---------------------------
 // VISTA DE CONVERSACIÓN / HILO
 // ---------------------------
-async function viewTootThread(statusId, fromHashChange = false) {
+async function viewTootThread(statusId, fromHashChange = false, resolveUrl = null) {
     if (!statusId) return;
     if (!document.getElementById('tab-thread-view')) {
         const base = window.KUTSOCIAL_BASE_PATH || '';
@@ -5192,7 +5232,8 @@ async function viewTootThread(statusId, fromHashChange = false) {
     try {
         const headers = { 'Accept': 'application/json' };
         if (token) headers['Authorization'] = `Bearer ${token}`;
-        const res = await fetch(`/api/v1/statuses/${statusId}/context`, {
+        const ctxQuery = resolveUrl ? `?resolve_url=${encodeURIComponent(resolveUrl)}` : '';
+        const res = await fetch(`/api/v1/statuses/${statusId}/context${ctxQuery}`, {
             headers: headers
         });
         if (!res.ok) throw new Error("Error cargando hilo");
@@ -5243,6 +5284,7 @@ async function toggleFavourite(statusId, btn) {
         showLoginModal();
         return;
     }
+    statusId = await resolveExploreCardStatus(btn);
     const isFav = btn.classList.contains('active-fav');
     const action = isFav ? 'unfavourite' : 'favourite';
     try {
@@ -5281,6 +5323,7 @@ async function toggleBookmark(statusId, btn) {
         showLoginModal();
         return;
     }
+    statusId = await resolveExploreCardStatus(btn);
     const isBookmarked = btn.classList.contains('active-bookmark');
     const action = isBookmarked ? 'unbookmark' : 'bookmark';
     try {

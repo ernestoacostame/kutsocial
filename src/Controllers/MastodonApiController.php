@@ -6207,6 +6207,17 @@ HTML;
             $id = (int)($stmtFind->fetchColumn() ?: 0);
         }
 
+        $resolvedNow = false;
+        if ($id <= 0 && !empty($_GET['resolve_url']) && filter_var($_GET['resolve_url'], FILTER_VALIDATE_URL)) {
+            try {
+                $importedId = (int)\KutSocial\Controllers\ActivityPubController::fetchAndRegisterRemoteStatus((string)$_GET['resolve_url']);
+                if ($importedId > 0) {
+                    $id = $importedId;
+                    $resolvedNow = true;
+                }
+            } catch (\Throwable $e) {}
+        }
+
         if ($id <= 0) {
             Router::json(['error' => 'Record not found'], 404);
             return;
@@ -6215,26 +6226,38 @@ HTML;
         $account = self::getAuthenticatedAccount();
         $currUserId = $account ? (int)$account['id'] : null;
 
-        // Diferir la resolución remota de ancestros/descendientes tras responder (con cooldown de 5 min)
+        // Si el toot acaba de importarse desde Explorar, resolver su conversación de forma inmediata
         $ctxCacheDir = dirname(Database::getDbPath()) . '/cache';
         $ctxLockFile = $ctxCacheDir . '/ctx_' . $id . '.lock';
-        $shouldResolveRemote = !file_exists($ctxLockFile) || (time() - (int)@filemtime($ctxLockFile) >= 300);
-        if ($shouldResolveRemote) {
+        if ($resolvedNow) {
             if (!is_dir($ctxCacheDir)) {
                 @mkdir($ctxCacheDir, 0755, true);
             }
             @touch($ctxLockFile);
-            register_shutdown_function(function() use ($id) {
-                if (function_exists('fastcgi_finish_request')) {
-                    @fastcgi_finish_request();
+            try {
+                \KutSocial\Controllers\ActivityPubController::resolveAncestorsForStatus($id);
+                \KutSocial\Controllers\ActivityPubController::resolveDescendantsForStatus($id);
+            } catch (\Throwable $e) {}
+        } else {
+            // Diferir la resolución remota de ancestros/descendientes tras responder (con cooldown de 5 min)
+            $shouldResolveRemote = !file_exists($ctxLockFile) || (time() - (int)@filemtime($ctxLockFile) >= 300);
+            if ($shouldResolveRemote) {
+                if (!is_dir($ctxCacheDir)) {
+                    @mkdir($ctxCacheDir, 0755, true);
                 }
-                try {
-                    \KutSocial\Controllers\ActivityPubController::resolveAncestorsForStatus($id);
-                    \KutSocial\Controllers\ActivityPubController::resolveDescendantsForStatus($id);
-                } catch (\Throwable $e) {
-                    // Silenciar errores en resolución asíncrona
-                }
-            });
+                @touch($ctxLockFile);
+                register_shutdown_function(function() use ($id) {
+                    if (function_exists('fastcgi_finish_request')) {
+                        @fastcgi_finish_request();
+                    }
+                    try {
+                        \KutSocial\Controllers\ActivityPubController::resolveAncestorsForStatus($id);
+                        \KutSocial\Controllers\ActivityPubController::resolveDescendantsForStatus($id);
+                    } catch (\Throwable $e) {
+                        // Silenciar errores en resolución asíncrona
+                    }
+                });
+            }
         }
 
         $stmt = $db->prepare("SELECT in_reply_to_id FROM statuses WHERE id = ?");
@@ -10019,6 +10042,7 @@ HTML;
                 $st['reblogged'] = false;
                 $st['bookmarked'] = false;
                 $st['muted'] = false;
+                $st['is_remote_explore'] = true;
                 $results[] = $st;
             }
         }
