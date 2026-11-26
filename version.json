@@ -1,5 +1,5 @@
 {
-  "version": "2.1.52",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.52/kutsocial-v2.1.52.zip",
-  "changelog": "Instant notifications via stale-while-revalidate cache, parallel fetch, and deduplicated badge preload"
+  "version": "2.1.53",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.53/kutsocial-v2.1.53.zip",
+  "changelog": "Add Appearance preferences (light/dark/auto mode, 5 accent colors, high contrast, emoji style, timezone)"
 }
