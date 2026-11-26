@@ -12,6 +12,11 @@ html[data-ui-theme="mastodon"] {
     --border-color: rgba(255, 255, 255, 0.085);
     --primary: #8c86ff;
     --primary-hover: #a5a0ff;
+    --accent: #8c86ff;
+    --accent-hover: #a5a0ff;
+    --accent-fav: #f59e0b;
+    --accent-bookmark: #60a5fa;
+    --accent-reblog: #34d399;
     --pill-bg: #c4c0ff;
     --pill-bg-hover: #d8d5ff;
     --pill-text: #111116;
@@ -558,6 +563,16 @@ html[data-ui-theme="mastodon"] .toot-action-btn {
 html[data-ui-theme="mastodon"] .toot-action-btn:hover {
     background: rgba(255, 255, 255, 0.06);
     color: #ffffff;
+}
+
+html[data-ui-theme="mastodon"] .toot-action-btn.active-fav,
+html[data-ui-theme="mastodon"] .toot-action-btn.active-fav:hover {
+    color: var(--accent-fav);
+}
+
+html[data-ui-theme="mastodon"] .toot-action-btn.active-bookmark,
+html[data-ui-theme="mastodon"] .toot-action-btn.active-bookmark:hover {
+    color: var(--accent-bookmark);
 }
 
 html[data-ui-theme="mastodon"] .section-header,

@@ -4,6 +4,11 @@
     --border-color: rgba(255, 255, 255, 0.08);
     --primary: #6366f1;
     --primary-hover: #4f46e5;
+    --accent: #6366f1;
+    --accent-hover: #4f46e5;
+    --accent-fav: #f59e0b;
+    --accent-bookmark: #3b82f6;
+    --accent-reblog: #10b981;
     --secondary: #10b981;
     --text-color: #f3f4f6;
     --text-muted: #9ca3af;
@@ -1091,12 +1096,14 @@ button:hover {
     background: rgba(255, 255, 255, 0.05);
 }
 
-.toot-action-btn.active-fav {
-    color: #f59e0b; /* Amarillo/naranja para favoritos */
+.toot-action-btn.active-fav,
+.toot-action-btn.active-fav:hover {
+    color: var(--accent-fav, #f59e0b); /* Color de acento para favoritos */
 }
 
-.toot-action-btn.active-bookmark {
-    color: #3b82f6; /* Azul para marcadores */
+.toot-action-btn.active-bookmark,
+.toot-action-btn.active-bookmark:hover {
+    color: var(--accent-bookmark, #3b82f6); /* Color de acento para marcadores */
 }
 
 .toot-action-btn.btn-reply:hover {
