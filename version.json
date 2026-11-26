@@ -1,5 +1,5 @@
 {
-  "version": "2.1.54",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.54/kutsocial-v2.1.54.zip",
-  "changelog": "Add accessibility, quick boost, sensitive media, CW expand, stats toggle, delete warn, and default posting visibility preferences"
+  "version": "2.1.55",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.55/kutsocial-v2.1.55.zip",
+  "changelog": "Clarify Preferences vs Administration labels and complete English/Spanish i18n translations"
 }
