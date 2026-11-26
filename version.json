@@ -1,5 +1,5 @@
 {
-  "version": "2.1.50",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.50/kutsocial-v2.1.50.zip",
-  "changelog": "Sort timelines chronologically by created_at DESC so fetched old outbox posts don't jump to top"
+  "version": "2.1.51",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.51/kutsocial-v2.1.51.zip",
+  "changelog": "Add theme accent colors and fix active favorite/bookmark star colors in Mastodon theme"
 }
