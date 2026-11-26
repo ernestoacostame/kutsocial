@@ -1,5 +1,5 @@
 {
-  "version": "2.1.53",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.53/kutsocial-v2.1.53.zip",
-  "changelog": "Add Appearance preferences (light/dark/auto mode, 5 accent colors, high contrast, emoji style, timezone)"
+  "version": "2.1.54",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.54/kutsocial-v2.1.54.zip",
+  "changelog": "Add accessibility, quick boost, sensitive media, CW expand, stats toggle, delete warn, and default posting visibility preferences"
 }
