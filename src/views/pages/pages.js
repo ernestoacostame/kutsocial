@@ -1576,7 +1576,7 @@ function createThreadTootElement(toot, isMain = false) {
             return;
         }
 
-        const remoteUrl = toot.is_remote_explore ? (toot.url || toot.uri || null) : null;
+        const remoteUrl = toot.is_remote_explore ? (toot.uri || toot.url || null) : null;
         const localId = await resolveExploreCardStatus(toot);
         viewTootThread(localId, false, remoteUrl);
     });
@@ -1592,8 +1592,9 @@ async function resolveExploreCardStatus(elOrToot) {
     try {
         const headers = { 'Accept': 'application/json' };
         if (typeof token !== 'undefined' && token) headers['Authorization'] = `Bearer ${token}`;
-        const targetUrl = toot.url || toot.uri;
-        const res = await fetch(`/api/v1/statuses/resolve?url=${encodeURIComponent(targetUrl)}`, { headers });
+        const primaryUrl = toot.uri || toot.url;
+        const fallbackUrl = (toot.url && toot.url !== primaryUrl) ? `&fallback_url=${encodeURIComponent(toot.url)}` : '';
+        const res = await fetch(`/api/v1/statuses/resolve?url=${encodeURIComponent(primaryUrl)}${fallbackUrl}`, { headers });
         if (res.ok) {
             const resolved = await res.json();
             if (resolved && resolved.id) {
@@ -1615,7 +1616,7 @@ async function openCardThreadFromEl(el) {
     const card = el?.closest ? el.closest('.toot-card') : null;
     const toot = card?._toot;
     if (!toot) return;
-    const remoteUrl = toot.is_remote_explore ? (toot.url || toot.uri || null) : null;
+    const remoteUrl = toot.is_remote_explore ? (toot.uri || toot.url || null) : null;
     const localId = await resolveExploreCardStatus(toot);
     viewTootThread(localId, false, remoteUrl);
 }

@@ -6207,18 +6207,28 @@ HTML;
             $id = (int)($stmtFind->fetchColumn() ?: 0);
         }
 
+        $status = null;
+        if ($id > 0) {
+            $stmt = $db->prepare("SELECT in_reply_to_id FROM statuses WHERE id = ?");
+            $stmt->execute([$id]);
+            $status = $stmt->fetch();
+        }
+
         $resolvedNow = false;
-        if ($id <= 0 && !empty($_GET['resolve_url']) && filter_var($_GET['resolve_url'], FILTER_VALIDATE_URL)) {
+        if (!$status && !empty($_GET['resolve_url']) && filter_var($_GET['resolve_url'], FILTER_VALIDATE_URL)) {
             try {
                 $importedId = (int)\KutSocial\Controllers\ActivityPubController::fetchAndRegisterRemoteStatus((string)$_GET['resolve_url']);
                 if ($importedId > 0) {
                     $id = $importedId;
                     $resolvedNow = true;
+                    $stmt = $db->prepare("SELECT in_reply_to_id FROM statuses WHERE id = ?");
+                    $stmt->execute([$id]);
+                    $status = $stmt->fetch();
                 }
             } catch (\Throwable $e) {}
         }
 
-        if ($id <= 0) {
+        if ($id <= 0 || !$status) {
             Router::json(['error' => 'Record not found'], 404);
             return;
         }
@@ -6258,14 +6268,6 @@ HTML;
                     }
                 });
             }
-        }
-
-        $stmt = $db->prepare("SELECT in_reply_to_id FROM statuses WHERE id = ?");
-        $stmt->execute([$id]);
-        $status = $stmt->fetch();
-        if (!$status) {
-            Router::json(['error' => 'Record not found'], 404);
-            return;
         }
 
         $statusFetcher = function($statusId) use ($db, $currUserId, $account) {
@@ -9127,6 +9129,9 @@ HTML;
 
         $db = Database::connect();
         $statusId = \KutSocial\Controllers\ActivityPubController::fetchAndRegisterRemoteStatus($url, true);
+        if (!$statusId && !empty($_GET['fallback_url'])) {
+            $statusId = \KutSocial\Controllers\ActivityPubController::fetchAndRegisterRemoteStatus((string)$_GET['fallback_url'], true);
+        }
         if (!$statusId) {
             Router::json(['error' => 'No se pudo resolver la publicación remota.'], 404);
             return;
