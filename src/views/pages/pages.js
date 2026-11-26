@@ -704,7 +704,8 @@ async function initApp() {
         }
     } else if (activeSection === 'thread-view') {
         if (activeThreadId) {
-            viewTootThread(activeThreadId, true);
+            const sp = new URLSearchParams(window.location.search);
+            viewTootThread(activeThreadId, true, sp.get('resolve_url'), sp.get('source_domain'), sp.get('remote_id'));
         }
     } else if (activeSection === 'search-results') {
         showTab('search-results', true);
@@ -5202,6 +5203,12 @@ function formatStatNumber(num) {
 // ---------------------------
 async function viewTootThread(statusId, fromHashChange = false, resolveUrl = null, sourceDomain = null, remoteId = null) {
     if (!statusId) return;
+    if (!resolveUrl && !sourceDomain && !remoteId && window.location.search) {
+        const sp = new URLSearchParams(window.location.search);
+        resolveUrl = sp.get('resolve_url');
+        sourceDomain = sp.get('source_domain');
+        remoteId = sp.get('remote_id');
+    }
     if (!document.getElementById('tab-thread-view')) {
         const base = window.KUTSOCIAL_BASE_PATH || '';
         const sp = new URLSearchParams();
