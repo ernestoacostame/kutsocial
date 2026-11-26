@@ -1,5 +1,5 @@
 {
-  "version": "2.1.64",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.64/kutsocial-v2.1.64.zip",
-  "changelog": "Corrige error 500 en PostgreSQL (int32 out of range) y resuelve automáticamente toots remotos de Explorar por caché aunque no lleguen parámetros en la URL"
+  "version": "2.1.65",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.65/kutsocial-v2.1.65.zip",
+  "changelog": "Validación uniforme de IDs (32-bit/64-bit) en SQLite, PostgreSQL y MySQL mediante Database::isSafeIntId() y paridad verificada de las 31 tablas"
 }
