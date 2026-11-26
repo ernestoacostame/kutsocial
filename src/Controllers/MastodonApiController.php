@@ -5293,9 +5293,40 @@ HTML;
             }
         }
         self::preloadStatusesContext($rows, $currentAccountId);
+        $db = Database::connect();
+        $hydratedCount = 0;
         $formatted = [];
+
+        $isVisiblyEmpty = function(array $st): bool {
+            $target = !empty($st['reblog']) && is_array($st['reblog']) ? $st['reblog'] : $st;
+            $plain = trim(strip_tags((string)($target['content'] ?? '')));
+            $hasMedia = !empty($target['media_attachments']) && is_array($target['media_attachments']);
+            $hasCard = !empty($target['card']) && is_array($target['card']) && (!empty($target['card']['url']) || !empty($target['card']['title']));
+            $hasPoll = !empty($target['poll']) && is_array($target['poll']) && !empty($target['poll']['options']);
+            $hasQuote = !empty($target['quote']) && is_array($target['quote']);
+            return $plain === '' && !$hasMedia && !$hasCard && !$hasPoll && !$hasQuote;
+        };
+
         foreach ($rows as $row) {
-            $formatted[] = self::formatStatus($row, $currentAccountId);
+            $st = self::formatStatus($row, $currentAccountId);
+            if ($isVisiblyEmpty($st)) {
+                $sid = (int)($st['id'] ?? 0);
+                $uri = (string)($st['uri'] ?? '');
+                if ($hydratedCount < 3 && Database::isSafeIntId($sid) && $uri !== '' && empty($st['reblog'])) {
+                    $hydratedCount++;
+                    $resHyd = ActivityPubController::hydrateEmptyStatus($sid, $uri);
+                    if ($resHyd) {
+                        $freshRow = self::fetchStatusRow($db, $sid);
+                        if ($freshRow) {
+                            $st = self::formatStatus($freshRow, $currentAccountId);
+                        }
+                    }
+                }
+                if ($isVisiblyEmpty($st)) {
+                    continue;
+                }
+            }
+            $formatted[] = $st;
         }
         return $formatted;
     }

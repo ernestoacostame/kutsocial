@@ -1496,9 +1496,12 @@ function createThreadTootElement(toot, isMain = false) {
     }
 
     const hasMedia = Array.isArray(toot.media_attachments) && toot.media_attachments.length > 0;
+    const hasCard = !!(toot.card && (toot.card.url || toot.card.title));
+    const hasPoll = !!(toot.poll && Array.isArray(toot.poll.options) && toot.poll.options.length > 0);
+    const hasQuote = !!(toot.quote && (toot.quote.id || toot.quote.quoted_status));
     const tmpText = document.createElement('div');
     tmpText.innerHTML = toot.content || '';
-    const isEmptyCard = !isReblog && !toot.quote && !hasMedia && !toot.poll && !toot.card && (tmpText.textContent || '').trim() === '';
+    const isEmptyCard = !isReblog && !hasQuote && !hasMedia && !hasPoll && !hasCard && (tmpText.textContent || '').trim() === '';
     const effectiveContentHTML = isEmptyCard
         ? `<div class="toot-content toot-empty-hydrate" style="color: var(--text-muted); font-size: 13px; font-style: italic;">${__('loading', 'Cargando...')}</div>`
         : contentHTML;
