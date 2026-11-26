@@ -1,5 +1,5 @@
 {
-  "version": "2.1.61",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.61/kutsocial-v2.1.61.zip",
-  "changelog": "Respaldo directo vía API Mastodon y propagación de parámetros al abrir hilos remotos desde /explore"
+  "version": "2.1.62",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.62/kutsocial-v2.1.62.zip",
+  "changelog": "Corrección definitiva al abrir hilos remotos desde Explore: initApp y viewTootThread leen los parámetros de resolución de la URL"
 }
