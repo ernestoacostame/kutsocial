@@ -9804,7 +9804,7 @@ HTML;
         }
 
         // Bloqueos de moderación
-        $modBlocks = self::getActiveModerationBlocks($db);
+        $modBlocks = self::getMemoizedModerationBlocks($db);
         $blockedLangs = array_map('strtolower', $modBlocks['languages'] ?? []);
         $blockedDomains = array_map('strtolower', $modBlocks['domains'] ?? []);
         $blockedAccounts = array_map('strtolower', $modBlocks['accounts'] ?? []);
@@ -9913,7 +9913,7 @@ HTML;
             if (!empty($blockedTags) && !empty($st['tags']) && is_array($st['tags'])) {
                 foreach ($st['tags'] as $tg) {
                     $tName = mb_strtolower((string)($tg['name'] ?? ''));
-                    if ($tName !== '' && in_array($tName, $blockedTags, true)) {
+                    if ($tName !== '' && (in_array($tName, $blockedTags, true) || in_array('#' . $tName, $blockedTags, true))) {
                         $blockedMatch = true;
                         break;
                     }
@@ -9978,8 +9978,8 @@ HTML;
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_FOLLOWLOCATION => true,
                 CURLOPT_MAXREDIRS => 2,
-                CURLOPT_CONNECTTIMEOUT => 2,
-                CURLOPT_TIMEOUT => 3,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_TIMEOUT => 5,
                 CURLOPT_USERAGENT => 'KutSocial/' . (defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0'),
                 CURLOPT_HTTPHEADER => ['Accept: application/json'],
             ]);
