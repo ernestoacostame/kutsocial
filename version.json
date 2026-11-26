@@ -1,5 +1,5 @@
 {
-  "version": "2.1.60",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.60/kutsocial-v2.1.60.zip",
-  "changelog": "Corrección en resolución de hilos de Explorar: prioriza URI ActivityPub y permite resolver en context cuando el ID remoto numérico no existe localmente"
+  "version": "2.1.61",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.61/kutsocial-v2.1.61.zip",
+  "changelog": "Respaldo directo vía API Mastodon y propagación de parámetros al abrir hilos remotos desde /explore"
 }
