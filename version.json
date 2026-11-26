@@ -1,5 +1,5 @@
 {
-  "version": "2.1.56",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.56/kutsocial-v2.1.56.zip",
-  "changelog": "Style Account Preferences to match Mastodon 5.0 theme"
+  "version": "2.1.57",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.57/kutsocial-v2.1.57.zip",
+  "changelog": "Discover > Posts ahora excluye tus seguidos, obtiene tendencias de instancias remotas del Fediverso con caché y filtra por tus idiomas seleccionados (es, en por defecto)"
 }
