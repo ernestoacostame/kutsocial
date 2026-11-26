@@ -6209,9 +6209,17 @@ HTML;
 
         $status = null;
         if ($id > 0) {
-            $stmt = $db->prepare("SELECT in_reply_to_id FROM statuses WHERE id = ?");
-            $stmt->execute([$id]);
-            $status = $stmt->fetch();
+            try {
+                // Evitar SQLSTATE[22003] en PostgreSQL cuando el ID es un snowflake remoto (> int32)
+                $isPgsql = Database::getDriver() === 'pgsql';
+                if (!$isPgsql || $id <= 2147483647) {
+                    $stmt = $db->prepare("SELECT in_reply_to_id FROM statuses WHERE id = ?");
+                    $stmt->execute([$id]);
+                    $status = $stmt->fetch();
+                }
+            } catch (\Throwable $e) {
+                $status = null;
+            }
         }
 
         $resolvedNow = false;
@@ -6228,10 +6236,20 @@ HTML;
             } catch (\Throwable $e) {}
         }
 
-        // Fallback vía API pública Mastodon si el toot remoto no pudo importarse por ActivityPub
-        if (!$status && !empty($_GET['source_domain']) && !empty($_GET['remote_id'])) {
-            $srcDomain = preg_replace('/[^a-zA-Z0-9.\-]/', '', (string)$_GET['source_domain']);
-            $remId = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$_GET['remote_id']);
+        // Fallback vía API pública Mastodon (por parámetros explícitos o buscando el ID remoto en el caché de Explore)
+        if (!$status) {
+            $srcDomain = !empty($_GET['source_domain']) ? preg_replace('/[^a-zA-Z0-9.\-]/', '', (string)$_GET['source_domain']) : '';
+            $remId = !empty($_GET['remote_id']) ? preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$_GET['remote_id']) : (string)$idParam;
+
+            if ($srcDomain === '' && $remId !== '') {
+                foreach (self::fetchRemoteTrendingStatuses() as $cachedSt) {
+                    if ((string)($cachedSt['id'] ?? '') === $remId || (string)($cachedSt['explore_remote_id'] ?? '') === $remId) {
+                        $srcDomain = preg_replace('/[^a-zA-Z0-9.\-]/', '', (string)($cachedSt['explore_source_domain'] ?? ''));
+                        if ($srcDomain !== '') break;
+                    }
+                }
+            }
+
             if ($srcDomain !== '' && $remId !== '' && \KutSocial\SecurityHelper::isSafeExternalUrl("https://{$srcDomain}/")) {
                 $remotePayload = self::fetchRemoteMastodonStatusAndContext($srcDomain, $remId);
                 if ($remotePayload !== null) {
@@ -9984,7 +10002,7 @@ HTML;
      * Obtiene y cachea (10 min) tendencias públicas de instancias Mastodon variadas del Fediverso.
      */
     private static function fetchRemoteTrendingStatuses(): array {
-        $cacheFile = sys_get_temp_dir() . '/kutsocial_remote_trends_v2.json';
+        $cacheFile = sys_get_temp_dir() . '/kutsocial_remote_trends_v3.json';
         if (file_exists($cacheFile) && (time() - @filemtime($cacheFile)) < 600) {
             $cached = @json_decode((string)@file_get_contents($cacheFile), true);
             if (is_array($cached)) {
