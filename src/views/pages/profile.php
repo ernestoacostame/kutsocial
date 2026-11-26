@@ -100,9 +100,22 @@
             
             <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_publication_preferences') ?></h3>
             <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+                <div>
+                    <label for="pref-default-visibility" style="display: block; margin-bottom: 8px; font-size: 13.5px; font-weight: 600; color: var(--text-color); text-transform: none;"><?= __('pref_default_visibility', 'Visibilidad predeterminada al publicar') ?></label>
+                    <select id="pref-default-visibility" style="max-width: 320px; width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; color: var(--text-color);">
+                        <option value="public"><?= __('vis_public', 'Público') ?></option>
+                        <option value="unlisted"><?= __('vis_unlisted', 'Sin listar') ?></option>
+                        <option value="private"><?= __('vis_private', 'Solo seguidores') ?></option>
+                        <option value="direct"><?= __('vis_direct', 'Directo (mencionados)') ?></option>
+                    </select>
+                </div>
                 <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
                     <input type="checkbox" id="pref-warn-missing-alt" style="width: auto;">
                     <span><?= __('pref_warn_missing_alt_desc') ?></span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
+                    <input type="checkbox" id="pref-warn-delete" style="width: auto;">
+                    <span><?= __('pref_warn_delete_desc', 'Advertir antes de eliminar una publicación') ?></span>
                 </label>
             </div>
 
@@ -112,6 +125,26 @@
                     <input type="checkbox" id="pref-auto-scroll-new" style="width: auto;">
                     <span><?= __('pref_auto_scroll_new_desc') ?></span>
                 </label>
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
+                    <input type="checkbox" id="pref-quick-boost" style="width: auto;">
+                    <span><?= __('pref_quick_boost_desc', 'Habilitar impulso rápido (un clic en Re-toot impulsa al instante; Shift+Click siempre impulsa)') ?></span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
+                    <input type="checkbox" id="pref-expand-cw" style="width: auto;">
+                    <span><?= __('pref_expand_cw_desc', 'Expandir siempre las publicaciones con advertencia de contenido (CW)') ?></span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; line-height: 1.4; margin: 0;">
+                    <input type="checkbox" id="pref-show-stats" style="width: auto;">
+                    <span><?= __('pref_show_stats_desc', 'Mostrar estadísticas de interacción (contadores) en los feeds') ?></span>
+                </label>
+                <div style="margin-top: 4px;">
+                    <label for="pref-media-display" style="display: block; margin-bottom: 8px; font-size: 13.5px; font-weight: 600; color: var(--text-color); text-transform: none;"><?= __('pref_media_display', 'Visualización de medios sensibles') ?></label>
+                    <select id="pref-media-display" style="max-width: 340px; width: 100%; background: rgba(255,255,255,0.05); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; color: var(--text-color);">
+                        <option value="warn_sensitive"><?= __('pref_media_warn_sensitive', 'Advertir antes de mostrar medios marcados como sensibles') ?></option>
+                        <option value="warn_all"><?= __('pref_media_warn_all', 'Advertir antes de mostrar todos los medios') ?></option>
+                        <option value="show_all"><?= __('pref_media_show_all', 'Mostrar todos los medios sin advertencia') ?></option>
+                    </select>
+                </div>
             </div>
 
             <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 28px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('profile_interface_language') ?></h3>
@@ -175,6 +208,22 @@
                     <option value="auto"><?= __('appearance_timezone_auto', 'Automática (navegador)') ?></option>
                 </select>
             </div>
+        </div>
+
+        <h3 style="font-size: 13.5px; color: var(--text-muted); margin-top: 22px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.5px;"><?= __('appearance_animations_a11y', 'Animaciones y accesibilidad') ?></h3>
+        <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); padding: 18px; border-radius: 10px;">
+            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; margin: 0;">
+                <input type="checkbox" id="pref-reduce-motion" style="width: auto;">
+                <span><?= __('pref_reduce_motion', 'Reducir movimiento en animaciones') ?></span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; margin: 0;">
+                <input type="checkbox" id="pref-system-font" style="width: auto;">
+                <span><?= __('pref_system_font', 'Usar fuente predeterminada del sistema') ?></span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; text-transform: none; font-weight: normal; color: var(--text-color); font-size: 14px; margin: 0;">
+                <input type="checkbox" id="pref-system-scrollbar" style="width: auto;">
+                <span><?= __('pref_system_scrollbar', 'Usar barra de desplazamiento predeterminada del sistema') ?></span>
+            </label>
         </div>
         <p style="font-size: 12.5px; color: var(--text-muted);"><?= __('appearance_saved_auto', 'Los cambios de apariencia se aplican y guardan automáticamente.') ?></p>
     </div>

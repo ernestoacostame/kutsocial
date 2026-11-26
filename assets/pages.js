@@ -1200,12 +1200,13 @@ function createThreadTootElement(toot, isMain = false) {
 
     let contentHTML = `<div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5; margin-bottom: 12px;' : ''}">${sanitizedContent}</div>`;
     if (toot.sensitive) {
+        const autoExpandCW = localStorage.getItem('kutsocial_expand_cw') === 'true';
         contentHTML = `
             <div style="margin-top: 8px;">
                 <span style="color: #f59e0b; font-weight: 600; font-size: 13.5px;">⚠️ Advertencia: ${escapeHTML(toot.spoiler_text || 'CW')}</span>
                 <div>
-                    <button class="cw-spoiler-btn" onclick="toggleCWSpoiler(this)">Mostrar más</button>
-                    <div class="cw-spoiler-content" style="display: none;">
+                    <button class="cw-spoiler-btn" onclick="toggleCWSpoiler(this)">${autoExpandCW ? 'Ocultar' : 'Mostrar más'}</button>
+                    <div class="cw-spoiler-content" style="display: ${autoExpandCW ? 'block' : 'none'};">
                         <div class="toot-content" style="${isMain ? 'font-size: 18px; line-height: 1.5;' : ''}">${sanitizedContent}</div>
                     </div>
                 </div>
@@ -1265,24 +1266,27 @@ function createThreadTootElement(toot, isMain = false) {
                     ? 'position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; aspect-ratio: 1.5; display: flex; flex-direction: column;'
                     : 'position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--border-color); background: #0b0c10; width: 100%; display: flex; flex-direction: column;';
 
+                const mediaDisplayPref = localStorage.getItem('kutsocial_media_display') || 'warn_sensitive';
+                const shouldHideMedia = mediaDisplayPref === 'warn_all' ? true : (mediaDisplayPref === 'show_all' ? false : !!toot.sensitive);
+
                 const wrapperStyle = isMultiMedia
-                    ? `display: ${toot.sensitive ? 'none' : 'block'}; position: relative; width: 100%; height: 100%;`
-                    : `display: ${toot.sensitive ? 'none' : 'block'}; position: relative; width: 100%;`;
+                    ? `display: ${shouldHideMedia ? 'none' : 'block'}; position: relative; width: 100%; height: 100%;`
+                    : `display: ${shouldHideMedia ? 'none' : 'block'}; position: relative; width: 100%;`;
 
                 const innerWrapperStyle = isMultiMedia
                     ? `display: flex; justify-content: center; width: 100%; height: 100%; position: relative;`
                     : `display: flex; justify-content: center; width: 100%; position: relative;`;
 
                 const placeholderStyle = isMultiMedia
-                    ? `display: ${toot.sensitive ? 'flex' : 'none'}; height: 100%; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;`
-                    : `display: ${toot.sensitive ? 'flex' : 'none'}; height: 220px; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;`;
+                    ? `display: ${shouldHideMedia ? 'flex' : 'none'}; height: 100%; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;`
+                    : `display: ${shouldHideMedia ? 'flex' : 'none'}; height: 220px; align-items: center; justify-content: center; flex-direction: column; background: #16181d; color: #ff9800; cursor: pointer; user-select: none;`;
 
                 mediaHTML += `
-                    <div class="toot-media-card" data-sensitive="${toot.sensitive ? 'true' : 'false'}" style="${cardStyle}">
+                    <div class="toot-media-card" data-sensitive="${shouldHideMedia ? 'true' : 'false'}" style="${cardStyle}">
                         
                         <!-- Botón superior derecho de ocultar/mostrar -->
                         <button class="media-toggle-btn" onclick="event.stopPropagation(); toggleMediaVisibility(this)" style="position: absolute; top: 12px; right: 12px; background: rgba(0,0,0,0.65); color: #fff; font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; border: none; cursor: pointer; z-index: 20; transition: background 0.2s;">
-                            ${toot.sensitive ? 'Show' : 'Hide'}
+                            ${shouldHideMedia ? 'Show' : 'Hide'}
                         </button>
 
                         <!-- Contenedor del elemento multimedia -->
@@ -1565,6 +1569,11 @@ function handleReblogButtonClick(tootId, btn, event) {
     const card = btn.closest('.toot-card');
     if (!card || !card._toot) return;
     const toot = card._toot;
+
+    if ((event && event.shiftKey) || localStorage.getItem('kutsocial_quick_boost') === 'true') {
+        executeReblog(tootId, btn, !toot.reblogged);
+        return;
+    }
 
     const rect = btn.getBoundingClientRect();
     const menu = document.createElement('div');
@@ -3137,6 +3146,18 @@ function applyAppearancePreferences() {
 
     const emojiStyle = localStorage.getItem('kutsocial_emoji_style') || 'auto';
     document.documentElement.setAttribute('data-emoji-style', emojiStyle);
+
+    if (localStorage.getItem('kutsocial_reduce_motion') === 'true') document.documentElement.setAttribute('data-reduce-motion', '1');
+    else document.documentElement.removeAttribute('data-reduce-motion');
+
+    if (localStorage.getItem('kutsocial_system_font') === 'true') document.documentElement.setAttribute('data-system-font', '1');
+    else document.documentElement.removeAttribute('data-system-font');
+
+    if (localStorage.getItem('kutsocial_system_scrollbar') === 'true') document.documentElement.setAttribute('data-system-scrollbar', '1');
+    else document.documentElement.removeAttribute('data-system-scrollbar');
+
+    if (localStorage.getItem('kutsocial_show_stats') === 'false') document.documentElement.setAttribute('data-hide-stats', '1');
+    else document.documentElement.removeAttribute('data-hide-stats');
 }
 
 function initAppearanceSettingsUI() {
@@ -3184,6 +3205,53 @@ function initAppearanceSettingsUI() {
         tzSelect.addEventListener('change', () => {
             localStorage.setItem('kutsocial_timezone', tzSelect.value);
         });
+    }
+
+    const bindCheckbox = (id, key, defaultChecked, onChange) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        const raw = localStorage.getItem(key);
+        el.checked = raw === null ? defaultChecked : (raw === 'true');
+        el.addEventListener('change', () => {
+            localStorage.setItem(key, el.checked ? 'true' : 'false');
+            if (onChange) onChange(el.checked);
+        });
+    };
+
+    bindCheckbox('pref-reduce-motion', 'kutsocial_reduce_motion', false, applyAppearancePreferences);
+    bindCheckbox('pref-system-font', 'kutsocial_system_font', false, applyAppearancePreferences);
+    bindCheckbox('pref-system-scrollbar', 'kutsocial_system_scrollbar', false, applyAppearancePreferences);
+    bindCheckbox('pref-warn-delete', 'kutsocial_warn_delete', true);
+    bindCheckbox('pref-quick-boost', 'kutsocial_quick_boost', false);
+    bindCheckbox('pref-expand-cw', 'kutsocial_expand_cw', false);
+    bindCheckbox('pref-show-stats', 'kutsocial_show_stats', true, applyAppearancePreferences);
+
+    const mediaDisplaySel = document.getElementById('pref-media-display');
+    if (mediaDisplaySel) {
+        mediaDisplaySel.value = localStorage.getItem('kutsocial_media_display') || 'warn_sensitive';
+        mediaDisplaySel.addEventListener('change', () => {
+            localStorage.setItem('kutsocial_media_display', mediaDisplaySel.value);
+        });
+    }
+
+    const defaultVisSel = document.getElementById('pref-default-visibility');
+    if (defaultVisSel) {
+        defaultVisSel.value = localStorage.getItem('kutsocial_default_visibility') || 'public';
+        defaultVisSel.addEventListener('change', () => {
+            localStorage.setItem('kutsocial_default_visibility', defaultVisSel.value);
+            const compVis = document.getElementById('composer-visibility');
+            if (compVis) {
+                compVis.value = defaultVisSel.value;
+                if (typeof updateComposerVisibilityIcon === 'function') updateComposerVisibilityIcon();
+            }
+        });
+    }
+
+    const compVis = document.getElementById('composer-visibility');
+    const savedDefaultVis = localStorage.getItem('kutsocial_default_visibility');
+    if (compVis && savedDefaultVis) {
+        compVis.value = savedDefaultVis;
+        if (typeof updateComposerVisibilityIcon === 'function') updateComposerVisibilityIcon();
     }
 }
 
@@ -5234,7 +5302,9 @@ async function toggleBookmark(statusId, btn) {
 }
 
 async function deleteToot(statusId, btn) {
-    if (!confirm('¿Estás seguro de que deseas eliminar este toot?')) return;
+    if (localStorage.getItem('kutsocial_warn_delete') !== 'false') {
+        if (!confirm('¿Estás seguro de que deseas eliminar este toot?')) return;
+    }
     try {
         const res = await fetch(`/api/v1/statuses/${statusId}`, {
             method: 'DELETE',

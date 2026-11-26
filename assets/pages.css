@@ -2980,3 +2980,26 @@ html[data-emoji-style="native"] body {
 html[data-emoji-style="twemoji"] body {
     font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Twemoji Mozilla", "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
 }
+
+html[data-reduce-motion="1"] *,
+html[data-reduce-motion="1"] *::before,
+html[data-reduce-motion="1"] *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+}
+
+html[data-system-font="1"] body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+}
+
+html[data-system-scrollbar="1"] * {
+    scrollbar-width: auto !important;
+}
+
+html[data-hide-stats="1"] .fav-count,
+html[data-hide-stats="1"] .reblog-count,
+html[data-hide-stats="1"] .reply-count {
+    display: none !important;
+}

@@ -55,6 +55,10 @@ $ver = htmlspecialchars(defined('KUTSOCIAL_VERSION') ? KUTSOCIAL_VERSION : '1.0.
                 : contrast;
             document.documentElement.setAttribute('data-contrast', resolvedContrast);
             document.documentElement.setAttribute('data-emoji-style', localStorage.getItem('kutsocial_emoji_style') || 'auto');
+            if (localStorage.getItem('kutsocial_reduce_motion') === 'true') document.documentElement.setAttribute('data-reduce-motion', '1');
+            if (localStorage.getItem('kutsocial_system_font') === 'true') document.documentElement.setAttribute('data-system-font', '1');
+            if (localStorage.getItem('kutsocial_system_scrollbar') === 'true') document.documentElement.setAttribute('data-system-scrollbar', '1');
+            if (localStorage.getItem('kutsocial_show_stats') === 'false') document.documentElement.setAttribute('data-hide-stats', '1');
         } catch (e) {}
     })();
     </script>
