@@ -1,5 +1,5 @@
 {
-  "version": "2.1.68",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.68/kutsocial-v2.1.68.zip",
-  "changelog": "Corrige el rel de NodeInfo (nodeinfo.diaspora.software en lugar de nodeinfo.diaspora.gene.ar), detecta HTTPS tras proxy y añade soporte NodeInfo 2.1 para clientes como Tuba"
+  "version": "2.1.69",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.69/kutsocial-v2.1.69.zip",
+  "changelog": "Animaciones de rebote/rotación, hover en píldora y destellos de micro-partículas en los iconos de interacción (favorito, re-toot y marcador)"
 }
