@@ -1,5 +1,5 @@
 {
-  "version": "2.1.69",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.69/kutsocial-v2.1.69.zip",
-  "changelog": "Animaciones de rebote/rotación, hover en píldora y destellos de micro-partículas en los iconos de interacción (favorito, re-toot y marcador)"
+  "version": "2.1.70",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.70/kutsocial-v2.1.70.zip",
+  "changelog": "Compatibilidad total en Zen/Firefox y tema Mastodon: especificidad CSS para botones en píldora y Web Animations API en document.body para evitar recortes"
 }
