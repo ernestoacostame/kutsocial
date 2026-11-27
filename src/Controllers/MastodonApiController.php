@@ -227,30 +227,36 @@ class MastodonApiController {
      * Endpoint GET /.well-known/nodeinfo
      */
     public static function wellKnownNodeinfo(): void {
-        $proto = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+        $isHttps = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')
+            || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+        $proto = $isHttps ? 'https' : 'http';
         $domain = $_SERVER['HTTP_HOST'] ?? 'localhost';
         
         Router::json([
             'links' => [
                 [
-                    'rel' => 'http://nodeinfo.diaspora.gene.ar/ns/schema/2.0',
+                    'rel' => 'http://nodeinfo.diaspora.software/ns/schema/2.0',
                     'href' => "$proto://$domain/nodeinfo/2.0"
+                ],
+                [
+                    'rel' => 'http://nodeinfo.diaspora.software/ns/schema/2.1',
+                    'href' => "$proto://$domain/nodeinfo/2.1"
                 ]
             ]
         ]);
     }
 
     /**
-     * Endpoint GET /nodeinfo/2.0
+     * Endpoint GET /nodeinfo/2.0 y /nodeinfo/2.1
      */
-    public static function nodeinfo20(): void {
+    public static function nodeinfo20(array $params = [], string $version = '2.0'): void {
         $db = Database::connect();
         
         $userCount = self::getTableRowCount('accounts', "(domain IS NULL OR domain = '') AND password_hash IS NOT NULL AND password_hash != ''");
         $statusCount = self::getTableRowCount('statuses');
 
         Router::json([
-            'version' => '2.0',
+            'version' => $version,
             'software' => [
                 'name' => 'mastodon',
                 'version' => '4.6.0-kutsocial'
@@ -273,6 +279,10 @@ class MastodonApiController {
             ],
             'metadata' => (object)[]
         ]);
+    }
+
+    public static function nodeinfo21(): void {
+        self::nodeinfo20([], '2.1');
     }
 
     /**
