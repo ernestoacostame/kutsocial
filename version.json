@@ -1,5 +1,5 @@
 {
-  "version": "2.1.67",
-  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.67/kutsocial-v2.1.67.zip",
-  "changelog": "Historial de ediciones en toots propios y de terceros (locales y remotos): tabla status_edits, ActivityPub Update, endpoint /api/v1/statuses/:id/history y modal visual"
+  "version": "2.1.68",
+  "zip_url": "https://github.com/ernestoacostame/kutsocial/releases/download/v2.1.68/kutsocial-v2.1.68.zip",
+  "changelog": "Corrige el rel de NodeInfo (nodeinfo.diaspora.software en lugar de nodeinfo.diaspora.gene.ar), detecta HTTPS tras proxy y añade soporte NodeInfo 2.1 para clientes como Tuba"
 }
