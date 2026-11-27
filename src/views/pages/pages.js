@@ -1824,6 +1824,7 @@ async function executeReblog(tootId, btn, isReblog) {
                 
                 if (targetToot.reblogged) {
                     rebBtn.classList.add('active-reblog');
+                    triggerActionBurst(rebBtn, '#34d399', 'kut-anim-boost');
                     if (icon) {
                         icon.className = 'material-icons';
                         icon.style.color = '#10b981';
@@ -5429,6 +5430,7 @@ async function toggleFavourite(statusId, btn) {
                     icon.textContent = 'star';
                     icon.className = 'material-icons';
                 }
+                triggerActionBurst(btn, '#fbbf24', 'kut-anim-pop');
             }
         }
     } catch (e) {
@@ -5463,10 +5465,39 @@ async function toggleBookmark(statusId, btn) {
                     icon.textContent = 'bookmark';
                     icon.className = 'material-icons';
                 }
+                triggerActionBurst(btn, '#60a5fa', 'kut-anim-pop');
             }
         }
     } catch (e) {
         console.error("Error al marcador", e);
+    }
+}
+
+function triggerActionBurst(btn, color = '#fbbf24', animClass = 'kut-anim-pop') {
+    if (!btn) return;
+    const icon = btn.querySelector('.material-icons, .material-icons-outlined');
+    if (icon) {
+        icon.classList.remove('kut-anim-pop', 'kut-anim-boost');
+        void icon.offsetWidth;
+        icon.classList.add(animClass);
+        setTimeout(() => icon.classList.remove(animClass), 500);
+    }
+
+    const count = 8;
+    for (let i = 0; i < count; i++) {
+        const spark = document.createElement('span');
+        spark.className = 'kut-sparkle';
+        const angle = (Math.PI * 2 * i) / count + (Math.random() * 0.35 - 0.17);
+        const dist = 16 + Math.random() * 12;
+        const size = 3 + Math.random() * 2.5;
+        spark.style.width = `${size}px`;
+        spark.style.height = `${size}px`;
+        spark.style.background = color;
+        spark.style.boxShadow = `0 0 6px ${color}`;
+        spark.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
+        spark.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
+        btn.appendChild(spark);
+        setTimeout(() => spark.remove(), 550);
     }
 }
 
