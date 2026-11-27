@@ -558,21 +558,43 @@ html[data-ui-theme="mastodon"] .link-card {
 html[data-ui-theme="mastodon"] .toot-action-btn {
     color: var(--text-muted);
     border-radius: 9999px;
+    padding: 5px 10px;
+    transition: color 0.18s ease, background-color 0.18s ease, transform 0.14s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 html[data-ui-theme="mastodon"] .toot-action-btn:hover {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.08);
     color: #ffffff;
 }
 
-html[data-ui-theme="mastodon"] .toot-action-btn.active-fav,
-html[data-ui-theme="mastodon"] .toot-action-btn.active-fav:hover {
-    color: var(--accent-fav);
+html[data-ui-theme="mastodon"] .toot-action-btn:active {
+    transform: scale(0.92);
 }
 
+html[data-ui-theme="mastodon"] .toot-action-btn.btn-reply:hover {
+    background: rgba(99, 102, 241, 0.16);
+    color: var(--primary, #818cf8);
+}
+
+html[data-ui-theme="mastodon"] .toot-action-btn.btn-reblog:hover,
+html[data-ui-theme="mastodon"] .toot-action-btn.active-reblog,
+html[data-ui-theme="mastodon"] .toot-action-btn.active-reblog:hover {
+    background: rgba(16, 185, 129, 0.14);
+    color: #10b981;
+}
+
+html[data-ui-theme="mastodon"] .toot-action-btn.btn-fav:hover,
+html[data-ui-theme="mastodon"] .toot-action-btn.active-fav,
+html[data-ui-theme="mastodon"] .toot-action-btn.active-fav:hover {
+    background: rgba(245, 158, 11, 0.14);
+    color: var(--accent-fav, #f59e0b);
+}
+
+html[data-ui-theme="mastodon"] .toot-action-btn.btn-bookmark:hover,
 html[data-ui-theme="mastodon"] .toot-action-btn.active-bookmark,
 html[data-ui-theme="mastodon"] .toot-action-btn.active-bookmark:hover {
-    color: var(--accent-bookmark);
+    background: rgba(59, 130, 246, 0.14);
+    color: var(--accent-bookmark, #3b82f6);
 }
 
 html[data-ui-theme="mastodon"] .section-header,

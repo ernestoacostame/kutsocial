@@ -1531,13 +1531,13 @@ function createThreadTootElement(toot, isMain = false) {
                     <button class="toot-action-btn btn-reply" onclick="event.stopPropagation(); handleReplyButtonClick(this)" title="${__('toot_reply', 'Responder')}">
                         <span class="material-icons-outlined">chat_bubble_outline</span> <span>${toot.replies_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn ${favClass}" onclick="event.stopPropagation(); toggleFavourite('${toot.id}', this)" title="${__('toot_favorite', 'Favorito')}">
+                    <button class="toot-action-btn btn-fav ${favClass}" onclick="event.stopPropagation(); toggleFavourite('${toot.id}', this)" title="${__('toot_favorite', 'Favorito')}">
                         <span class="${toot.favourited ? 'material-icons' : 'material-icons-outlined'}">${toot.favourited ? 'star' : 'star_border'}</span> <span class="fav-count">${toot.favourites_count || 0}</span>
                     </button>
                     <button class="toot-action-btn btn-reblog ${toot.reblogged ? 'active-reblog' : ''}" data-reblog-toot-id="${toot.id}" onclick="handleReblogButtonClick('${toot.id}', this, event)" title="${__('toot_boost', 'Compartir / Citar')}">
                         <span class="${toot.reblogged ? 'material-icons' : 'material-icons-outlined'}" style="${toot.reblogged ? 'color: #10b981;' : ''}">repeat</span> <span class="reblog-count" style="${toot.reblogged ? 'color: #10b981; font-weight: bold;' : ''}">${toot.reblogs_count || 0}</span>
                     </button>
-                    <button class="toot-action-btn ${bookmarkClass}" onclick="event.stopPropagation(); toggleBookmark('${toot.id}', this)" title="${__('toot_bookmark', 'Guardar')}">
+                    <button class="toot-action-btn btn-bookmark ${bookmarkClass}" onclick="event.stopPropagation(); toggleBookmark('${toot.id}', this)" title="${__('toot_bookmark', 'Guardar')}">
                         <span class="${toot.bookmarked ? 'material-icons' : 'material-icons-outlined'}">${toot.bookmarked ? 'bookmark' : 'bookmark_border'}</span>
                     </button>
                     ${isMyToot ? `
@@ -5477,26 +5477,49 @@ function triggerActionBurst(btn, color = '#fbbf24', animClass = 'kut-anim-pop') 
     if (!btn) return;
     const icon = btn.querySelector('.material-icons, .material-icons-outlined');
     if (icon) {
-        icon.classList.remove('kut-anim-pop', 'kut-anim-boost');
-        void icon.offsetWidth;
-        icon.classList.add(animClass);
-        setTimeout(() => icon.classList.remove(animClass), 500);
+        if (typeof icon.animate === 'function') {
+            if (animClass === 'kut-anim-boost') {
+                icon.animate([
+                    { transform: 'rotate(0deg) scale(1)' },
+                    { transform: 'rotate(180deg) scale(1.32)', offset: 0.45 },
+                    { transform: 'rotate(360deg) scale(1)' }
+                ], { duration: 460, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+            } else {
+                icon.animate([
+                    { transform: 'scale(1)' },
+                    { transform: 'scale(1.45)', offset: 0.35 },
+                    { transform: 'scale(0.86)', offset: 0.68 },
+                    { transform: 'scale(1)' }
+                ], { duration: 420, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+            }
+        } else {
+            icon.classList.remove('kut-anim-pop', 'kut-anim-boost');
+            void icon.offsetWidth;
+            icon.classList.add(animClass);
+            setTimeout(() => icon.classList.remove(animClass), 500);
+        }
     }
 
-    const count = 8;
+    const rect = (icon || btn).getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    const count = 9;
     for (let i = 0; i < count; i++) {
         const spark = document.createElement('span');
-        spark.className = 'kut-sparkle';
         const angle = (Math.PI * 2 * i) / count + (Math.random() * 0.35 - 0.17);
-        const dist = 16 + Math.random() * 12;
-        const size = 3 + Math.random() * 2.5;
-        spark.style.width = `${size}px`;
-        spark.style.height = `${size}px`;
-        spark.style.background = color;
-        spark.style.boxShadow = `0 0 6px ${color}`;
-        spark.style.setProperty('--tx', `${Math.cos(angle) * dist}px`);
-        spark.style.setProperty('--ty', `${Math.sin(angle) * dist}px`);
-        btn.appendChild(spark);
+        const dist = 16 + Math.random() * 14;
+        const size = 3.5 + Math.random() * 2.5;
+        const dx = Math.cos(angle) * dist;
+        const dy = Math.sin(angle) * dist;
+        spark.style.cssText = `position:fixed; left:${cx}px; top:${cy}px; width:${size}px; height:${size}px; border-radius:50%; background:${color}; box-shadow:0 0 8px ${color}; pointer-events:none; z-index:99999; transform:translate(-50%,-50%);`;
+        document.body.appendChild(spark);
+        if (typeof spark.animate === 'function') {
+            spark.animate([
+                { opacity: 1, transform: 'translate(-50%, -50%) scale(0.4)' },
+                { opacity: 1, transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(1.15)`, offset: 0.55 },
+                { opacity: 0, transform: `translate(calc(-50% + ${dx * 1.3}px), calc(-50% + ${dy * 1.3}px)) scale(0)` }
+            ], { duration: 520, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', fill: 'forwards' });
+        }
         setTimeout(() => spark.remove(), 550);
     }
 }

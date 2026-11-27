@@ -1098,6 +1098,7 @@ button:hover {
     color: #f59e0b; /* Amarillo/naranja para favoritos */
 }
 
+.toot-action-btn.btn-fav:hover,
 .toot-action-btn.active-fav:hover {
     background: rgba(245, 158, 11, 0.14);
     color: #fbbf24;
@@ -1117,6 +1118,7 @@ button:hover {
     color: #3b82f6; /* Azul para marcadores */
 }
 
+.toot-action-btn.btn-bookmark:hover,
 .toot-action-btn.active-bookmark:hover {
     background: rgba(59, 130, 246, 0.14);
     color: #60a5fa;
